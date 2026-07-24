@@ -1,9 +1,9 @@
-// HINWEIS: Das ist ein einfacher Speicher im Arbeitsspeicher, nur für lokale Tests
-// (npm run dev). Er merkt sich Jobs, solange der Server läuft, aber NICHT nach
-// einem Neustart und NICHT zuverlässig auf Vercel (dort läuft jede Anfrage
-// potenziell auf einer anderen Instanz). Für den echten Live-Betrieb muss das
-// später durch eine echte Datenbank ersetzt werden (z.B. Vercel KV, Postgres).
-// Für den jetzigen Testschritt reicht das völlig aus.
+// Geteilter Speicher über Upstash Redis (kostenlos), damit alle
+// Vercel-Serverfunktionen denselben Job-Status sehen können.
+
+import { Redis } from "@upstash/redis";
+
+const redis = Redis.fromEnv();
 
 export type VideoJob = {
   status: "pending" | "processing" | "done" | "error";
@@ -13,10 +13,16 @@ export type VideoJob = {
   createdAt: number;
 };
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __videoJobs: Map<string, VideoJob> | undefined;
-}
+const keyFor = (jobId: string) => `job:${jobId}`;
 
-export const jobStore: Map<string, VideoJob> =
-  global.__videoJobs ?? (global.__videoJobs = new Map());
+export const jobStore = {
+  async get(jobId: string): Promise<VideoJob | undefined> {
+    const data = await redis.get<VideoJob>(keyFor(jobId));
+    return data ?? undefined;
+  },
+
+  async set(jobId: string, job: VideoJob): Promise<void> {
+    // Läuft nach 24 Stunden automatisch ab, damit sich nichts aufstaut.
+    await redis.set(keyFor(jobId), job, { ex: 60 * 60 * 24 });
+  },
+};
