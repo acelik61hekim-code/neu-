@@ -13,10 +13,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Eigene Job-ID, die wir durch den ganzen Bezahl- und Erstellungsprozess
-  // mitschleifen, damit wir später wissen, welcher Prompt zu welcher Zahlung gehört.
   const jobId = nanoid();
-  jobStore.set(jobId, {
+  await jobStore.set(jobId, {
     status: "pending",
     prompt: prompt.trim(),
     createdAt: Date.now(),
