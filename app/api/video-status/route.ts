@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "jobId fehlt" }, { status: 400 });
   }
 
-  const job = jobStore.get(jobId);
+  const job = await jobStore.get(jobId);
 
   if (!job) {
     return NextResponse.json({ error: "Job nicht gefunden" }, { status: 404 });
