@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../lib/stripe";
-import { jobStore } from "../../../lib/stripe";
-import { startVideoGeneration, checkVideoStatus } from "@/lib/veo";
+import { jobStore } from "../../../lib/store";
+import { startVideoGeneration, checkVideoStatus } from "@../../../lib/veo";
 
 // Stripe braucht den rohen (unveränderten) Anfragetext, um die Signatur zu prüfen.
 export const runtime = "nodejs";
