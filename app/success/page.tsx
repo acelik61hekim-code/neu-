@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type Status = "pending" | "processing" | "done" | "error";
 
-export default function SuccessPage() {
+function SuccessContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
 
@@ -69,5 +69,13 @@ export default function SuccessPage() {
         </a>
       </div>
     </main>
+  );
+}
+
+export default function SuccessPage() {
+  return (
+    <Suspense fallback={<p>Lade...</p>}>
+      <SuccessContent />
+    </Suspense>
   );
 }
