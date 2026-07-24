@@ -3,7 +3,6 @@ import { stripe } from "../../../lib/stripe";
 import { jobStore } from "../../../lib/store";
 import { startVideoGeneration, checkVideoStatus } from "../../../lib/veo";
 
-// Stripe braucht den rohen (unveränderten) Anfragetext, um die Signatur zu prüfen.
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -26,21 +25,19 @@ export async function POST(req: NextRequest) {
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as any;
     const jobId = session.metadata?.jobId;
-    const job = jobId ? jobStore.get(jobId) : undefined;
+    const job = jobId ? await jobStore.get(jobId) : undefined;
 
     if (job) {
       job.status = "processing";
-      jobStore.set(jobId, job);
+      await jobStore.set(jobId, job);
 
-      // Videoerstellung anstoßen, OHNE die Webhook-Antwort zu blockieren.
-      // Stripe erwartet innerhalb weniger Sekunden ein "200 OK".
-      generateVideoInBackground(jobId, job.prompt).catch((err) => {
+      generateVideoInBackground(jobId, job.prompt).catch(async (err) => {
         console.error("Fehler bei der Videoerstellung:", err);
-        const failedJob = jobStore.get(jobId);
+        const failedJob = await jobStore.get(jobId);
         if (failedJob) {
           failedJob.status = "error";
           failedJob.errorMessage = "Videoerstellung fehlgeschlagen.";
-          jobStore.set(jobId, failedJob);
+          await jobStore.set(jobId, failedJob);
         }
       });
     }
@@ -52,17 +49,16 @@ export async function POST(req: NextRequest) {
 async function generateVideoInBackground(jobId: string, prompt: string) {
   const operationName = await startVideoGeneration(prompt);
 
-  // Alle paar Sekunden nachfragen, ob das Video fertig ist (max. ~3 Minuten).
   for (let attempt = 0; attempt < 36; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
     const status = await checkVideoStatus(operationName);
 
     if (status.done) {
-      const job = jobStore.get(jobId);
+      const job = await jobStore.get(jobId);
       if (job) {
         job.status = "done";
         job.videoUrl = status.videoUrl;
-        jobStore.set(jobId, job);
+        await jobStore.set(jobId, job);
       }
       return;
     }
