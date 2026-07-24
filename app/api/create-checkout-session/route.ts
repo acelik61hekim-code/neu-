@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, PRICE_PER_VIDEO_CENTS } from "@/lib/stripe";
-import { jobStore } from "@/lib/store";
+import { stripe, PRICE_PER_VIDEO_CENTS } from "../../../lib/stripe";
+import { jobStore } from "../../../lib/stripe";
 import { nanoid } from "nanoid";
 
 export async function POST(req: NextRequest) {
