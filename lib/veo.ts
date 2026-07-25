@@ -1,31 +1,22 @@
-// Anbindung an Googles Veo 3.1 Fast Modell über die Gemini API.
-//
-// WICHTIG: Dies ist eine Preview-API von Google, Modellnamen und Endpunkte
-// können sich ändern. Bevor du live gehst, prüfe die aktuelle Doku unter
-// https://ai.google.dev/gemini-api/docs/video und passe MODEL_ID bei Bedarf an.
-
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const MODEL_ID = "veo-3.1-fast-generate-preview";
+const VIDEO_MODEL = "veo-3.1-fast-generate-preview";
+const TEXT_MODEL = "gemini-2.5-flash";
 
 if (!GEMINI_API_KEY) {
   console.warn("GEMINI_API_KEY fehlt in den Umgebungsvariablen (.env.local)");
 }
 
-// Startet die Videogenerierung und gibt den Namen der "Operation" zurück,
-// mit der wir später den Fortschritt abfragen.
 export async function startVideoGeneration(prompt: string): Promise<string> {
   const response = await fetch(
-    `${BASE_URL}/models/${MODEL_ID}:predictLongRunning`,
+    `${BASE_URL}/models/${VIDEO_MODEL}:predictLongRunning`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "x-goog-api-key": GEMINI_API_KEY!,
       },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-      }),
+      body: JSON.stringify({ instances: [{ prompt }] }),
     }
   );
 
@@ -35,11 +26,9 @@ export async function startVideoGeneration(prompt: string): Promise<string> {
   }
 
   const data = await response.json();
-  // data.name ist der Operationsname, z.B. "operations/abc123"
   return data.name;
 }
 
-// Fragt den Status einer laufenden Videogenerierung ab.
 export async function checkVideoStatus(
   operationName: string
 ): Promise<{ done: boolean; videoUrl?: string }> {
@@ -65,9 +54,56 @@ export async function checkVideoStatus(
     throw new Error("Video fertig gemeldet, aber keine Video-URL erhalten.");
   }
 
-  // Die URI braucht weiterhin den API-Key zum Abrufen, deshalb hängen wir
-  // ihn als Query-Parameter an, damit das <video>-Element sie laden kann.
   const videoUrlWithKey = `${videoUri}${videoUri.includes("?") ? "&" : "?"}key=${GEMINI_API_KEY}`;
 
   return { done: true, videoUrl: videoUrlWithKey };
+}
+
+// Teilt einen Gesamt-Prompt in mehrere aufeinanderfolgende Szenen-Prompts auf.
+export async function splitIntoScenes(
+  prompt: string,
+  sceneCount: number
+): Promise<string[]> {
+  const response = await fetch(
+    `${BASE_URL}/models/${TEXT_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_API_KEY!,
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: `Teile diese Videoidee in genau ${sceneCount} aufeinanderfolgende, kurze Videoclip-Beschreibungen auf (je ca. 8 Sekunden). Idee: "${prompt}". Gib NUR ein JSON-Array mit genau ${sceneCount} Strings zurück, jeder String ist eine bildhafte, eigenständige Beschreibung (Stil, Bewegung, Kameraführung) für einen KI-Videogenerator, die zusammen eine zusammenhängende Geschichte erzählen. Kein Text außerhalb des JSON-Arrays.`,
+              },
+            ],
+          },
+        ],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Szenen-Aufteilung fehlgeschlagen: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+  if (!text) {
+    throw new Error("Keine Szenen von der KI erhalten.");
+  }
+
+  const scenes = JSON.parse(text);
+
+  if (!Array.isArray(scenes) || scenes.length === 0) {
+    throw new Error("Unerwartetes Format der Szenen-Antwort.");
+  }
+
+  return scenes.slice(0, sceneCount);
 }
