@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe, PRICE_PER_VIDEO_CENTS } from "../../../lib/stripe";
-import { jobStore } from "../../../lib/store";
+import { stripe, PRICE_SHORT_CENTS, PRICE_LONG_CENTS } from "../../../lib/stripe";
+import { jobStore, VideoFormat } from "../../../lib/store";
 import { nanoid } from "nanoid";
 
 export async function POST(req: NextRequest) {
-  const { prompt } = await req.json();
+  const { prompt, format } = await req.json();
 
   if (!prompt || typeof prompt !== "string" || prompt.trim().length < 3) {
     return NextResponse.json(
@@ -13,10 +13,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const videoFormat: VideoFormat = format === "long" ? "long" : "short";
+  const priceCents = videoFormat === "long" ? PRICE_LONG_CENTS : PRICE_SHORT_CENTS;
+  const productName =
+    videoFormat === "long" ? "KI-generiertes 1-Minuten-Video" : "KI-generiertes Video";
+
   const jobId = nanoid();
   await jobStore.set(jobId, {
     status: "pending",
     prompt: prompt.trim(),
+    format: videoFormat,
     createdAt: Date.now(),
   });
 
@@ -29,8 +35,8 @@ export async function POST(req: NextRequest) {
       {
         price_data: {
           currency: "eur",
-          product_data: { name: "KI-generiertes Video" },
-          unit_amount: PRICE_PER_VIDEO_CENTS,
+          product_data: { name: productName },
+          unit_amount: priceCents,
         },
         quantity: 1,
       },
