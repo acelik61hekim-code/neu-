@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "../../../lib/stripe";
 import { jobStore } from "../../../lib/store";
-import { startVideoGeneration, checkVideoStatus } from "../../../lib/veo";
+import { startVideoGeneration, checkVideoStatus, splitIntoScenes } from "../../../lib/veo";
+import { LONG_FORMAT_SCENE_COUNT } from "../../../lib/stripe";
 
 export const runtime = "nodejs";
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -31,7 +33,12 @@ export async function POST(req: NextRequest) {
       job.status = "processing";
       await jobStore.set(jobId, job);
 
-      generateVideoInBackground(jobId, job.prompt).catch(async (err) => {
+      const task =
+        job.format === "long"
+          ? generateLongVideoInBackground(jobId, job.prompt)
+          : generateShortVideoInBackground(jobId, job.prompt);
+
+      task.catch(async (err) => {
         console.error("Fehler bei der Videoerstellung:", err);
         const failedJob = await jobStore.get(jobId);
         if (failedJob) {
@@ -46,23 +53,57 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ received: true });
 }
 
-async function generateVideoInBackground(jobId: string, prompt: string) {
-  const operationName = await startVideoGeneration(prompt);
-
+async function waitForClip(operationName: string): Promise<string> {
   for (let attempt = 0; attempt < 36; attempt++) {
     await new Promise((resolve) => setTimeout(resolve, 5000));
     const status = await checkVideoStatus(operationName);
+    if (status.done && status.videoUrl) {
+      return status.videoUrl;
+    }
+  }
+  throw new Error("Zeitüberschreitung bei der Videoerstellung.");
+}
 
-    if (status.done) {
-      const job = await jobStore.get(jobId);
-      if (job) {
-        job.status = "done";
-        job.videoUrl = status.videoUrl;
-        await jobStore.set(jobId, job);
-      }
-      return;
+async function generateShortVideoInBackground(jobId: string, prompt: string) {
+  const operationName = await startVideoGeneration(prompt);
+  const videoUrl = await waitForClip(operationName);
+  const job = await jobStore.get(jobId);
+  if (job) {
+    job.status = "done";
+    job.videoUrl = videoUrl;
+    await jobStore.set(jobId, job);
+  }
+}
+
+async function generateLongVideoInBackground(jobId: string, prompt: string) {
+  const scenes = await splitIntoScenes(prompt, LONG_FORMAT_SCENE_COUNT);
+
+  const initJob = await jobStore.get(jobId);
+  if (initJob) {
+    initJob.totalScenes = scenes.length;
+    initJob.completedScenes = 0;
+    await jobStore.set(jobId, initJob);
+  }
+
+  const videoUrls: string[] = [];
+
+  for (const scenePrompt of scenes) {
+    const operationName = await startVideoGeneration(scenePrompt);
+    const videoUrl = await waitForClip(operationName);
+    videoUrls.push(videoUrl);
+
+    const progressJob = await jobStore.get(jobId);
+    if (progressJob) {
+      progressJob.videoUrls = [...videoUrls];
+      progressJob.completedScenes = videoUrls.length;
+      await jobStore.set(jobId, progressJob);
     }
   }
 
-  throw new Error("Zeitüberschreitung bei der Videoerstellung.");
+  const finalJob = await jobStore.get(jobId);
+  if (finalJob) {
+    finalJob.status = "done";
+    finalJob.videoUrls = videoUrls;
+    await jobStore.set(jobId, finalJob);
+  }
 }
