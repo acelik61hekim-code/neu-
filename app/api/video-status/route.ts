@@ -16,7 +16,11 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     status: job.status,
+    format: job.format,
     videoUrl: job.videoUrl,
+    videoUrls: job.videoUrls,
+    totalScenes: job.totalScenes,
+    completedScenes: job.completedScenes,
     errorMessage: job.errorMessage,
   });
 }
