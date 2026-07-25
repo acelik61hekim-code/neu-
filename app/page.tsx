@@ -4,6 +4,7 @@ import { useState } from "react";
 
 export default function HomePage() {
   const [prompt, setPrompt] = useState("");
+  const [format, setFormat] = useState<"short" | "long">("short");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +21,7 @@ export default function HomePage() {
       const res = await fetch("/api/create-checkout-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, format }),
       });
       const data = await res.json();
 
@@ -66,9 +67,35 @@ export default function HomePage() {
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
+
+          <div className="format-choice">
+            <label className={format === "short" ? "format-option active" : "format-option"}>
+              <input
+                type="radio"
+                name="format"
+                checked={format === "short"}
+                onChange={() => setFormat("short")}
+              />
+              <span>Kurz (~8 Sek.) — 4,99 €</span>
+            </label>
+            <label className={format === "long" ? "format-option active" : "format-option"}>
+              <input
+                type="radio"
+                name="format"
+                checked={format === "long"}
+                onChange={() => setFormat("long")}
+              />
+              <span>Lang (~1 Min.) — 24,99 €</span>
+            </label>
+          </div>
+
           <div className="slate-footer">
             <span className="price">
-              Einmalig <strong>4,99 €</strong> pro Video
+              {format === "long" ? (
+                <>Einmalig <strong>24,99 €</strong></>
+              ) : (
+                <>Einmalig <strong>4,99 €</strong></>
+              )}
             </span>
             <button className="cta" onClick={handleSubmit} disabled={loading}>
               {loading ? "Einen Moment …" : "Video erstellen"}
