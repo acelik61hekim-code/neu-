@@ -220,3 +220,30 @@ a.back-link {
 a.back-link:hover {
   text-decoration: underline;
 }
+.format-choice {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.format-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.format-option.active {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.format-option input {
+  accent-color: var(--accent);
+}
