@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { waitUntil } from "@vercel/functions";
 import { stripe } from "../../../lib/stripe";
 import { jobStore } from "../../../lib/store";
 import { startVideoGeneration, checkVideoStatus, splitIntoScenes } from "../../../lib/veo";
@@ -38,15 +39,17 @@ export async function POST(req: NextRequest) {
           ? generateLongVideoInBackground(jobId, job.prompt)
           : generateShortVideoInBackground(jobId, job.prompt);
 
-      task.catch(async (err) => {
-        console.error("Fehler bei der Videoerstellung:", err);
-        const failedJob = await jobStore.get(jobId);
-        if (failedJob) {
-          failedJob.status = "error";
-          failedJob.errorMessage = "Videoerstellung fehlgeschlagen.";
-          await jobStore.set(jobId, failedJob);
-        }
-      });
+      waitUntil(
+        task.catch(async (err) => {
+          console.error("Fehler bei der Videoerstellung:", err);
+          const failedJob = await jobStore.get(jobId);
+          if (failedJob) {
+            failedJob.status = "error";
+            failedJob.errorMessage = "Videoerstellung fehlgeschlagen.";
+            await jobStore.set(jobId, failedJob);
+          }
+        })
+      );
     }
   }
 
@@ -77,7 +80,6 @@ async function generateShortVideoInBackground(jobId: string, prompt: string) {
 
 async function generateLongVideoInBackground(jobId: string, prompt: string) {
   const scenes = await splitIntoScenes(prompt, LONG_FORMAT_SCENE_COUNT);
-
   const initJob = await jobStore.get(jobId);
   if (initJob) {
     initJob.totalScenes = scenes.length;
@@ -86,12 +88,10 @@ async function generateLongVideoInBackground(jobId: string, prompt: string) {
   }
 
   const videoUrls: string[] = [];
-
   for (const scenePrompt of scenes) {
     const operationName = await startVideoGeneration(scenePrompt);
     const videoUrl = await waitForClip(operationName);
     videoUrls.push(videoUrl);
-
     const progressJob = await jobStore.get(jobId);
     if (progressJob) {
       progressJob.videoUrls = [...videoUrls];
