@@ -78,6 +78,28 @@ async function generateShortVideoInBackground(jobId: string, prompt: string) {
   }
 }
 
+// Führt eine Liste von Aufgaben mit begrenzter Gleichzeitigkeit aus (statt alle auf einmal).
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runNext(): Promise<void> {
+    while (nextIndex < items.length) {
+      const current = nextIndex;
+      nextIndex++;
+      results[current] = await worker(items[current], current);
+    }
+  }
+
+  const workerCount = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: workerCount }, () => runNext()));
+  return results;
+}
+
 async function generateLongVideoInBackground(jobId: string, prompt: string) {
   const scenes = await splitIntoScenes(prompt, LONG_FORMAT_SCENE_COUNT);
   const initJob = await jobStore.get(jobId);
@@ -87,28 +109,26 @@ async function generateLongVideoInBackground(jobId: string, prompt: string) {
     await jobStore.set(jobId, initJob);
   }
 
-  const videoUrls: (string | null)[] = new Array(scenes.length).fill(null);
   let completedCount = 0;
 
-  await Promise.all(
-    scenes.map(async (scenePrompt, index) => {
-      const operationName = await startVideoGeneration(scenePrompt);
-      const videoUrl = await waitForClip(operationName);
-      videoUrls[index] = videoUrl;
-      completedCount++;
+  const videoUrls = await runWithConcurrencyLimit(scenes, 2, async (scenePrompt) => {
+    const operationName = await startVideoGeneration(scenePrompt);
+    const videoUrl = await waitForClip(operationName);
+    completedCount++;
 
-      const progressJob = await jobStore.get(jobId);
-      if (progressJob) {
-        progressJob.completedScenes = completedCount;
-        await jobStore.set(jobId, progressJob);
-      }
-    })
-  );
+    const progressJob = await jobStore.get(jobId);
+    if (progressJob) {
+      progressJob.completedScenes = completedCount;
+      await jobStore.set(jobId, progressJob);
+    }
+
+    return videoUrl;
+  });
 
   const finalJob = await jobStore.get(jobId);
   if (finalJob) {
     finalJob.status = "done";
-    finalJob.videoUrls = videoUrls as string[];
+    finalJob.videoUrls = videoUrls;
     await jobStore.set(jobId, finalJob);
   }
 }
