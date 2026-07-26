@@ -87,23 +87,28 @@ async function generateLongVideoInBackground(jobId: string, prompt: string) {
     await jobStore.set(jobId, initJob);
   }
 
-  const videoUrls: string[] = [];
-  for (const scenePrompt of scenes) {
-    const operationName = await startVideoGeneration(scenePrompt);
-    const videoUrl = await waitForClip(operationName);
-    videoUrls.push(videoUrl);
-    const progressJob = await jobStore.get(jobId);
-    if (progressJob) {
-      progressJob.videoUrls = [...videoUrls];
-      progressJob.completedScenes = videoUrls.length;
-      await jobStore.set(jobId, progressJob);
-    }
-  }
+  const videoUrls: (string | null)[] = new Array(scenes.length).fill(null);
+  let completedCount = 0;
+
+  await Promise.all(
+    scenes.map(async (scenePrompt, index) => {
+      const operationName = await startVideoGeneration(scenePrompt);
+      const videoUrl = await waitForClip(operationName);
+      videoUrls[index] = videoUrl;
+      completedCount++;
+
+      const progressJob = await jobStore.get(jobId);
+      if (progressJob) {
+        progressJob.completedScenes = completedCount;
+        await jobStore.set(jobId, progressJob);
+      }
+    })
+  );
 
   const finalJob = await jobStore.get(jobId);
   if (finalJob) {
     finalJob.status = "done";
-    finalJob.videoUrls = videoUrls;
+    finalJob.videoUrls = videoUrls as string[];
     await jobStore.set(jobId, finalJob);
   }
 }
