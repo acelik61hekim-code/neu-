@@ -112,23 +112,20 @@ async function generateLongVideoInBackground(jobId: string, prompt: string) {
   let completedCount = 0;
 
   const videoUrls = await runWithConcurrencyLimit(scenes, 1, async (scenePrompt) => {
-    const operationName = await startVideoGeneration(scenePrompt);
-    const videoUrl = await waitForClip(operationName);
-    completedCount++;
+  const operationName = await startVideoGeneration(scenePrompt);
 
-    const progressJob = await jobStore.get(jobId);
-    if (progressJob) {
-      progressJob.completedScenes = completedCount;
-      await jobStore.set(jobId, progressJob);
-    }
+  const videoUrl = await waitForClip(operationName);
 
-    return videoUrl;
-  });
+  // 30 Sekunden warten, bevor die nächste Szene gestartet wird
+  await new Promise((resolve) => setTimeout(resolve, 30000));
 
-  const finalJob = await jobStore.get(jobId);
-  if (finalJob) {
-    finalJob.status = "done";
-    finalJob.videoUrls = videoUrls;
-    await jobStore.set(jobId, finalJob);
+  completedCount++;
+
+  const progressJob = await jobStore.get(jobId);
+  if (progressJob) {
+    progressJob.completedScenes = completedCount;
+    await jobStore.set(jobId, progressJob);
   }
-}
+
+  return videoUrl;
+});
