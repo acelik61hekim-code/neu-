@@ -111,7 +111,7 @@ async function generateLongVideoInBackground(jobId: string, prompt: string) {
 
   let completedCount = 0;
 
-  const videoUrls = await runWithConcurrencyLimit(scenes, 2, async (scenePrompt) => {
+  const videoUrls = await runWithConcurrencyLimit(scenes, 1, async (scenePrompt) => {
     const operationName = await startVideoGeneration(scenePrompt);
     const videoUrl = await waitForClip(operationName);
     completedCount++;
