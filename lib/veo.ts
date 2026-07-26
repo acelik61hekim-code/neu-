@@ -1,7 +1,7 @@
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const VIDEO_MODEL = "veo-3.1-fast-generate-preview";
-const TEXT_MODEL = "gemini-2.5-flash";
+const TEXT_MODEL = "gemini-3.5-flash-lite";
 
 if (!GEMINI_API_KEY) {
   console.warn("GEMINI_API_KEY fehlt in den Umgebungsvariablen (.env.local)");
