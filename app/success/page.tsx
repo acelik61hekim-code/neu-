@@ -45,3 +45,64 @@ function SuccessContent() {
   return (
     <main className="page">
       <div className="filmstrip">
+{Array.from({ length: 14 }).map((_, i) => (
+          <span key={i} />
+        ))}
+      </div>
+      <div className="status-box">
+        {status !== "done" && status !== "error" && (
+          <>
+            <div className="reel" />
+            <p className="status-line">
+              {format === "long" && totalScenes
+                ? `Zahlung bestätigt — Szene ${completedScenes} von ${totalScenes} wird erstellt. Das kann mehrere Minuten dauern.`
+                : "Zahlung bestätigt — dein Video wird gerade erstellt. Das kann ein bis zwei Minuten dauern."}
+            </p>
+          </>
+        )}
+        {status === "done" && format === "short" && videoUrl && (
+          <>
+            <p className="status-line">Fertig — hier ist dein Video:</p>
+            <video controls src={videoUrl} />
+          </>
+        )}
+        {status === "done" && format === "long" && videoUrls.length > 0 && (
+          <>
+            <p className="status-line">Fertig — hier ist dein Video:</p>
+            <PlaylistPlayer clips={videoUrls} />
+          </>
+        )}
+        {status === "error" && (
+          <p className="error-msg">
+            {errorMessage ?? "Bei der Videoerstellung ist etwas schiefgelaufen."}
+          </p>
+        )}
+        <a className="back-link" href="/">
+          ← Neues Video erstellen
+        </a>
+      </div>
+    </main>
+  );
+}
+
+function PlaylistPlayer({ clips }: { clips: string[] }) {
+  const [index, setIndex] = useState(0);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  function handleEnded() {
+    setIndex((prev) => (prev + 1 < clips.length ? prev + 1 : prev));
+  }
+
+  useEffect(() => {
+    videoRef.current?.play().catch(() => {});
+  }, [index]);
+
+  return (
+    <div>
+      <video ref={videoRef} controls autoPlay src={clips[index]} onEnded={handleEnded} />
+      <p className="status-line" style={{ marginTop: 12, marginBottom: 0 }}>
+        Clip {index + 1} von {clips.length}
+      </p>
+    </div>
+  );
+}
