@@ -375,10 +375,6 @@ export async function POST(
       mode:
         "payment",
 
-      payment_method_types: [
-        "card",
-      ],
-
       line_items: [
         {
           price_data: {

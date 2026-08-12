@@ -871,6 +871,10 @@ export default function HomePage() {
                             ? "Stripe wird geöffnet ..."
                             : "🎬 Video erstellen & bezahlen"}
                         </button>
+
+                        <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
+                          Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay oder Link – je nach Verfügbarkeit.
+                        </p>
                       </div>
                     )}
 

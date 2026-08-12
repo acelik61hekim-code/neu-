@@ -6,7 +6,9 @@ Fast) erstellen lassen können. Bezahlung per Stripe, einmalig pro Video.
 ## Wie die Seite funktioniert
 
 1. Besucher schreibt einen Prompt und klickt "Video erstellen"
-2. Stripe-Checkout öffnet sich (im Testmodus: keine echte Zahlung)
+2. Stripe-Checkout öffnet sich (im Testmodus: keine echte Zahlung). Stripe zeigt
+   automatisch die für den Kunden verfügbaren Methoden wie Karte, PayPal,
+   Klarna, Apple Pay oder Link.
 3. Nach erfolgreicher "Zahlung" ruft Stripe unseren Webhook auf
 4. Der Webhook startet die Videoerstellung bei Google Veo
 5. Die Erfolgsseite fragt alle paar Sekunden nach, ob das Video fertig ist,
@@ -57,6 +59,23 @@ kostenlose Web-Oberflächen:
 5. Nach dem Speichern zeigt Stripe dir ein "Signing secret" (`whsec_...`)
    — das trägst du in Vercel als `STRIPE_WEBHOOK_SECRET` ein
 6. Nochmal "Redeploy" in Vercel klicken
+
+### Zahlungsmethoden aktivieren
+
+Die Checkout-Sitzung verwendet dynamische Stripe-Zahlungsmethoden. Dadurch
+entscheidet Stripe anhand von Land, Währung, Gerät und Kontofreigabe, welche
+Methoden tatsächlich angezeigt werden.
+
+1. Im Stripe-Dashboard unter "Einstellungen" → "Zahlungsmethoden" Klarna
+   aktivieren.
+2. Dort auch PayPal aktivieren und das Stripe-Konto einmal mit PayPal verbinden.
+3. Karte aktiviert lassen; Apple Pay und Link werden auf unterstützten Geräten
+   automatisch angeboten.
+4. Die Aktivierung jeweils getrennt im Test- und später im Live-Modus prüfen.
+
+Falls Stripe eine Methode nicht anzeigt, obwohl sie aktiviert ist, erfüllt die
+konkrete Zahlung möglicherweise nicht deren Länder-, Währungs-, Betrags- oder
+Kontovoraussetzungen.
 
 ### Schritt 5: Testen
 1. Öffne deine Vercel-URL im Browser
