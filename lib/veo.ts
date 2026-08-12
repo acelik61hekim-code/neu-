@@ -474,7 +474,6 @@ export async function startVideoGeneration(
         aspectRatio,
         durationSeconds: 8,
         resolution: "720p",
-        numberOfVideos: 1,
       };
     }
 
@@ -911,7 +910,7 @@ async function resolveProcessedGeneratedVideoUri(
  * KEIN inlineData
  * KEINE videoBytes
  * KEIN numberOfVideos
- * Explizit: 8 Sekunden, 720p, genau ein Video
+ * Explizit: 8 Sekunden und 720p; das Modell liefert genau ein Video
  */
 export async function startVideoExtension(
   videoUri: string,
@@ -998,7 +997,6 @@ export async function startVideoExtension(
                 aspectRatio,
                 durationSeconds: 8,
                 resolution: "720p",
-                numberOfVideos: 1,
               },
             }),
 
