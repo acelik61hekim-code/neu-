@@ -5,6 +5,11 @@ import { useState } from "react";
 import Chat from "@/components/Chat";
 import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
+import {
+  CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
+  formatEuroPrice,
+  getVideoPriceCents,
+} from "@/lib/pricing";
 
 import type {
   VideoAspectRatio,
@@ -87,7 +92,7 @@ export default function HomePage() {
     targetDurationSeconds,
     setTargetDurationSeconds,
   ] = useState<VideoDurationSeconds>(
-    60,
+    30,
   );
 
   const [
@@ -539,8 +544,12 @@ export default function HomePage() {
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {VIDEO_DURATION_OPTIONS.map(
-                  (option) => (
-                    <button
+                  (option) => {
+                    const released =
+                      option.value <= CURRENTLY_RELEASED_MAX_DURATION_SECONDS;
+
+                    return (
+                      <button
                       key={
                         option.value
                       }
@@ -552,20 +561,30 @@ export default function HomePage() {
                       }
                       disabled={
                         loading ||
-                        previewLoading
+                        previewLoading ||
+                        !released
                       }
-                      className={`rounded-xl border px-3 py-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      className={`rounded-xl border px-3 py-3 text-sm font-medium transition disabled:cursor-not-allowed ${
                         targetDurationSeconds ===
                         option.value
                           ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
-                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:bg-white/5 hover:text-white"
+                          : released
+                            ? "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:bg-white/5 hover:text-white"
+                            : "border-white/5 bg-black/10 text-zinc-600"
                       }`}
                     >
-                      {
-                        option.label
-                      }
-                    </button>
-                  ),
+                        <span className="block">{option.label}</span>
+                        <span className="mt-1 block text-xs font-normal">
+                          {formatEuroPrice(getVideoPriceCents(option.value))}
+                        </span>
+                        {!released && (
+                          <span className="mt-1 block text-[10px] font-normal uppercase tracking-wide text-amber-300/70">
+                            Qualitätstest läuft
+                          </span>
+                        )}
+                      </button>
+                    );
+                  },
                 )}
               </div>
             </div>

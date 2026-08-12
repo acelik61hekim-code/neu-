@@ -5,11 +5,8 @@ import {
 
 import { nanoid } from "nanoid";
 
-import {
-  stripe,
-  PRICE_LONG_CENTS,
-  PRICE_SHORT_CENTS,
-} from "../../../lib/stripe";
+import { stripe } from "../../../lib/stripe";
+import { getVideoPriceCents } from "../../../lib/pricing";
 
 import {
   jobStore,
@@ -75,6 +72,11 @@ function missingProductionServices(): string[] {
     missing.push("Stripe Webhook");
   }
   return missing;
+}
+
+function configuredMaxDurationSeconds(): number {
+  const parsed = Number(process.env.VEO_WORKFLOW_MAX_DURATION_SECONDS);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function isVideoDurationSeconds(
@@ -296,6 +298,17 @@ export async function POST(
       body.format,
     );
 
+  const maxDurationSeconds = configuredMaxDurationSeconds();
+  if (targetDurationSeconds > maxDurationSeconds) {
+    return NextResponse.json(
+      {
+        error:
+          `Diese Videolänge befindet sich noch in der Qualitätsprüfung. Aktuell sind maximal ${maxDurationSeconds || 0} Sekunden freigeschaltet. Es wurde nichts berechnet.`,
+      },
+      { status: 409 },
+    );
+  }
+
   const aspectRatio =
     normalizeAspectRatio(
       body.aspectRatio,
@@ -312,22 +325,7 @@ export async function POST(
       ? "short"
       : "long";
 
-  /*
-   * Die vorhandene Preisstruktur kennt aktuell nur
-   * SHORT und LONG. Deshalb bleibt die bisherige
-   * Preislogik in diesem Schritt erhalten:
-   *
-   * 8 s  -> PRICE_SHORT_CENTS
-   * >8 s -> PRICE_LONG_CENTS
-   *
-   * Vor einem öffentlichen Verkauf von 30 s und
-   * 2–5 Min. brauchen wir eine echte Dauer-Preisstaffel
-   * in lib/stripe.ts.
-   */
-  const priceCents =
-    videoFormat === "short"
-      ? PRICE_SHORT_CENTS
-      : PRICE_LONG_CENTS;
+  const priceCents = getVideoPriceCents(targetDurationSeconds);
 
   const productName = [
     "KI-generiertes Video",
