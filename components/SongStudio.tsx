@@ -203,8 +203,8 @@ export default function SongStudio({
             </Field>
 
             <Field label="Worum geht es in deinem Song?" hint="Beschreibe Thema, Klang und besondere Wünsche">
-              <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={1500} rows={5} placeholder="Ein moderner, emotionaler Pop-Song über einen Neuanfang. Sanftes Piano im Intro, großer eingängiger Refrain und ein hoffnungsvolles Ende ..." className={inputClass} />
-              <div className="mt-2 text-right text-[11px] text-zinc-600">{description.length} / 1500</div>
+              <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={6000} rows={8} placeholder="Beschreibe ausführlich Thema, Handlung, Klang, Instrumente, Stimmung, Aufbau, Refrain und alle besonderen Wünsche für deinen Song ..." className={inputClass} />
+              <div className="mt-2 text-right text-[11px] text-zinc-600">{description.length} / 6000</div>
             </Field>
 
             <div className="grid gap-5 sm:grid-cols-2">

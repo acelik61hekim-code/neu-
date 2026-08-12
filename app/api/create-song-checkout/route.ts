@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   const title = textValue(body.title, 100);
-  const description = textValue(body.description, 1_500);
+  const description = textValue(body.description, 6_000);
   const style = textValue(body.style, 120);
   const mood = textValue(body.mood, 120);
   const lyrics = textValue(body.lyrics, 8_000);
