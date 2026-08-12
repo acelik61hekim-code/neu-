@@ -13,11 +13,19 @@ import { jobStore } from "../../../lib/store";
 import {
   buildVideoDurationPlan,
 } from "../../../lib/veo";
+import {
+  normalizeVideoAudioStyle,
+  normalizeVideoSpokenLanguage,
+  normalizeVideoVoiceMode,
+} from "../../../lib/audio-options";
 
 import type {
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 export const runtime = "nodejs";
@@ -66,6 +74,15 @@ type PaidVideoConfig = {
 
   editingStyle:
     VideoEditingStyle;
+
+  audioStyle:
+    VideoAudioStyle;
+
+  voiceMode:
+    VideoVoiceMode;
+
+  spokenLanguage:
+    VideoSpokenLanguage;
 };
 
 function isVideoDurationSeconds(
@@ -192,6 +209,9 @@ function readPaidVideoConfig(
     targetDurationSeconds,
     aspectRatio,
     editingStyle,
+    audioStyle: normalizeVideoAudioStyle(metadata?.audioStyle),
+    voiceMode: normalizeVideoVoiceMode(metadata?.voiceMode),
+    spokenLanguage: normalizeVideoSpokenLanguage(metadata?.spokenLanguage),
   };
 }
 
@@ -781,6 +801,18 @@ export async function POST(
       editingStyle:
         config
           .editingStyle,
+
+      audioStyle:
+        config
+          .audioStyle,
+
+      voiceMode:
+        config
+          .voiceMode,
+
+      spokenLanguage:
+        config
+          .spokenLanguage,
 
       provider:
         "auto",

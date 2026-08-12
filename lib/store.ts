@@ -10,10 +10,13 @@ import { dirname, join } from "node:path";
 
 import type {
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
   VideoGenerationStrategy,
   VideoProvider,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 export type VideoFormat =
@@ -92,6 +95,26 @@ export type VideoJob = {
 
   editingStyle?:
     VideoEditingStyle;
+
+  audioStyle?:
+    VideoAudioStyle;
+
+  voiceMode?:
+    VideoVoiceMode;
+
+  spokenLanguage?:
+    VideoSpokenLanguage;
+
+  /*
+   * Freigegebenes KI-Vorschaubild. Dieses private Bild
+   * wird beim ersten Veo-Abschnitt wirklich als visuelle
+   * Referenz verwendet.
+   */
+  referenceImageUrl?:
+    string;
+
+  referenceImageMimeType?:
+    string;
 
   provider?:
     VideoProvider;

@@ -1,6 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
+import {
+  buildSelectedAudioDirection,
+  normalizeVideoAudioStyle,
+  normalizeVideoSpokenLanguage,
+  normalizeVideoVoiceMode,
+} from "@/lib/audio-options";
+
 import type {
   MovieContinuation,
   MovieOpening,
@@ -11,10 +18,13 @@ import type {
   Story,
   StoryDraft,
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoChapter,
   VideoDurationSeconds,
   VideoEditingStyle,
   VideoGenerationStrategy,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 export const runtime = "nodejs";
@@ -35,6 +45,9 @@ type StoryArchitectRequest = {
   targetDurationSeconds?: unknown;
   aspectRatio?: unknown;
   editingStyle?: unknown;
+  audioStyle?: unknown;
+  voiceMode?: unknown;
+  spokenLanguage?: unknown;
 };
 
 const SUPPORTED_VIDEO_DURATIONS = [
@@ -1919,6 +1932,9 @@ function buildStoryPrompt(
   targetDurationSeconds: VideoDurationSeconds,
   aspectRatio: VideoAspectRatio,
   editingStyle: VideoEditingStyle,
+  audioStyle: VideoAudioStyle,
+  voiceMode: VideoVoiceMode,
+  spokenLanguage: VideoSpokenLanguage,
 ): string {
   const characterDescription =
     story.characters
@@ -2081,6 +2097,12 @@ SCHNITTSTIL: SOCIAL / REELS
 - Trotz Tempo müssen Identität, Raum, Blickachsen und Bewegung verständlich bleiben.
 `;
 
+  const selectedAudioDirection = buildSelectedAudioDirection(
+    audioStyle,
+    voiceMode,
+    spokenLanguage,
+  );
+
   return `
 Du bist ein professioneller Viral Creative Director, Story Architect,
 Character Director, Camera Director, Lighting Director, Performance Director,
@@ -2101,6 +2123,10 @@ ${aspectRatio}
 AUSGEWÄHLTER SCHNITTSTIL
 
 ${editingStyle}
+
+AUSGEWÄHLTE KI-AUDIO-EINSTELLUNGEN
+
+${selectedAudioDirection}
 
 ${formatDirection}
 
@@ -2465,12 +2491,30 @@ export async function POST(request: Request) {
       body.editingStyle,
     );
 
+  const audioStyle =
+    normalizeVideoAudioStyle(
+      body.audioStyle,
+    );
+
+  const voiceMode =
+    normalizeVideoVoiceMode(
+      body.voiceMode,
+    );
+
+  const spokenLanguage =
+    normalizeVideoSpokenLanguage(
+      body.spokenLanguage,
+    );
+
   const prompt =
     buildStoryPrompt(
       story,
       targetDurationSeconds,
       aspectRatio,
       editingStyle,
+      audioStyle,
+      voiceMode,
+      spokenLanguage,
     );
 
   try {

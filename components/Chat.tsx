@@ -12,8 +12,11 @@ import { requestStoryArchitect } from "@/services/storyArchitectClient";
 import type {
   Story,
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 import {
@@ -38,6 +41,9 @@ type ChatProps = {
   targetDurationSeconds?: VideoDurationSeconds;
   aspectRatio?: VideoAspectRatio;
   editingStyle?: VideoEditingStyle;
+  audioStyle?: VideoAudioStyle;
+  voiceMode?: VideoVoiceMode;
+  spokenLanguage?: VideoSpokenLanguage;
 };
 
 type Message = ConversationMessage & {
@@ -98,6 +104,9 @@ export default function Chat({
   targetDurationSeconds = 60,
   aspectRatio = "9:16",
   editingStyle = "social",
+  audioStyle = "cinematic",
+  voiceMode = "auto",
+  spokenLanguage = "de",
 }: ChatProps) {
   const [messages, setMessages] =
     useState<Message[]>([
@@ -279,6 +288,9 @@ export default function Chat({
           targetDurationSeconds,
           aspectRatio,
           editingStyle,
+          audioStyle,
+          voiceMode,
+          spokenLanguage,
         );
 
       if (

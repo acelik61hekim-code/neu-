@@ -33,6 +33,25 @@ export type VideoEditingStyle =
   | "cinematic"
   | "music-video";
 
+export type VideoAudioStyle =
+  | "cinematic"
+  | "emotional"
+  | "upbeat"
+  | "electronic"
+  | "ambient"
+  | "no-music";
+
+export type VideoVoiceMode =
+  | "auto"
+  | "dialogue"
+  | "voiceover"
+  | "no-voice";
+
+export type VideoSpokenLanguage =
+  | "auto"
+  | "de"
+  | "en";
+
 export type VideoProvider =
   | "auto"
   | "veo"

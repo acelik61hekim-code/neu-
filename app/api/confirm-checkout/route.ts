@@ -5,6 +5,11 @@ import { stripe } from "@/lib/stripe";
 import { jobStore } from "@/lib/store";
 import { buildVideoDurationPlan } from "@/lib/veo";
 import { renderVideoWorkflow } from "@/workflows/render-video";
+import {
+  normalizeVideoAudioStyle,
+  normalizeVideoSpokenLanguage,
+  normalizeVideoVoiceMode,
+} from "@/lib/audio-options";
 
 import type {
   VideoAspectRatio,
@@ -150,6 +155,9 @@ export async function POST(request: NextRequest) {
         targetDurationSeconds: rawDuration,
         aspectRatio: rawAspectRatio,
         editingStyle: rawEditingStyle,
+        audioStyle: normalizeVideoAudioStyle(session.metadata?.audioStyle),
+        voiceMode: normalizeVideoVoiceMode(session.metadata?.voiceMode),
+        spokenLanguage: normalizeVideoSpokenLanguage(session.metadata?.spokenLanguage),
         provider: "auto",
         generationStrategy: durationPlan.generationStrategy,
         paymentStatus: "paid",

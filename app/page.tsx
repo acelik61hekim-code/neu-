@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { ChangeEvent } from "react";
 
 import Chat from "@/components/Chat";
 import Header from "@/components/Header";
@@ -13,8 +14,11 @@ import {
 
 import type {
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 const VIDEO_DURATION_OPTIONS: Array<{
@@ -78,12 +82,87 @@ const VIDEO_STYLE_OPTIONS: Array<{
   },
 ];
 
+const AUDIO_STYLE_OPTIONS: Array<{
+  value: VideoAudioStyle;
+  label: string;
+}> = [
+  { value: "cinematic", label: "Filmisch" },
+  { value: "emotional", label: "Emotional" },
+  { value: "upbeat", label: "Energie" },
+  { value: "electronic", label: "Elektronisch" },
+  { value: "ambient", label: "Atmosphärisch" },
+  { value: "no-music", label: "Keine Musik" },
+];
+
+const VOICE_MODE_OPTIONS: Array<{
+  value: VideoVoiceMode;
+  label: string;
+}> = [
+  { value: "auto", label: "Automatisch" },
+  { value: "dialogue", label: "Dialog" },
+  { value: "voiceover", label: "Voice-over" },
+  { value: "no-voice", label: "Ohne Sprache" },
+];
+
+const SPOKEN_LANGUAGE_OPTIONS: Array<{
+  value: VideoSpokenLanguage;
+  label: string;
+}> = [
+  { value: "de", label: "Deutsch" },
+  { value: "en", label: "Englisch" },
+  { value: "auto", label: "Automatisch" },
+];
+
 type PreviewApiResponse = {
   success?: boolean;
   imageData?: string;
   mimeType?: string;
+  referenceImageUri?: string;
   error?: string;
 };
+
+async function optimizeReferenceImage(file: File): Promise<string> {
+  const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
+  if (!supportedTypes.includes(file.type)) {
+    throw new Error("Bitte lade ein JPG-, PNG- oder WebP-Bild hoch.");
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    throw new Error("Das Originalbild darf höchstens 15 MB groß sein.");
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
+      element.src = objectUrl;
+    });
+
+    const maximumDimension = 1000;
+    const scale = Math.min(1, maximumDimension / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Das Bild konnte nicht vorbereitet werden.");
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+    let optimized = canvas.toDataURL("image/jpeg", 0.8);
+    if (optimized.length > 1_200_000) {
+      optimized = canvas.toDataURL("image/jpeg", 0.65);
+    }
+    if (optimized.length > 1_200_000) {
+      throw new Error("Das Bild ist trotz Optimierung noch zu groß. Bitte verwende ein kleineres Bild.");
+    }
+    return optimized;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 
 export default function HomePage() {
   const [story, setStory] = useState("");
@@ -108,6 +187,18 @@ export default function HomePage() {
   ] = useState<VideoEditingStyle>(
     "social",
   );
+
+  const [audioStyle, setAudioStyle] =
+    useState<VideoAudioStyle>("cinematic");
+
+  const [voiceMode, setVoiceMode] =
+    useState<VideoVoiceMode>("auto");
+
+  const [spokenLanguage, setSpokenLanguage] =
+    useState<VideoSpokenLanguage>("de");
+
+  const [referenceImages, setReferenceImages] =
+    useState<Array<{ dataUrl: string; name: string }>>([]);
 
   const [
     chatSessionKey,
@@ -137,10 +228,18 @@ export default function HomePage() {
     setPreviewApproved,
   ] = useState(false);
 
+  const [previewReferenceUri, setPreviewReferenceUri] =
+    useState<string | null>(null);
+
+  const [previewReferenceMimeType, setPreviewReferenceMimeType] =
+    useState<string | null>(null);
+
   function resetPlannedProject() {
     setStory("");
     setPreviewImage(null);
     setPreviewApproved(false);
+    setPreviewReferenceUri(null);
+    setPreviewReferenceMimeType(null);
     setError(null);
 
     /*
@@ -199,6 +298,65 @@ export default function HomePage() {
     resetPlannedProject();
   }
 
+  function selectAudioStyle(value: VideoAudioStyle) {
+    if (value === audioStyle) return;
+    setAudioStyle(value);
+    resetPlannedProject();
+  }
+
+  function selectVoiceMode(value: VideoVoiceMode) {
+    if (value === voiceMode) return;
+    setVoiceMode(value);
+    resetPlannedProject();
+  }
+
+  function selectSpokenLanguage(value: VideoSpokenLanguage) {
+    if (value === spokenLanguage) return;
+    setSpokenLanguage(value);
+    resetPlannedProject();
+  }
+
+  async function handleReferenceImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    const availableSlots = 3 - referenceImages.length;
+    if (availableSlots <= 0) {
+      setError("Du kannst höchstens drei Referenzbilder verwenden.");
+      return;
+    }
+
+    try {
+      setPreviewLoading(true);
+      setError(null);
+      const selectedFiles = files.slice(0, availableSlots);
+      const optimized = await Promise.all(
+        selectedFiles.map(async (file) => ({
+          dataUrl: await optimizeReferenceImage(file),
+          name: file.name,
+        })),
+      );
+      setReferenceImages((current) => [...current, ...optimized]);
+      setPreviewImage(null);
+      setPreviewApproved(false);
+      setPreviewReferenceUri(null);
+      setPreviewReferenceMimeType(null);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Das Bild konnte nicht vorbereitet werden.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function removeReferenceImage(index: number) {
+    setReferenceImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setPreviewImage(null);
+    setPreviewApproved(false);
+    setPreviewReferenceUri(null);
+    setPreviewReferenceMimeType(null);
+  }
+
   function handleStoryChange(
     updatedStory: string,
   ) {
@@ -211,6 +369,8 @@ export default function HomePage() {
      */
     setPreviewImage(null);
     setPreviewApproved(false);
+    setPreviewReferenceUri(null);
+    setPreviewReferenceMimeType(null);
 
     if (error) {
       setError(null);
@@ -322,6 +482,9 @@ export default function HomePage() {
               aspectRatio,
 
               editingStyle,
+
+              referenceImages:
+                referenceImages.map((image) => image.dataUrl),
             }),
           },
         );
@@ -342,6 +505,10 @@ export default function HomePage() {
         );
       }
 
+      if (!data.referenceImageUri || !data.mimeType) {
+        throw new Error("Die sichere Referenz der Vorschau fehlt.");
+      }
+
       const mimeType =
         data.mimeType ||
         "image/png";
@@ -352,6 +519,9 @@ export default function HomePage() {
       setPreviewImage(
         dataUrl,
       );
+
+      setPreviewReferenceUri(data.referenceImageUri);
+      setPreviewReferenceMimeType(data.mimeType);
     } catch (
       caughtError
     ) {
@@ -365,6 +535,9 @@ export default function HomePage() {
       setPreviewImage(
         null,
       );
+
+      setPreviewReferenceUri(null);
+      setPreviewReferenceMimeType(null);
     } finally {
       setPreviewLoading(
         false,
@@ -391,7 +564,9 @@ export default function HomePage() {
      */
     if (
       !previewImage ||
-      !previewApproved
+      !previewApproved ||
+      !previewReferenceUri ||
+      !previewReferenceMimeType
     ) {
       setError(
         "Erstelle und bestätige zuerst deine Vorschau.",
@@ -433,6 +608,18 @@ export default function HomePage() {
                 aspectRatio,
 
                 editingStyle,
+
+                audioStyle,
+
+                voiceMode,
+
+                spokenLanguage,
+
+                referenceImageUri:
+                  previewReferenceUri,
+
+                referenceImageMimeType:
+                  previewReferenceMimeType,
               }),
           },
         );
@@ -681,6 +868,90 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+
+          <div className="border-t border-white/10 p-5 sm:p-6">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
+                  KI-Musik, Ton und Stimmen
+                </p>
+                <h3 className="mt-1 text-base font-semibold text-white">
+                  Audio passend zum Video erzeugen
+                </h3>
+              </div>
+              <span className="w-fit rounded-lg bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                Im Videopreis inklusive
+              </span>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-3">
+              <div>
+                <p className="mb-2 text-xs font-medium text-zinc-500">Musikstil</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {AUDIO_STYLE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => selectAudioStyle(option.value)}
+                      disabled={loading || previewLoading}
+                      className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                        audioStyle === option.value
+                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-medium text-zinc-500">Stimmen</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {VOICE_MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => selectVoiceMode(option.value)}
+                      disabled={loading || previewLoading}
+                      className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                        voiceMode === option.value
+                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-medium text-zinc-500">Gesprochene Sprache</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {SPOKEN_LANGUAGE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => selectSpokenLanguage(option.value)}
+                      disabled={loading || previewLoading}
+                      className={`rounded-xl border px-2 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                        spokenLanguage === option.value
+                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                  Musik, Dialoge, Voice-over, Umgebung und Soundeffekte werden von der Video-KI gemeinsam erzeugt.
+                </p>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section className="grid gap-6 lg:grid-cols-2">
@@ -705,6 +976,9 @@ export default function HomePage() {
             editingStyle={
               editingStyle
             }
+            audioStyle={audioStyle}
+            voiceMode={voiceMode}
+            spokenLanguage={spokenLanguage}
           />
 
           <div className="space-y-6">
@@ -769,10 +1043,70 @@ export default function HomePage() {
                       )?.label
                     }
                   </span>
+
+                  <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
+                    {AUDIO_STYLE_OPTIONS.find((option) => option.value === audioStyle)?.label} · KI-Audio
+                  </span>
                 </div>
               </div>
 
               <div className="p-5 sm:p-6">
+                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-white">Eigenes Bild als Referenz</p>
+                      <p className="mt-1 text-xs leading-5 text-zinc-500">
+                        Optional: Lade eine Person, Figur, ein Produkt oder einen Stil hoch. Die KI übernimmt die sichtbaren Merkmale in Vorschau und Video.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-lg bg-emerald-400/10 px-2 py-1 text-[10px] font-medium text-emerald-300">
+                      inklusive
+                    </span>
+                  </div>
+
+                  {referenceImages.length > 0 && (
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      {referenceImages.map((image, index) => (
+                        <div key={`${image.name}-${index}`} className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                          <img
+                            src={image.dataUrl}
+                            alt={`Hochgeladene Bildreferenz ${index + 1}`}
+                            className="aspect-square w-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeReferenceImage(index)}
+                            disabled={previewLoading || loading}
+                            className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
+                            aria-label={`${image.name} entfernen`}
+                          >
+                            Entfernen
+                          </button>
+                          <p className="truncate px-2 py-1.5 text-[10px] text-zinc-500">{image.name}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {referenceImages.length < 3 && (
+                    <label className="mt-4 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-violet-400/30 bg-violet-400/[0.06] px-4 py-3 text-sm font-medium text-violet-200 transition hover:bg-violet-400/10">
+                      {referenceImages.length === 0 ? "Bilder auswählen" : "Weiteres Bild hinzufügen"}
+                      <input
+                        type="file"
+                        multiple
+                        accept="image/jpeg,image/png,image/webp"
+                        onChange={(event) => void handleReferenceImageChange(event)}
+                        disabled={previewLoading || loading}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+
+                  <p className="mt-3 text-[10px] leading-4 text-zinc-600">
+                    Bis zu 3 Bilder. Verwende nur Bilder, für die du die nötigen Rechte und Einwilligungen besitzt. JPG, PNG oder WebP, je Original bis 15 MB.
+                  </p>
+                </div>
+
                 {!previewImage && (
                   <button
                     type="button"
@@ -906,6 +1240,14 @@ export default function HomePage() {
 
                         setPreviewApproved(
                           false,
+                        );
+
+                        setPreviewReferenceUri(
+                          null,
+                        );
+
+                        setPreviewReferenceMimeType(
+                          null,
                         );
                       }}
                       disabled={

@@ -7,6 +7,12 @@ import { nanoid } from "nanoid";
 
 import { stripe } from "../../../lib/stripe";
 import { getVideoPriceCents } from "../../../lib/pricing";
+import {
+  isVideoAudioStyle,
+  isVideoSpokenLanguage,
+  isVideoVoiceMode,
+} from "../../../lib/audio-options";
+import { loadStoredPreview } from "../../../lib/video-backend/images";
 
 import {
   jobStore,
@@ -15,8 +21,11 @@ import {
 
 import type {
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
 
 const SUPPORTED_VIDEO_DURATIONS = [
@@ -53,6 +62,11 @@ type CheckoutRequest = {
   targetDurationSeconds?: unknown;
   aspectRatio?: unknown;
   editingStyle?: unknown;
+  audioStyle?: unknown;
+  voiceMode?: unknown;
+  spokenLanguage?: unknown;
+  referenceImageUri?: unknown;
+  referenceImageMimeType?: unknown;
 };
 
 function missingProductionServices(): string[] {
@@ -309,6 +323,61 @@ export async function POST(
     );
   }
 
+  if (!isVideoAudioStyle(body.audioStyle)) {
+    return NextResponse.json(
+      { error: "Bitte wähle einen gültigen KI-Musikstil." },
+      { status: 400 },
+    );
+  }
+
+  if (!isVideoVoiceMode(body.voiceMode)) {
+    return NextResponse.json(
+      { error: "Bitte wähle eine gültige Stimmen-Option." },
+      { status: 400 },
+    );
+  }
+
+  if (!isVideoSpokenLanguage(body.spokenLanguage)) {
+    return NextResponse.json(
+      { error: "Bitte wähle eine gültige Sprache." },
+      { status: 400 },
+    );
+  }
+
+  const audioStyle = body.audioStyle as VideoAudioStyle;
+  const voiceMode = body.voiceMode as VideoVoiceMode;
+  const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
+
+  const referenceImageUri =
+    typeof body.referenceImageUri === "string"
+      ? body.referenceImageUri.trim()
+      : "";
+
+  const referenceImageMimeType =
+    typeof body.referenceImageMimeType === "string"
+      ? body.referenceImageMimeType.trim()
+      : "";
+
+  if (!referenceImageUri || !referenceImageMimeType) {
+    return NextResponse.json(
+      { error: "Die bestätigte Bildvorschau fehlt. Bitte erstelle sie erneut." },
+      { status: 400 },
+    );
+  }
+
+  try {
+    await loadStoredPreview(referenceImageUri, referenceImageMimeType);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error
+          ? error.message
+          : "Die bestätigte Bildvorschau konnte nicht geprüft werden.",
+      },
+      { status: 400 },
+    );
+  }
+
   const aspectRatio =
     normalizeAspectRatio(
       body.aspectRatio,
@@ -359,6 +428,17 @@ export async function POST(
       format:
         videoFormat,
 
+      audioStyle,
+
+      voiceMode,
+
+      spokenLanguage,
+
+      referenceImageUrl:
+        referenceImageUri,
+
+      referenceImageMimeType,
+
       createdAt:
         Date.now(),
     },
@@ -404,6 +484,15 @@ export async function POST(
         aspectRatio,
 
         editingStyle,
+
+        audioStyle,
+
+        voiceMode,
+
+        spokenLanguage,
+
+        hasReferenceImage:
+          "true",
 
         format:
           videoFormat,

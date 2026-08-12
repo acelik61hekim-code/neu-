@@ -175,6 +175,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   "use step";
   const { jobStore } = await import("@/lib/store");
   const { buildMovieContinuationPrompt, buildVideoDurationPlan } = await import("@/lib/veo");
+  const { buildSelectedAudioDirection } = await import("@/lib/audio-options");
   const job = await jobStore.get(jobId);
   if (!job) throw new Error(`Render-Job ${jobId} wurde nicht gefunden.`);
   if (job.paymentStatus !== "paid") throw new Error(`Render-Job ${jobId} ist nicht bezahlt.`);
@@ -199,17 +200,28 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
 
   const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
   const segments: PlannedSegment[] = [];
+  const selectedAudioDirection = buildSelectedAudioDirection(
+    job.audioStyle ?? "cinematic",
+    job.voiceMode ?? "auto",
+    job.spokenLanguage ?? "de",
+  );
 
   if (job.targetDurationSeconds <= 120) {
     const opening = asRecord(moviePlan.opening);
-    const openingPrompt = buildOpeningPrompt(opening, job.aspectRatio, job.editingStyle);
+    const openingPrompt = buildOpeningPrompt(
+      opening,
+      job.aspectRatio,
+      job.editingStyle,
+      selectedAudioDirection,
+    );
     const rawContinuations = Array.isArray(moviePlan.continuations) ? moviePlan.continuations : [];
-    const continuationPrompts = rawContinuations.map((item) =>
+    const continuationPrompts = rawContinuations.map((item) => [
       buildMovieContinuationPrompt(
         story as unknown as import("@/types/story").Story,
         item as import("@/types/story").MovieContinuation,
       ),
-    );
+      selectedAudioDirection,
+    ].join("\n\n"));
     const expected = extensionCountFor(job.targetDurationSeconds);
     if (continuationPrompts.length !== expected) {
       throw new Error(`MoviePlan enthält ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
@@ -223,13 +235,19 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     rawChapters.forEach((rawChapter, index) => {
       const chapter = asRecord(rawChapter);
       const targetSeconds = durationPlan.chapterTargets[index];
-      const openingPrompt = readString(chapter.openingPrompt, `Kapitel ${index + 1}: openingPrompt fehlt.`);
+      const openingPrompt = [
+        readString(chapter.openingPrompt, `Kapitel ${index + 1}: openingPrompt fehlt.`),
+        selectedAudioDirection,
+      ].join("\n\n");
       const expected = extensionCountFor(targetSeconds);
       const supplied = Array.isArray(chapter.continuationPrompts)
         ? chapter.continuationPrompts.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim())
         : [];
       const continuationPrompts = Array.from({ length: expected }, (_, extensionIndex) =>
-        supplied[extensionIndex] || buildChapterContinuationPrompt(moviePlan, chapter, index + 1, extensionIndex + 1, expected),
+        [
+          supplied[extensionIndex] || buildChapterContinuationPrompt(moviePlan, chapter, index + 1, extensionIndex + 1, expected),
+          selectedAudioDirection,
+        ].join("\n\n"),
       );
       segments.push({ chapterNumber: index + 1, targetSeconds, openingPrompt, continuationPrompts });
     });
@@ -283,7 +301,19 @@ async function startOpeningVideoStep(
     (operationType !== "chapter-opening" || job.currentChapter === chapterNumber)
   ) return job.currentOperationName;
 
-  const operationName = await startVideoGeneration(prompt, { aspectRatio, maxAttempts: 1 });
+  const referenceImage =
+    chapterNumber === 1 && job.referenceImageUrl
+      ? await (await import("@/lib/video-backend/images")).loadStoredPreview(
+          job.referenceImageUrl,
+          job.referenceImageMimeType,
+        )
+      : undefined;
+
+  const operationName = await startVideoGeneration(prompt, {
+    aspectRatio,
+    referenceImage,
+    maxAttempts: 1,
+  });
   const latest = await jobStore.get(jobId);
   if (!latest) throw new Error("Render-Job ist nach dem Veo-Start verschwunden.");
   await jobStore.set(jobId, {
@@ -512,6 +542,7 @@ function buildOpeningPrompt(
   opening: Record<string, unknown>,
   aspectRatio: VideoAspectRatio,
   editingStyle: string | undefined,
+  selectedAudioDirection: string,
 ): string {
   return [
     readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
@@ -519,6 +550,7 @@ function buildOpeningPrompt(
     `ASPECT RATIO: ${aspectRatio}`,
     `EDITING STYLE: ${editingStyle || "auto"}`,
     typeof opening.audioPrompt === "string" ? `AUDIO DIRECTION:\n${opening.audioPrompt}` : "",
+    selectedAudioDirection,
     typeof opening.negativePrompt === "string" ? `NEGATIVE REQUIREMENTS:\n${opening.negativePrompt}` : "",
   ].filter(Boolean).join("\n");
 }

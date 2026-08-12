@@ -15,12 +15,20 @@ import type {
   StoryDraft,
   ViralBible,
   VideoAspectRatio,
+  VideoAudioStyle,
   VideoChapter,
   VideoDurationSeconds,
   VideoEditingStyle,
   VideoGenerationStrategy,
   VisualBible,
+  VideoSpokenLanguage,
+  VideoVoiceMode,
 } from "@/types/story";
+import {
+  isVideoAudioStyle,
+  isVideoSpokenLanguage,
+  isVideoVoiceMode,
+} from "@/lib/audio-options";
 
 const SUPPORTED_VIDEO_DURATIONS = [
   8,
@@ -1175,6 +1183,9 @@ export async function requestStoryArchitect(
   targetDurationSeconds: VideoDurationSeconds = 60,
   aspectRatio: VideoAspectRatio = "9:16",
   editingStyle: VideoEditingStyle = "social",
+  audioStyle: VideoAudioStyle = "cinematic",
+  voiceMode: VideoVoiceMode = "auto",
+  spokenLanguage: VideoSpokenLanguage = "de",
 ): Promise<Story> {
   if (
     !isVideoDurationSeconds(
@@ -1206,6 +1217,18 @@ export async function requestStoryArchitect(
     );
   }
 
+  if (!isVideoAudioStyle(audioStyle)) {
+    throw new Error("Ungültiger KI-Musikstil.");
+  }
+
+  if (!isVideoVoiceMode(voiceMode)) {
+    throw new Error("Ungültige Stimmen-Option.");
+  }
+
+  if (!isVideoSpokenLanguage(spokenLanguage)) {
+    throw new Error("Ungültige gesprochene Sprache.");
+  }
+
   const response =
     await fetch(
       "/api/story-architect",
@@ -1227,6 +1250,12 @@ export async function requestStoryArchitect(
             aspectRatio,
 
             editingStyle,
+
+            audioStyle,
+
+            voiceMode,
+
+            spokenLanguage,
           }),
       },
     );

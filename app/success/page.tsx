@@ -25,6 +25,10 @@ type VideoStatus = {
   targetDurationSeconds?: number;
   aspectRatio?: "9:16" | "16:9";
   editingStyle?: "auto" | "social" | "cinematic" | "music-video";
+  audioStyle?: "cinematic" | "emotional" | "upbeat" | "electronic" | "ambient" | "no-music";
+  voiceMode?: "auto" | "dialogue" | "voiceover" | "no-voice";
+  spokenLanguage?: "auto" | "de" | "en";
+  hasReferenceImage?: boolean;
   currentChapter?: number;
   totalChapters?: number;
   currentExtension?: number;
@@ -64,6 +68,18 @@ function formatEditingStyle(style?: VideoStatus["editingStyle"]): string | null 
       return "Social / Reels";
     default:
       return null;
+  }
+}
+
+function formatAudioStyle(style?: VideoStatus["audioStyle"]): string | null {
+  switch (style) {
+    case "cinematic": return "Filmische KI-Musik";
+    case "emotional": return "Emotionale KI-Musik";
+    case "upbeat": return "Energie-KI-Musik";
+    case "electronic": return "Elektronische KI-Musik";
+    case "ambient": return "Atmosphärischer KI-Ton";
+    case "no-music": return "Ohne Musik";
+    default: return null;
   }
 }
 
@@ -224,6 +240,7 @@ function StatusCard({
     isDone;
   const duration = formatDuration(videoStatus.targetDurationSeconds);
   const editingStyle = formatEditingStyle(videoStatus.editingStyle);
+  const audioStyle = formatAudioStyle(videoStatus.audioStyle);
   const stageLabel = videoStatus.renderStage
     ? STAGE_LABELS[videoStatus.renderStage]
     : videoStatus.paymentStatus === "paid"
@@ -287,6 +304,8 @@ function StatusCard({
                 {duration && <DetailPill>{duration}</DetailPill>}
                 {videoStatus.aspectRatio && <DetailPill>{videoStatus.aspectRatio}</DetailPill>}
                 {editingStyle && <DetailPill>{editingStyle}</DetailPill>}
+                {audioStyle && <DetailPill>{audioStyle}</DetailPill>}
+                {videoStatus.hasReferenceImage && <DetailPill>Bildreferenz aktiv</DetailPill>}
                 {videoStatus.totalExtensions ? (
                   <DetailPill>
                     Sequenz {Math.min(videoStatus.currentExtension ?? 0, videoStatus.totalExtensions)} von {videoStatus.totalExtensions}

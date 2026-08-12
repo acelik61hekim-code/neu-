@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
+import { storeGeneratedPreview } from "@/lib/video-backend/images";
+
 import type {
   VideoAspectRatio,
   VideoEditingStyle,
@@ -29,7 +31,57 @@ type GeneratePreviewRequest = {
   prompt?: unknown;
   aspectRatio?: unknown;
   editingStyle?: unknown;
+  referenceImage?: unknown;
+  referenceImages?: unknown;
 };
+
+type InputReferenceImage = {
+  data: string;
+  mimeType: "image/jpeg" | "image/png" | "image/webp";
+};
+
+const MAX_REFERENCE_IMAGE_BYTES = 900 * 1024;
+
+function readReferenceImage(value: unknown): InputReferenceImage | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value !== "string") {
+    throw new Error("Das Referenzbild ist ungültig.");
+  }
+
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/.exec(value);
+  if (!match) {
+    throw new Error("Das Referenzbild muss eine JPG-, PNG- oder WebP-Datei sein.");
+  }
+
+  const data = match[2].replace(/[\r\n]/g, "");
+  const bytes = Buffer.from(data, "base64");
+  if (bytes.length < 256 || bytes.length > MAX_REFERENCE_IMAGE_BYTES) {
+    throw new Error("Das Referenzbild darf nach der Optimierung höchstens 900 KB groß sein.");
+  }
+
+  return {
+    data,
+    mimeType: match[1] as InputReferenceImage["mimeType"],
+  };
+}
+
+function readReferenceImages(value: unknown, legacyValue: unknown): InputReferenceImage[] {
+  const source = Array.isArray(value)
+    ? value
+    : legacyValue
+      ? [legacyValue]
+      : [];
+
+  if (source.length > 3) {
+    throw new Error("Es können höchstens drei Referenzbilder verwendet werden.");
+  }
+
+  return source.map((item) => {
+    const image = readReferenceImage(item);
+    if (!image) throw new Error("Ein Referenzbild ist leer oder ungültig.");
+    return image;
+  });
+}
 
 function readPrompt(
   value: unknown,
@@ -359,6 +411,19 @@ export async function POST(
       body.editingStyle,
     );
 
+  let referenceImages: InputReferenceImage[] = [];
+  try {
+    referenceImages = readReferenceImages(body.referenceImages, body.referenceImage);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Das Referenzbild ist ungültig.",
+      },
+      { status: 400 },
+    );
+  }
+
   if (!prompt) {
     return NextResponse.json(
       {
@@ -403,17 +468,40 @@ export async function POST(
         apiKey,
       });
 
+    const previewPrompt = [
+      buildPreviewPrompt(
+        limitedPrompt,
+        aspectRatio,
+        editingStyle,
+      ),
+      referenceImages.length > 0
+        ? [
+            "",
+            "CUSTOMER REFERENCE IMAGE:",
+            "Use the attached image or images as authoritative visual references.",
+            "Preserve the recognizable identity, face, hair, body proportions, clothing, product design or other defining subject details that are visible in it.",
+            "Recompose it as a premium cinematic opening frame in the selected aspect ratio; do not merely copy the background or add text.",
+          ].join("\n")
+        : "",
+    ].filter(Boolean).join("\n");
+
+    const interactionInput = referenceImages.length > 0
+      ? [
+          { type: "text" as const, text: previewPrompt },
+          ...referenceImages.map((referenceImage) => ({
+            type: "image" as const,
+            data: referenceImage.data,
+            mime_type: referenceImage.mimeType,
+          })),
+        ]
+      : previewPrompt;
+
     const interaction =
       await ai.interactions.create({
         model:
           PREVIEW_MODEL,
 
-        input:
-          buildPreviewPrompt(
-            limitedPrompt,
-            aspectRatio,
-            editingStyle,
-          ),
+        input: interactionInput,
 
         response_format: {
           type: "image",
@@ -478,6 +566,16 @@ export async function POST(
       );
     }
 
+    const outputMimeType =
+      outputImage.mime_type ||
+      "image/jpeg";
+
+    const storedPreview =
+      await storeGeneratedPreview(
+        outputImage.data,
+        outputMimeType,
+      );
+
     return NextResponse.json(
       {
         success: true,
@@ -493,11 +591,13 @@ export async function POST(
           "1K",
 
         mimeType:
-          outputImage.mime_type ||
-          "image/jpeg",
+          storedPreview.mimeType,
 
         imageData:
           outputImage.data,
+
+        referenceImageUri:
+          storedPreview.uri,
       },
       {
         status: 200,

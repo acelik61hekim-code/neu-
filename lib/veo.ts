@@ -84,6 +84,11 @@ type VideoOperationResponse =
 export type VeoGenerationOptions = {
   aspectRatio?: VideoAspectRatio;
 
+  referenceImage?: {
+    data: string;
+    mimeType: "image/jpeg" | "image/png" | "image/webp";
+  };
+
   /*
    * Standard bleibt 4 Versuche, damit bestehende Aufrufe
    * unverändert funktionieren.
@@ -442,14 +447,27 @@ export async function startVideoGeneration(
     const aspectRatio =
       options.aspectRatio;
 
+    const instance: Record<string, unknown> = {
+      prompt: cleanedPrompt,
+    };
+
+    if (options.referenceImage) {
+      const { data, mimeType } = options.referenceImage;
+      if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        throw new Error("Die Veo-Bildreferenz ist ungültig.");
+      }
+
+      instance.image = {
+        inlineData: {
+          mimeType,
+          data,
+        },
+      };
+    }
+
     const requestBody:
       Record<string, unknown> = {
-      instances: [
-        {
-          prompt:
-            cleanedPrompt,
-        },
-      ],
+      instances: [instance],
     };
 
     /*
