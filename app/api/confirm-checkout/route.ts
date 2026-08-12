@@ -60,6 +60,40 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const job = await jobStore.get(jobId);
+    if (!job) {
+      return NextResponse.json({ error: "Der Videoauftrag wurde nicht gefunden." }, { status: 404 });
+    }
+
+    /*
+     * Ein bereits serverseitig verifizierter Auftrag braucht nach einem
+     * lokalen Neustart keine erneute Stripe-Netzwerkanfrage. Die Zuordnung
+     * bleibt sicher, weil sowohl der bezahlte Status als auch exakt dieselbe
+     * Stripe-Session im dauerhaften Job gespeichert sein müssen.
+     */
+    const locallyVerifiedPayment =
+      job.paymentStatus === "paid" && job.stripeSessionId === sessionId;
+
+    if (
+      locallyVerifiedPayment &&
+      job.status === "done" &&
+      (job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"))
+    ) {
+      return NextResponse.json({ confirmed: true, queued: false, alreadyComplete: true });
+    }
+
+    if (locallyVerifiedPayment && job.status === "error") {
+      return NextResponse.json({ confirmed: true, queued: false, failed: true });
+    }
+
+    if (locallyVerifiedPayment && job.status === "processing" && job.workerId) {
+      return NextResponse.json({
+        confirmed: true,
+        queued: true,
+        workflowRunId: job.workerId,
+      });
+    }
+
     /*
      * Dieser Rückkehr-Fallback vertraut niemals dem Browser allein.
      * Stripe wird serverseitig abgefragt; nur eine wirklich bezahlte
@@ -76,31 +110,6 @@ export async function POST(request: NextRequest) {
 
     if (session.metadata?.jobId !== jobId) {
       return NextResponse.json({ error: "Die Zahlung gehört nicht zu diesem Auftrag." }, { status: 403 });
-    }
-
-    const job = await jobStore.get(jobId);
-    if (!job) {
-      return NextResponse.json({ error: "Der Videoauftrag wurde nicht gefunden." }, { status: 404 });
-    }
-
-    if (
-      job.paymentStatus === "paid" &&
-      job.status === "done" &&
-      (job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"))
-    ) {
-      return NextResponse.json({ confirmed: true, queued: false, alreadyComplete: true });
-    }
-
-    if (job.paymentStatus === "paid" && job.status === "error") {
-      return NextResponse.json({ confirmed: true, queued: false, failed: true });
-    }
-
-    if (job.paymentStatus === "paid" && job.status === "processing" && job.workerId) {
-      return NextResponse.json({
-        confirmed: true,
-        queued: true,
-        workflowRunId: job.workerId,
-      });
     }
 
     if (job.paymentStatus !== "paid") {
