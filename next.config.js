@@ -1,4 +1,12 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {};
+const { withWorkflow } = require("workflow/next");
 
-module.exports = nextConfig;
+/** @type {import("next").NextConfig} */
+const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: [
+      "ffmpeg-static",
+    ],
+  },
+};
+
+module.exports = withWorkflow(nextConfig);

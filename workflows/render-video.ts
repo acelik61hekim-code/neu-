@@ -1,0 +1,462 @@
+import { sleep } from "workflow";
+import type { VideoAspectRatio, VideoDurationSeconds } from "@/types/story";
+
+type PlannedSegment = {
+  chapterNumber: number;
+  targetSeconds: number;
+  openingPrompt: string;
+  continuationPrompts: string[];
+};
+
+type PreparedRender = {
+  jobId: string;
+  duration: VideoDurationSeconds;
+  aspectRatio: VideoAspectRatio;
+  segments: PlannedSegment[];
+  totalExtensions: number;
+};
+
+type RenderResult = {
+  jobId: string;
+  providerRenderEnabled: boolean;
+  pipelineComplete: boolean;
+  outputPathname?: string;
+  reason?: string;
+};
+
+type PollResult = {
+  done: boolean;
+  videoUri?: string;
+  mimeType?: string;
+};
+
+export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> {
+  "use workflow";
+
+  const prepared = await prepareRenderJobStep(jobId);
+  const enabled = await providerRenderEnabledStep();
+  if (!enabled) {
+    await markRenderDisabledStep(jobId);
+    return {
+      jobId,
+      providerRenderEnabled: false,
+      pipelineComplete: false,
+      reason: "VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.",
+    };
+  }
+
+  try {
+    const chapterUris: string[] = [];
+    let completedExtensions = 0;
+
+    for (const segment of prepared.segments) {
+      const openingOperation = await startOpeningVideoStep(
+        jobId,
+        segment.openingPrompt,
+        prepared.aspectRatio,
+        segment.chapterNumber,
+      );
+      let currentUri = await waitForOperation(
+        jobId,
+        openingOperation,
+        segment.chapterNumber,
+        completedExtensions,
+        prepared.totalExtensions,
+      );
+
+      for (let index = 0; index < segment.continuationPrompts.length; index += 1) {
+        const globalExtensionNumber = completedExtensions + 1;
+        const operation = await startExtensionVideoStep(
+          jobId,
+          currentUri,
+          segment.continuationPrompts[index],
+          prepared.aspectRatio,
+          segment.chapterNumber,
+          globalExtensionNumber,
+        );
+        currentUri = await waitForOperation(
+          jobId,
+          operation,
+          segment.chapterNumber,
+          globalExtensionNumber,
+          prepared.totalExtensions,
+        );
+        completedExtensions = globalExtensionNumber;
+      }
+
+      chapterUris.push(currentUri);
+      await recordChapterStep(
+        jobId,
+        segment.chapterNumber,
+        chapterUris,
+        completedExtensions,
+        prepared.totalExtensions,
+      );
+    }
+
+    await markFinalizingStep(jobId, chapterUris.length > 1);
+    const output = chapterUris.length === 1
+      ? await trimFinalVideoStep(jobId, chapterUris[0], prepared.duration)
+      : await mergeFinalVideoStep(jobId, chapterUris, prepared.duration);
+
+    await finishRenderJobStep(jobId, output.pathname);
+    return {
+      jobId,
+      providerRenderEnabled: true,
+      pipelineComplete: true,
+      outputPathname: output.pathname,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unbekannter Renderfehler.";
+    await failRenderJobStep(jobId, message);
+    throw error;
+  }
+}
+
+export default renderVideoWorkflow;
+
+async function providerRenderEnabledStep(): Promise<boolean> {
+  "use step";
+  return process.env.VEO_WORKFLOW_RENDER_ENABLED === "true";
+}
+
+async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const { buildMovieContinuationPrompt, buildVideoDurationPlan } = await import("@/lib/veo");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error(`Render-Job ${jobId} wurde nicht gefunden.`);
+  if (job.paymentStatus !== "paid") throw new Error(`Render-Job ${jobId} ist nicht bezahlt.`);
+  if (!job.targetDurationSeconds || !job.aspectRatio) {
+    throw new Error(`Render-Job ${jobId} enthält keine vollständige Videokonfiguration.`);
+  }
+
+  let story: Record<string, unknown>;
+  try {
+    story = JSON.parse(job.prompt) as Record<string, unknown>;
+  } catch {
+    throw new Error("Die gespeicherte Story ist kein gültiges JSON.");
+  }
+  const moviePlan = asRecord(story.moviePlan);
+  if (Object.keys(moviePlan).length === 0) throw new Error("moviePlan fehlt in der gespeicherten Story.");
+  if (moviePlan.targetDurationSeconds !== job.targetDurationSeconds) {
+    throw new Error("Die bezahlte Videodauer stimmt nicht mit dem MoviePlan überein.");
+  }
+  if (moviePlan.aspectRatio !== job.aspectRatio) {
+    throw new Error("Das bezahlte Bildformat stimmt nicht mit dem MoviePlan überein.");
+  }
+
+  const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
+  const segments: PlannedSegment[] = [];
+
+  if (job.targetDurationSeconds <= 120) {
+    const opening = asRecord(moviePlan.opening);
+    const openingPrompt = buildOpeningPrompt(opening, job.aspectRatio, job.editingStyle);
+    const rawContinuations = Array.isArray(moviePlan.continuations) ? moviePlan.continuations : [];
+    const continuationPrompts = rawContinuations.map((item) =>
+      buildMovieContinuationPrompt(
+        story as unknown as import("@/types/story").Story,
+        item as import("@/types/story").MovieContinuation,
+      ),
+    );
+    const expected = extensionCountFor(job.targetDurationSeconds);
+    if (continuationPrompts.length !== expected) {
+      throw new Error(`MoviePlan enthält ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
+    }
+    segments.push({ chapterNumber: 1, targetSeconds: job.targetDurationSeconds, openingPrompt, continuationPrompts });
+  } else {
+    const rawChapters = Array.isArray(moviePlan.chapters) ? moviePlan.chapters : [];
+    if (rawChapters.length !== durationPlan.chapterTargets.length) {
+      throw new Error(`MoviePlan enthält ${rawChapters.length} Kapitel; erwartet werden ${durationPlan.chapterTargets.length}.`);
+    }
+    rawChapters.forEach((rawChapter, index) => {
+      const chapter = asRecord(rawChapter);
+      const targetSeconds = durationPlan.chapterTargets[index];
+      const openingPrompt = readString(chapter.openingPrompt, `Kapitel ${index + 1}: openingPrompt fehlt.`);
+      const expected = extensionCountFor(targetSeconds);
+      const supplied = Array.isArray(chapter.continuationPrompts)
+        ? chapter.continuationPrompts.filter((value): value is string => typeof value === "string" && Boolean(value.trim())).map((value) => value.trim())
+        : [];
+      const continuationPrompts = Array.from({ length: expected }, (_, extensionIndex) =>
+        supplied[extensionIndex] || buildChapterContinuationPrompt(moviePlan, chapter, index + 1, extensionIndex + 1, expected),
+      );
+      segments.push({ chapterNumber: index + 1, targetSeconds, openingPrompt, continuationPrompts });
+    });
+  }
+
+  const totalExtensions = segments.reduce((sum, segment) => sum + segment.continuationPrompts.length, 0);
+  await jobStore.set(jobId, {
+    ...job,
+    status: "processing",
+    renderStage: "planning",
+    progressPercent: Math.max(job.progressPercent ?? 0, 2),
+    totalChapters: segments.length,
+    totalExtensions,
+    startedAt: job.startedAt ?? Date.now(),
+    errorMessage: undefined,
+  });
+  return { jobId, duration: job.targetDurationSeconds, aspectRatio: job.aspectRatio, segments, totalExtensions };
+}
+
+async function markRenderDisabledStep(jobId: string): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) return;
+  await jobStore.set(jobId, {
+    ...job,
+    status: "pending",
+    renderStage: "queued",
+    progressPercent: 0,
+    errorMessage: undefined,
+  });
+}
+
+async function startOpeningVideoStep(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+): Promise<string> {
+  "use step";
+  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
+  const { jobStore } = await import("@/lib/store");
+  const { startVideoGeneration } = await import("@/lib/veo");
+  const job = await jobStore.get(jobId);
+  if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
+  const operationType = chapterNumber === 1 && job.generationStrategy !== "chaptered" ? "opening" : "chapter-opening";
+  if (
+    job.currentOperationName &&
+    job.currentOperationType === operationType &&
+    (operationType !== "chapter-opening" || job.currentChapter === chapterNumber)
+  ) return job.currentOperationName;
+
+  const operationName = await startVideoGeneration(prompt, { aspectRatio, maxAttempts: 1 });
+  const latest = await jobStore.get(jobId);
+  if (!latest) throw new Error("Render-Job ist nach dem Veo-Start verschwunden.");
+  await jobStore.set(jobId, {
+    ...latest,
+    status: "processing",
+    renderStage: chapterNumber > 1 || latest.generationStrategy === "chaptered" ? "generating-chapter" : "generating-opening",
+    currentChapter: chapterNumber,
+    currentOperationName: operationName,
+    currentOperationType: operationType,
+    lastProviderRequestAt: Date.now(),
+  });
+  return operationName;
+}
+startOpeningVideoStep.maxRetries = 0;
+
+async function startExtensionVideoStep(
+  jobId: string,
+  previousVideoUri: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  extensionNumber: number,
+): Promise<string> {
+  "use step";
+  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
+  const { jobStore } = await import("@/lib/store");
+  const { startVideoExtension } = await import("@/lib/veo");
+  const job = await jobStore.get(jobId);
+  if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
+  if (
+    job.currentOperationName &&
+    job.currentOperationType === "extension" &&
+    job.currentChapter === chapterNumber &&
+    job.currentExtension === extensionNumber
+  ) return job.currentOperationName;
+
+  const operationName = await startVideoExtension(previousVideoUri, prompt, {
+    aspectRatio,
+    extensionNumber,
+    maxAttempts: 1,
+  });
+  const latest = await jobStore.get(jobId);
+  if (!latest) throw new Error("Render-Job ist nach dem Veo-Extension-Start verschwunden.");
+  await jobStore.set(jobId, {
+    ...latest,
+    status: "processing",
+    renderStage: "extending",
+    currentChapter: chapterNumber,
+    currentExtension: extensionNumber,
+    currentOperationName: operationName,
+    currentOperationType: "extension",
+    lastProviderRequestAt: Date.now(),
+  });
+  return operationName;
+}
+startExtensionVideoStep.maxRetries = 0;
+
+async function pollVideoStep(
+  jobId: string,
+  operationName: string,
+  chapterNumber: number,
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<PollResult> {
+  "use step";
+  const { checkVideoStatus } = await import("@/lib/veo");
+  const { jobStore } = await import("@/lib/store");
+  const status = await checkVideoStatus(operationName);
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error("Render-Job wurde beim Statusabruf nicht gefunden.");
+  const progress = Math.min(88, 5 + Math.round((completedExtensions / Math.max(1, totalExtensions)) * 80));
+  await jobStore.set(jobId, {
+    ...job,
+    progressPercent: Math.max(job.progressPercent ?? 0, progress),
+    currentChapter: chapterNumber,
+    lastProviderPollAt: Date.now(),
+    videoUri: status.done && status.videoUri ? status.videoUri : job.videoUri,
+    currentOperationName: status.done ? undefined : operationName,
+    currentOperationType: status.done ? undefined : job.currentOperationType,
+  });
+  return { done: status.done, videoUri: status.videoUri, mimeType: status.mimeType };
+}
+
+async function waitForOperation(
+  jobId: string,
+  operationName: string,
+  chapterNumber: number,
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<string> {
+  for (let poll = 0; poll < 180; poll += 1) {
+    await sleep("10s");
+    const status = await pollVideoStep(jobId, operationName, chapterNumber, completedExtensions, totalExtensions);
+    if (status.done && status.videoUri) return status.videoUri;
+  }
+  throw new Error("Zeitüberschreitung nach 30 Minuten bei der Veo-Generierung.");
+}
+
+async function recordChapterStep(
+  jobId: string,
+  chapterNumber: number,
+  chapterUris: string[],
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error("Render-Job wurde nach einem Kapitel nicht gefunden.");
+  await jobStore.set(jobId, {
+    ...job,
+    chapterVideoUris: chapterUris,
+    currentChapter: chapterNumber,
+    currentExtension: completedExtensions,
+    progressPercent: Math.min(90, 10 + Math.round((completedExtensions / Math.max(1, totalExtensions)) * 80)),
+  });
+}
+
+async function markFinalizingStep(jobId: string, merging: boolean): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error("Render-Job wurde vor der Finalisierung nicht gefunden.");
+  await jobStore.set(jobId, {
+    ...job,
+    status: "processing",
+    renderStage: merging ? "merging-chapters" : "trimming",
+    progressPercent: 92,
+    currentOperationName: undefined,
+    currentOperationType: undefined,
+  });
+}
+
+async function trimFinalVideoStep(jobId: string, videoUri: string, seconds: number) {
+  "use step";
+  const { trimAndStore } = await import("@/lib/video-backend/media");
+  return trimAndStore(videoUri, seconds, `finished-videos/${jobId}.mp4`);
+}
+
+async function mergeFinalVideoStep(jobId: string, chapterUris: string[], seconds: number) {
+  "use step";
+  const { mergeAndStore } = await import("@/lib/video-backend/media");
+  return mergeAndStore(chapterUris, seconds, `finished-videos/${jobId}.mp4`);
+}
+
+async function finishRenderJobStep(jobId: string, pathname: string): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error("Render-Job wurde beim Abschluss nicht gefunden.");
+  await jobStore.set(jobId, {
+    ...job,
+    status: "done",
+    renderStage: "completed",
+    progressPercent: 100,
+    videoUri: `blob:${pathname}`,
+    videoUrl: undefined,
+    videoUrls: undefined,
+    currentOperationName: undefined,
+    currentOperationType: undefined,
+    completedAt: Date.now(),
+    errorMessage: undefined,
+  });
+}
+
+async function failRenderJobStep(jobId: string, message: string): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) return;
+  await jobStore.set(jobId, {
+    ...job,
+    status: "error",
+    renderStage: "failed",
+    errorMessage: message,
+  });
+}
+
+function extensionCountFor(seconds: number): number {
+  return seconds <= 8 ? 0 : Math.ceil((seconds - 8) / 7);
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function readString(value: unknown, error: string): string {
+  if (typeof value !== "string" || !value.trim()) throw new Error(error);
+  return value.trim();
+}
+
+function buildOpeningPrompt(
+  opening: Record<string, unknown>,
+  aspectRatio: VideoAspectRatio,
+  editingStyle: string | undefined,
+): string {
+  return [
+    readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
+    "",
+    `ASPECT RATIO: ${aspectRatio}`,
+    `EDITING STYLE: ${editingStyle || "auto"}`,
+    typeof opening.audioPrompt === "string" ? `AUDIO DIRECTION:\n${opening.audioPrompt}` : "",
+    typeof opening.negativePrompt === "string" ? `NEGATIVE REQUIREMENTS:\n${opening.negativePrompt}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildChapterContinuationPrompt(
+  moviePlan: Record<string, unknown>,
+  chapter: Record<string, unknown>,
+  chapterNumber: number,
+  extensionNumber: number,
+  totalExtensions: number,
+): string {
+  return [
+    `Continue chapter ${chapterNumber} seamlessly, extension ${extensionNumber} of ${totalExtensions}.`,
+    `Chapter title: ${typeof chapter.title === "string" ? chapter.title : `Chapter ${chapterNumber}`}`,
+    typeof chapter.storyGoal === "string" ? `Story goal: ${chapter.storyGoal}` : "",
+    typeof chapter.visualGoal === "string" ? `Visual goal: ${chapter.visualGoal}` : "",
+    typeof moviePlan.characterContinuityRules === "string" ? `Character continuity: ${moviePlan.characterContinuityRules}` : "",
+    typeof moviePlan.visualContinuityRules === "string" ? `Visual continuity: ${moviePlan.visualContinuityRules}` : "",
+    "Preserve the same characters, wardrobe, world, camera direction, lighting, audio identity and temporal continuity.",
+    extensionNumber === totalExtensions && typeof chapter.transitionOut === "string"
+      ? `End transition: ${chapter.transitionOut}`
+      : "Advance the action and finish in a continuation-ready state.",
+  ].filter(Boolean).join("\n");
+}

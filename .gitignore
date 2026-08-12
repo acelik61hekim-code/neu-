@@ -1,0 +1,16 @@
+node_modules/
+.next/
+.vercel/
+.swc/
+.video-backend-backups/
+
+.env
+.env.*
+!.env.example
+
+*.log
+*.tsbuildinfo
+
+veo-test-video.mp4
+
+test-fast-extension.ps1

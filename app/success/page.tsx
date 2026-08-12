@@ -15,6 +15,7 @@ export default function SuccessPage() {
 function SuccessContent() {
   const searchParams = useSearchParams();
   const jobId = searchParams.get("jobId");
+  const sessionId = searchParams.get("session_id");
   const [status, setStatus] = useState<Status>("pending");
   const [format, setFormat] = useState<"short" | "long">("short");
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -24,9 +25,11 @@ function SuccessContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!jobId) return;
+    if (!jobId || !sessionId) return;
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/video-status?jobId=${jobId}`);
+      const res = await fetch(
+        `/api/video-status?jobId=${encodeURIComponent(jobId)}&session_id=${encodeURIComponent(sessionId)}`,
+      );
       const data = await res.json();
       if (data.status) setStatus(data.status);
       if (data.format) setFormat(data.format);
@@ -40,7 +43,7 @@ function SuccessContent() {
       }
     }, 4000);
     return () => clearInterval(interval);
-  }, [jobId]);
+  }, [jobId, sessionId]);
 
   return (
     <main className="page">
@@ -60,16 +63,13 @@ function SuccessContent() {
             </p>
           </>
         )}
-        {status === "done" && format === "short" && videoUrl && (
+        {status === "done" && videoUrl && (
           <>
             <p className="status-line">Fertig — hier ist dein Video:</p>
             <video controls src={videoUrl} />
-          </>
-        )}
-        {status === "done" && format === "long" && videoUrls.length > 0 && (
-          <>
-            <p className="status-line">Fertig — hier ist dein Video:</p>
-            <PlaylistPlayer clips={videoUrls} />
+            <a className="back-link" href={`${videoUrl}&download=1`}>
+              Video herunterladen
+            </a>
           </>
         )}
         {status === "error" && (
