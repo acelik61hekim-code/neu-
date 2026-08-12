@@ -1,6 +1,6 @@
 export const SONG_LENGTHS = ["clip", "full2", "full3", "full4"] as const;
 export const SONG_LYRICS_MODES = ["instrumental", "ai", "custom"] as const;
-export const SONG_LANGUAGES = ["de", "en", "auto"] as const;
+export const SONG_LANGUAGES = ["de", "tr", "en", "auto"] as const;
 export const SONG_VOCAL_STYLES = ["auto", "female", "male", "duet", "choir"] as const;
 
 export type SongLength = (typeof SONG_LENGTHS)[number];
@@ -60,9 +60,29 @@ export function buildSongPrompt(input: {
 }): string {
   const language = input.language === "de"
     ? "German"
+    : input.language === "tr"
+      ? "Turkish"
     : input.language === "en"
       ? "English"
       : "the language that best matches the customer's description and lyrics";
+
+  const musicStyle = input.style.trim() === "Türkischer Arabesk"
+    ? [
+        "Original Turkish arabesk with a deeply melancholic and dramatic atmosphere",
+        "expressive Turkish-style vocal ornamentation",
+        "prominent bağlama/saz, sweeping string orchestra, kanun, oud and restrained darbuka percussion",
+        "an emotional build and a powerful, memorable chorus",
+        "Do not imitate any named singer, existing song, melody or recording",
+      ].join("; ")
+    : input.style.trim() === "Türkischer Arabesk-Pop / Fantezi"
+      ? [
+          "Original modern Turkish arabesk-pop and fantezi music",
+          "romantic, cinematic and emotionally intense with a polished contemporary production",
+          "expressive Turkish-style vocals, lush string orchestra, piano, bağlama/saz and tasteful darbuka percussion",
+          "clear pop song structure, soaring chorus and dramatic instrumental transitions",
+          "Do not imitate any named singer, existing song, melody or recording",
+        ].join("; ")
+    : input.style.trim() || "modern, polished production";
 
   const durationMinutes = songDurationMinutes(input.length);
   const duration = input.length === "clip"
@@ -97,7 +117,7 @@ export function buildSongPrompt(input: {
     duration,
     input.title?.trim() ? `Working title: ${input.title.trim()}.` : "",
     `Customer's song idea: ${input.description.trim()}`,
-    `Music style: ${input.style.trim() || "modern, polished production"}.`,
+    `Music style: ${musicStyle}.`,
     `Mood and energy: ${input.mood.trim() || "emotionally engaging"}.`,
     vocalDirection,
     lyricsDirection,

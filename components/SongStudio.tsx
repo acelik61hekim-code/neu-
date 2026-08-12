@@ -14,8 +14,8 @@ import {
   type SongVocalStyle,
 } from "@/lib/song";
 
-const styles = ["Pop", "Hip-Hop / Rap", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
-const moods = ["Energiegeladen", "Emotional", "Romantisch", "Düster", "Entspannt", "Motivierend", "Fröhlich", "Episch"];
+const styles = ["Pop", "Türkischer Arabesk", "Türkischer Arabesk-Pop / Fantezi", "Hip-Hop / Rap", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
+const moods = ["Energiegeladen", "Emotional", "Hüzünlü / Sehnsüchtig", "Dramatisch", "Romantisch", "Düster", "Entspannt", "Motivierend", "Fröhlich", "Episch"];
 
 export default function SongStudio({
   onStudioChange,
@@ -155,8 +155,8 @@ export default function SongStudio({
                   label="Sprache"
                   value={language}
                   onChange={(value) => setLanguage(value as SongLanguage)}
-                  options={["de", "en", "auto"]}
-                  labels={{ de: "Deutsch", en: "Englisch", auto: "Automatisch" }}
+                  options={["de", "tr", "en", "auto"]}
+                  labels={{ de: "Deutsch", tr: "Türkçe", en: "Englisch", auto: "Automatisch" }}
                 />
               </div>
             )}
