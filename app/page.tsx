@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ChangeEvent } from "react";
 
 import Chat from "@/components/Chat";
 import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
+import SongStudio from "@/components/SongStudio";
+import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
 import {
   CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
   formatEuroPrice,
@@ -165,6 +167,23 @@ async function optimizeReferenceImage(file: File): Promise<string> {
 }
 
 export default function HomePage() {
+  const [studioMode, setStudioMode] = useState<StudioMode>("video");
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("studio") === "song") {
+      setStudioMode("song");
+    }
+  }, []);
+
+  function selectStudio(mode: StudioMode) {
+    setStudioMode(mode);
+    const url = new URL(window.location.href);
+    if (mode === "song") url.searchParams.set("studio", "song");
+    else url.searchParams.delete("studio");
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   const [story, setStory] = useState("");
 
   const [
@@ -660,6 +679,10 @@ export default function HomePage() {
     }
   }
 
+  if (studioMode === "song") {
+    return <SongStudio onStudioChange={selectStudio} />;
+  }
+
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white">
       <div className="pointer-events-none absolute inset-0">
@@ -672,7 +695,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:48px_48px]" />
       </div>
 
-      <Header active="video" />
+      <Header active="video" onStudioChange={selectStudio} />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-5 pb-16 pt-12 sm:px-8 sm:pt-16">
         <section className="mx-auto mb-12 max-w-4xl text-center">
@@ -704,6 +727,8 @@ export default function HomePage() {
             dein professionelles
             Video.
           </p>
+
+          <StudioChooser active="video" onChange={selectStudio} />
         </section>
 
         <section className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20 backdrop-blur-xl">
