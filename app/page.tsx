@@ -7,6 +7,7 @@ import Chat from "@/components/Chat";
 import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
 import SongStudio from "@/components/SongStudio";
+import ImageStudio from "@/components/ImageStudio";
 import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
 import {
   CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
@@ -170,15 +171,14 @@ export default function HomePage() {
   const [studioMode, setStudioMode] = useState<StudioMode>("video");
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("studio") === "song") {
-      setStudioMode("song");
-    }
+    const requestedStudio = new URLSearchParams(window.location.search).get("studio");
+    if (requestedStudio === "song" || requestedStudio === "image") setStudioMode(requestedStudio);
   }, []);
 
   function selectStudio(mode: StudioMode) {
     setStudioMode(mode);
     const url = new URL(window.location.href);
-    if (mode === "song") url.searchParams.set("studio", "song");
+    if (mode === "song" || mode === "image") url.searchParams.set("studio", mode);
     else url.searchParams.delete("studio");
     window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -681,6 +681,10 @@ export default function HomePage() {
 
   if (studioMode === "song") {
     return <SongStudio onStudioChange={selectStudio} />;
+  }
+
+  if (studioMode === "image") {
+    return <ImageStudio onStudioChange={selectStudio} />;
   }
 
   return (

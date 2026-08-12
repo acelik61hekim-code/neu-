@@ -1,10 +1,10 @@
 "use client";
 
-import { FilmIcon, MusicIcon } from "./Icons";
+import { FilmIcon, ImageIcon, MusicIcon } from "./Icons";
 
 type HeaderProps = {
-  active?: "video" | "song";
-  onStudioChange?: (mode: "video" | "song") => void;
+  active?: "video" | "song" | "image";
+  onStudioChange?: (mode: "video" | "song" | "image") => void;
 };
 
 export default function Header({ active, onStudioChange }: HeaderProps) {
@@ -22,7 +22,7 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
             </p>
 
             <p className="text-xs text-zinc-500">
-              Videos und Songs mit KI
+              Videos, Songs und Bilder mit KI
             </p>
           </div>
         </div>
@@ -43,6 +43,14 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
           >
             <MusicIcon className="hidden sm:block" />
             Songs
+          </button>
+          <button
+            type="button"
+            onClick={() => onStudioChange ? onStudioChange("image") : window.location.assign("/?studio=image")}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "image" ? "bg-cyan-500/20 text-cyan-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+          >
+            <ImageIcon className="hidden sm:block" />
+            Bilder
           </button>
         </nav>
       </div>

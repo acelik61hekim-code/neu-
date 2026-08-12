@@ -236,3 +236,13 @@ export function MusicIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function ImageIcon({ className }: IconProps) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3.5" y="4" width="17" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.7" />
+      <circle cx="8.5" cy="9" r="1.5" stroke="currentColor" strokeWidth="1.5" />
+      <path d="m5.5 17 4-4 2.5 2.5 2.2-2.2 4.3 3.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
