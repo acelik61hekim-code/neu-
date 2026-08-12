@@ -6,9 +6,11 @@ import {
 import { start } from "workflow/api";
 
 import { renderVideoWorkflow } from "@/workflows/render-video";
+import { renderSongWorkflow } from "@/workflows/render-song";
 
 import { stripe } from "../../../lib/stripe";
 import { jobStore } from "../../../lib/store";
+import { songStore } from "../../../lib/song-store";
 
 import {
   buildVideoDurationPlan,
@@ -417,6 +419,68 @@ function workflowStillStartingResponse(
   );
 }
 
+async function handlePaidSongCheckout(
+  jobId: string,
+  sessionId: string,
+  metadata: Record<string, string> | null | undefined,
+) {
+  const job = await songStore.get(jobId);
+  if (!job) {
+    console.error("Bezahlter Stripe-Song ohne passenden Auftrag:", { jobId, sessionId });
+    return NextResponse.json({ received: true });
+  }
+
+  if (metadata?.songLength !== job.length || metadata?.lyricsMode !== job.lyricsMode) {
+    await songStore.set(jobId, {
+      ...job,
+      status: "error",
+      paymentStatus: "paid",
+      stripeSessionId: sessionId,
+      paidAt: Date.now(),
+      renderStage: "failed",
+      progressPercent: 0,
+      errorMessage: "Die bezahlte Song-Konfiguration ist ungültig.",
+    });
+    return NextResponse.json({ received: true });
+  }
+
+  if (job.paymentStatus !== "paid") {
+    await songStore.set(jobId, {
+      ...job,
+      status: "processing",
+      paymentStatus: "paid",
+      stripeSessionId: sessionId,
+      paidAt: Date.now(),
+      renderStage: "queued",
+      progressPercent: 5,
+      errorMessage: undefined,
+    });
+  }
+
+  try {
+    const existing = await songStore.getWorkflowStartState(jobId);
+    if (existing?.status === "started") {
+      return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: existing.workflowRunId });
+    }
+    if (existing?.status === "starting") {
+      return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
+    }
+
+    const claimed = await songStore.claimWorkflowStart(jobId, sessionId);
+    if (!claimed) {
+      return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
+    }
+
+    const run = await start(renderSongWorkflow, [jobId]);
+    await songStore.confirmWorkflowStarted(jobId, run.runId);
+    await songStore.update(jobId, (current) => ({ ...current, workflowRunId: run.runId }));
+    return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: run.runId });
+  } catch (error) {
+    console.error("Song-Workflow konnte nicht gestartet werden:", { jobId, error });
+    return NextResponse.json({ error: "Song-Workflow konnte nicht gestartet werden." }, { status: 500 });
+  }
+}
+
 export async function POST(
   req: NextRequest,
 ) {
@@ -557,6 +621,10 @@ export async function POST(
       received:
         true,
     });
+  }
+
+  if (session.metadata?.productType === "song") {
+    return handlePaidSongCheckout(jobId, sessionId, session.metadata);
   }
 
   const job =

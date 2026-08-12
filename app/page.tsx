@@ -672,7 +672,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:48px_48px]" />
       </div>
 
-      <Header />
+      <Header active="video" />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-5 pb-16 pt-12 sm:px-8 sm:pt-16">
         <section className="mx-auto mb-12 max-w-4xl text-center">

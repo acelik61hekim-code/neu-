@@ -215,3 +215,24 @@ export function LoadingIcon({ className }: IconProps) {
     </svg>
   );
 }
+
+export function MusicIcon({ className }: IconProps) {
+  return (
+    <svg
+      className={className}
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M9 18V6.5L19 4v11.5M9 9l10-2.5M9 18a3 3 0 1 1-3-3 3 3 0 0 1 3 3Zm10-2.5a3 3 0 1 1-3-3 3 3 0 0 1 3 3Z"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
