@@ -7,6 +7,7 @@ import {
   normalizeVideoSpokenLanguage,
   normalizeVideoVoiceMode,
 } from "@/lib/audio-options";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 import type {
   MovieContinuation,
@@ -2434,6 +2435,20 @@ function createCompatibilityScenes(
 }
 
 export async function POST(request: Request) {
+  const rateLimit = await checkRateLimit(request, "story-architect", 12, 60 * 60);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Zu viele Filmplan-Anfragen in kurzer Zeit. Bitte versuche es später erneut.",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {

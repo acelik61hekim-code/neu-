@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
 import { storeGeneratedPreview } from "@/lib/video-backend/images";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 import type {
   VideoAspectRatio,
@@ -361,6 +362,20 @@ function isSafetyBlocked(
 export async function POST(
   request: Request,
 ) {
+  const rateLimit = await checkRateLimit(request, "preview", 8, 60 * 60);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Zu viele Vorschauen in kurzer Zeit. Bitte versuche es später erneut.",
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
+
   const apiKey =
     process.env.GEMINI_API_KEY;
 

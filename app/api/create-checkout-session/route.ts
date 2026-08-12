@@ -13,6 +13,7 @@ import {
   isVideoVoiceMode,
 } from "../../../lib/audio-options";
 import { loadStoredPreview } from "../../../lib/video-backend/images";
+import { checkRateLimit } from "../../../lib/rate-limit";
 
 import {
   jobStore,
@@ -203,6 +204,17 @@ function editingStyleLabel(
 export async function POST(
   req: NextRequest,
 ) {
+  const rateLimit = await checkRateLimit(req, "checkout", 20, 60 * 60);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Zu viele Bestellversuche in kurzer Zeit. Bitte versuche es später erneut." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+      },
+    );
+  }
+
   const missingServices = missingProductionServices();
   if (missingServices.length > 0) {
     console.error("Checkout blockiert: Produktionsdienste fehlen:", missingServices);

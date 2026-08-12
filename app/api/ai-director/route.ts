@@ -4,6 +4,7 @@ import {
   Type,
 } from "@google/genai";
 import { NextResponse } from "next/server";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -477,6 +478,20 @@ export async function POST(
   request: Request,
 ) {
   try {
+    const rateLimit = await checkRateLimit(request, "ai-director", 40, 60 * 60);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Zu viele KI-Anfragen in kurzer Zeit. Bitte versuche es später erneut.",
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+        },
+      );
+    }
+
     const apiKey =
       process.env.GEMINI_API_KEY;
 
