@@ -6,6 +6,11 @@ const nextConfig = {
     serverComponentsExternalPackages: [
       "ffmpeg-static",
     ],
+    outputFileTracingIncludes: {
+      "/.well-known/workflow/v1/step": [
+        "./node_modules/ffmpeg-static/ffmpeg*",
+      ],
+    },
   },
 };
 

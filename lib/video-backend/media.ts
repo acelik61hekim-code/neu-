@@ -57,9 +57,21 @@ async function upload(pathname: string, filename: string) {
   return { pathname: blob.pathname, url: blob.url };
 }
 
+async function copyAndStore(source: string, pathname: string) {
+  return withTemp(async (dir) => {
+    const input = join(dir, "input.mp4");
+    await download(source, input);
+    return upload(pathname, input);
+  });
+}
+
 export async function trimAndStore(source: string, seconds: number, pathname: string) {
+  // Veo opening videos are already exactly 8 seconds. Avoid an unnecessary
+  // native FFmpeg process and persist the provider file directly in Blob.
+  if (seconds === 8) return copyAndStore(source, pathname);
+
   const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
+  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verf�f¼gbar.");
   return withTemp(async (dir) => {
     const input = join(dir, "input.mp4");
     const output = join(dir, "output.mp4");
@@ -79,8 +91,8 @@ export async function trimAndStore(source: string, seconds: number, pathname: st
 
 export async function mergeAndStore(sources: string[], seconds: number, pathname: string) {
   const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
-  if (sources.length === 0) throw new Error("Für das Zusammenführen fehlen Kapitelvideos.");
+  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verf�f¼gbar.");
+  if (sources.length === 0) throw new Error("F�f¼r das Zusammenf�f¼hren fehlen Kapitelvideos.");
   return withTemp(async (dir) => {
     const files: string[] = [];
     for (let index = 0; index < sources.length; index += 1) {

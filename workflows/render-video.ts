@@ -115,6 +115,47 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
 
 export default renderVideoWorkflow;
 
+export async function recoverVideoFinalizationWorkflow(jobId: string): Promise<RenderResult> {
+  "use workflow";
+
+  const prepared = await prepareRecoveryFinalizationStep(jobId);
+  try {
+    const output = await trimFinalVideoStep(jobId, prepared.videoUri, 8);
+    await finishRenderJobStep(jobId, output.pathname);
+    return {
+      jobId,
+      providerRenderEnabled: false,
+      pipelineComplete: true,
+      outputPathname: output.pathname,
+      reason: "Recovered existing provider video without a new Veo request.",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown recovery error.";
+    await failRenderJobStep(jobId, message);
+    throw error;
+  }
+}
+
+async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUri: string }> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error(`Recovery job ${jobId} was not found.`);
+  if (job.paymentStatus !== "paid") throw new Error("Recovery job is not paid.");
+  if (job.targetDurationSeconds !== 8) throw new Error("Recovery is limited to the 8-second safety test.");
+  if (!job.videoUri || job.videoUri.startsWith("blob:")) throw new Error("No recoverable provider video URI is stored.");
+  if (job.currentOperationName) throw new Error("The provider operation is not complete yet.");
+
+  await jobStore.set(jobId, {
+    ...job,
+    status: "processing",
+    renderStage: "trimming",
+    progressPercent: 92,
+    errorMessage: undefined,
+  });
+  return { videoUri: job.videoUri };
+}
+
 async function providerRenderEnabledStep(duration: number): Promise<{ enabled: boolean; reason?: string }> {
   "use step";
   try {
@@ -136,22 +177,22 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   if (!job) throw new Error(`Render-Job ${jobId} wurde nicht gefunden.`);
   if (job.paymentStatus !== "paid") throw new Error(`Render-Job ${jobId} ist nicht bezahlt.`);
   if (!job.targetDurationSeconds || !job.aspectRatio) {
-    throw new Error(`Render-Job ${jobId} enthält keine vollständige Videokonfiguration.`);
+    throw new Error(`Render-Job ${jobId} enth�f¤lt keine vollst�f¤ndige Videokonfiguration.`);
   }
 
   let story: Record<string, unknown>;
   try {
     story = JSON.parse(job.prompt) as Record<string, unknown>;
   } catch {
-    throw new Error("Die gespeicherte Story ist kein gültiges JSON.");
+    throw new Error("Die gespeicherte Story ist kein g�f¼ltiges JSON.");
   }
   const moviePlan = asRecord(story.moviePlan);
   if (Object.keys(moviePlan).length === 0) throw new Error("moviePlan fehlt in der gespeicherten Story.");
   if (moviePlan.targetDurationSeconds !== job.targetDurationSeconds) {
-    throw new Error("Die bezahlte Videodauer stimmt nicht mit dem MoviePlan überein.");
+    throw new Error("Die bezahlte Videodauer stimmt nicht mit dem MoviePlan �f¼berein.");
   }
   if (moviePlan.aspectRatio !== job.aspectRatio) {
-    throw new Error("Das bezahlte Bildformat stimmt nicht mit dem MoviePlan überein.");
+    throw new Error("Das bezahlte Bildformat stimmt nicht mit dem MoviePlan �f¼berein.");
   }
 
   const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
@@ -169,13 +210,13 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     );
     const expected = extensionCountFor(job.targetDurationSeconds);
     if (continuationPrompts.length !== expected) {
-      throw new Error(`MoviePlan enthält ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
+      throw new Error(`MoviePlan enth�f¤lt ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
     }
     segments.push({ chapterNumber: 1, targetSeconds: job.targetDurationSeconds, openingPrompt, continuationPrompts });
   } else {
     const rawChapters = Array.isArray(moviePlan.chapters) ? moviePlan.chapters : [];
     if (rawChapters.length !== durationPlan.chapterTargets.length) {
-      throw new Error(`MoviePlan enthält ${rawChapters.length} Kapitel; erwartet werden ${durationPlan.chapterTargets.length}.`);
+      throw new Error(`MoviePlan enth�f¤lt ${rawChapters.length} Kapitel; erwartet werden ${durationPlan.chapterTargets.length}.`);
     }
     rawChapters.forEach((rawChapter, index) => {
       const chapter = asRecord(rawChapter);
@@ -337,7 +378,7 @@ async function waitForOperation(
     const status = await pollVideoStep(jobId, operationName, chapterNumber, completedExtensions, totalExtensions);
     if (status.done && status.videoUri) return status.videoUri;
   }
-  throw new Error("Zeitüberschreitung nach 30 Minuten bei der Veo-Generierung.");
+  throw new Error("Zeit�f¼berschreitung nach 30 Minuten bei der Veo-Generierung.");
 }
 
 async function recordChapterStep(
@@ -380,12 +421,14 @@ async function trimFinalVideoStep(jobId: string, videoUri: string, seconds: numb
   const { trimAndStore } = await import("@/lib/video-backend/media");
   return trimAndStore(videoUri, seconds, `finished-videos/${jobId}.mp4`);
 }
+trimFinalVideoStep.maxRetries = 0;
 
 async function mergeFinalVideoStep(jobId: string, chapterUris: string[], seconds: number) {
   "use step";
   const { mergeAndStore } = await import("@/lib/video-backend/media");
   return mergeAndStore(chapterUris, seconds, `finished-videos/${jobId}.mp4`);
 }
+mergeFinalVideoStep.maxRetries = 0;
 
 async function finishRenderJobStep(jobId: string, pathname: string): Promise<void> {
   "use step";
