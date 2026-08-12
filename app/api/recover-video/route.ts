@@ -56,13 +56,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (job.status === "done" && job.videoUri?.startsWith("blob:")) {
+  if (job.status === "done" && (job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"))) {
     return NextResponse.json({ recovered: true, alreadyComplete: true, jobId });
   }
-  if (job.targetDurationSeconds !== 8) {
-    return NextResponse.json({ error: "Recovery is limited to the 8-second safety test." }, { status: 409 });
+  if (!job.targetDurationSeconds) {
+    return NextResponse.json({ error: "The paid target duration is missing." }, { status: 409 });
   }
-  if (!job.videoUri || job.videoUri.startsWith("blob:") || job.currentOperationName) {
+  if (!job.videoUri || job.videoUri.startsWith("blob:") || job.videoUri.startsWith("local:") || job.currentOperationName) {
     return NextResponse.json({ error: "No completed provider video is available for recovery." }, { status: 409 });
   }
   if (job.status === "processing" && job.renderStage === "trimming") {

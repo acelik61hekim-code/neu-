@@ -1,15 +1,32 @@
 import { get, put } from "@vercel/blob";
 import { execFile } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 
 const exec = promisify(execFile);
+const localOutputRoot = resolve(
+  process.cwd(),
+  ".video-backend-backups",
+  "local-output",
+);
+
+export function resolveLocalVideoPath(value: string): string {
+  const pathname = value.startsWith("local:")
+    ? value.slice("local:".length)
+    : value;
+  const normalized = pathname.replace(/\\/g, "/").replace(/^\/+/, "");
+  const destination = resolve(localOutputRoot, normalized);
+  if (!destination.startsWith(`${localOutputRoot}${sep}`)) {
+    throw new Error("Ungültiger lokaler Videopfad.");
+  }
+  return destination;
+}
 
 async function withTemp<T>(run: (dir: string) => Promise<T>): Promise<T> {
   const dir = await mkdtemp(join(tmpdir(), "video-backend-"));
@@ -25,6 +42,11 @@ async function saveWebStream(stream: ReadableStream<Uint8Array>, destination: st
 }
 
 async function download(source: string, destination: string) {
+  if (source.startsWith("local:")) {
+    await pipeline(createReadStream(resolveLocalVideoPath(source)), createWriteStream(destination));
+    return;
+  }
+
   if (source.startsWith("blob:")) {
     const result = await get(source.slice("blob:".length), { access: "private" });
     if (!result?.stream) throw new Error("Private Blob konnte nicht gelesen werden.");
@@ -46,6 +68,18 @@ async function download(source: string, destination: string) {
 }
 
 async function upload(pathname: string, filename: string) {
+  const hasBlobCredentials = Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN ||
+      (process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID),
+  );
+
+  if (process.env.NODE_ENV === "development" && !hasBlobCredentials) {
+    const destination = resolveLocalVideoPath(pathname);
+    await mkdir(dirname(destination), { recursive: true });
+    await copyFile(filename, destination);
+    return { pathname: `local:${pathname}`, url: `local:${pathname}` };
+  }
+
   const body = Readable.toWeb(createReadStream(filename)) as ReadableStream<Uint8Array>;
   const blob = await put(pathname, body, {
     access: "private",
@@ -71,7 +105,7 @@ export async function trimAndStore(source: string, seconds: number, pathname: st
   if (seconds === 8) return copyAndStore(source, pathname);
 
   const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verf�f¼gbar.");
+  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
   return withTemp(async (dir) => {
     const input = join(dir, "input.mp4");
     const output = join(dir, "output.mp4");
@@ -91,8 +125,8 @@ export async function trimAndStore(source: string, seconds: number, pathname: st
 
 export async function mergeAndStore(sources: string[], seconds: number, pathname: string) {
   const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verf�f¼gbar.");
-  if (sources.length === 0) throw new Error("F�f¼r das Zusammenf�f¼hren fehlen Kapitelvideos.");
+  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
+  if (sources.length === 0) throw new Error("Für das Zusammenfügen fehlen Kapitelvideos.");
   return withTemp(async (dir) => {
     const files: string[] = [];
     for (let index = 0; index < sources.length; index += 1) {

@@ -692,6 +692,10 @@ export default function HomePage() {
             <StoryPreview
               prompt={story}
               loading={loading}
+              targetDurationSeconds={
+                targetDurationSeconds
+              }
+              aspectRatio={aspectRatio}
               onCreateVideo={
                 handleCreateVideo
               }

@@ -16,7 +16,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Job nicht gefunden." }, { status: 404 });
   }
 
-  const videoReady = job.status === "done" && Boolean(job.videoUri?.startsWith("blob:"));
+  const videoReady = job.status === "done" && Boolean(
+    job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"),
+  );
   const videoUrl = videoReady
     ? `/api/video-download/${encodeURIComponent(jobId)}?session_id=${encodeURIComponent(sessionId)}`
     : undefined;

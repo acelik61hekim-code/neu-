@@ -107,7 +107,7 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
       outputPathname: output.pathname,
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unbekannter Renderfehler.";
+    const message = readableRenderError(error);
     await failRenderJobStep(jobId, message);
     throw error;
   }
@@ -120,7 +120,7 @@ export async function recoverVideoFinalizationWorkflow(jobId: string): Promise<R
 
   const prepared = await prepareRecoveryFinalizationStep(jobId);
   try {
-    const output = await trimFinalVideoStep(jobId, prepared.videoUri, 8);
+    const output = await trimFinalVideoStep(jobId, prepared.videoUri, prepared.duration);
     await finishRenderJobStep(jobId, output.pathname);
     return {
       jobId,
@@ -130,20 +130,22 @@ export async function recoverVideoFinalizationWorkflow(jobId: string): Promise<R
       reason: "Recovered existing provider video without a new Veo request.",
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown recovery error.";
+    const message = readableRenderError(error);
     await failRenderJobStep(jobId, message);
     throw error;
   }
 }
 
-async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUri: string }> {
+async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUri: string; duration: VideoDurationSeconds }> {
   "use step";
   const { jobStore } = await import("@/lib/store");
   const job = await jobStore.get(jobId);
   if (!job) throw new Error(`Recovery job ${jobId} was not found.`);
   if (job.paymentStatus !== "paid") throw new Error("Recovery job is not paid.");
-  if (job.targetDurationSeconds !== 8) throw new Error("Recovery is limited to the 8-second safety test.");
-  if (!job.videoUri || job.videoUri.startsWith("blob:")) throw new Error("No recoverable provider video URI is stored.");
+  if (!job.targetDurationSeconds) throw new Error("Recovery job has no target duration.");
+  if (!job.videoUri || job.videoUri.startsWith("blob:") || job.videoUri.startsWith("local:")) {
+    throw new Error("No recoverable provider video URI is stored.");
+  }
   if (job.currentOperationName) throw new Error("The provider operation is not complete yet.");
 
   await jobStore.set(jobId, {
@@ -153,7 +155,7 @@ async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUr
     progressPercent: 92,
     errorMessage: undefined,
   });
-  return { videoUri: job.videoUri };
+  return { videoUri: job.videoUri, duration: job.targetDurationSeconds };
 }
 
 async function providerRenderEnabledStep(duration: number): Promise<{ enabled: boolean; reason?: string }> {
@@ -177,22 +179,22 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   if (!job) throw new Error(`Render-Job ${jobId} wurde nicht gefunden.`);
   if (job.paymentStatus !== "paid") throw new Error(`Render-Job ${jobId} ist nicht bezahlt.`);
   if (!job.targetDurationSeconds || !job.aspectRatio) {
-    throw new Error(`Render-Job ${jobId} enth�f¤lt keine vollst�f¤ndige Videokonfiguration.`);
+    throw new Error(`Render-Job ${jobId} enthält keine vollständige Videokonfiguration.`);
   }
 
   let story: Record<string, unknown>;
   try {
     story = JSON.parse(job.prompt) as Record<string, unknown>;
   } catch {
-    throw new Error("Die gespeicherte Story ist kein g�f¼ltiges JSON.");
+    throw new Error("Die gespeicherte Story ist kein gültiges JSON.");
   }
   const moviePlan = asRecord(story.moviePlan);
   if (Object.keys(moviePlan).length === 0) throw new Error("moviePlan fehlt in der gespeicherten Story.");
   if (moviePlan.targetDurationSeconds !== job.targetDurationSeconds) {
-    throw new Error("Die bezahlte Videodauer stimmt nicht mit dem MoviePlan �f¼berein.");
+    throw new Error("Die bezahlte Videodauer stimmt nicht mit dem MoviePlan überein.");
   }
   if (moviePlan.aspectRatio !== job.aspectRatio) {
-    throw new Error("Das bezahlte Bildformat stimmt nicht mit dem MoviePlan �f¼berein.");
+    throw new Error("Das bezahlte Bildformat stimmt nicht mit dem MoviePlan überein.");
   }
 
   const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
@@ -210,13 +212,13 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     );
     const expected = extensionCountFor(job.targetDurationSeconds);
     if (continuationPrompts.length !== expected) {
-      throw new Error(`MoviePlan enth�f¤lt ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
+      throw new Error(`MoviePlan enthält ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
     }
     segments.push({ chapterNumber: 1, targetSeconds: job.targetDurationSeconds, openingPrompt, continuationPrompts });
   } else {
     const rawChapters = Array.isArray(moviePlan.chapters) ? moviePlan.chapters : [];
     if (rawChapters.length !== durationPlan.chapterTargets.length) {
-      throw new Error(`MoviePlan enth�f¤lt ${rawChapters.length} Kapitel; erwartet werden ${durationPlan.chapterTargets.length}.`);
+      throw new Error(`MoviePlan enthält ${rawChapters.length} Kapitel; erwartet werden ${durationPlan.chapterTargets.length}.`);
     }
     rawChapters.forEach((rawChapter, index) => {
       const chapter = asRecord(rawChapter);
@@ -378,7 +380,7 @@ async function waitForOperation(
     const status = await pollVideoStep(jobId, operationName, chapterNumber, completedExtensions, totalExtensions);
     if (status.done && status.videoUri) return status.videoUri;
   }
-  throw new Error("Zeit�f¼berschreitung nach 30 Minuten bei der Veo-Generierung.");
+  throw new Error("Zeitüberschreitung nach 30 Minuten bei der Veo-Generierung.");
 }
 
 async function recordChapterStep(
@@ -440,7 +442,7 @@ async function finishRenderJobStep(jobId: string, pathname: string): Promise<voi
     status: "done",
     renderStage: "completed",
     progressPercent: 100,
-    videoUri: `blob:${pathname}`,
+    videoUri: pathname.startsWith("local:") ? pathname : `blob:${pathname}`,
     videoUrl: undefined,
     videoUrls: undefined,
     currentOperationName: undefined,
@@ -474,6 +476,21 @@ function assertProviderRenderAllowed(duration: number | undefined): void {
   if (!duration || duration > maxDuration) {
     throw new Error(`Die Videodauer ${duration || "unbekannt"}s ueberschreitet die Sicherheitsgrenze von ${maxDuration}s.`);
   }
+}
+
+function readableRenderError(error: unknown): string {
+  const rawMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+        ? error.message
+        : "Unbekannter Renderfehler.";
+
+  if (rawMessage.includes("No blob credentials found")) {
+    return "Die finale Videodatei konnte nicht gespeichert werden. Das vorhandene Rohvideo kann ohne neue KI-Generierung wiederhergestellt werden.";
+  }
+
+  return rawMessage;
 }
 
 function extensionCountFor(seconds: number): number {

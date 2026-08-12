@@ -36,6 +36,10 @@ kostenlose Web-Oberflächen:
    - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` – dein Stripe Test-Publishable-Key (`pk_test_...`)
    - `APP_URL` – trägst du erst nach dem ersten Deploy ein (siehe Schritt 3)
    - `STRIPE_WEBHOOK_SECRET` – trägst du in Schritt 4 ein
+   - `UPSTASH_REDIS_REST_URL` und `UPSTASH_REDIS_REST_TOKEN` – dauerhafter Job-Speicher
+   - `BLOB_READ_WRITE_TOKEN` oder Vercel-Blob-Verknüpfung – private fertige Videos
+   - `VEO_WORKFLOW_RENDER_ENABLED=true` – erst nach erfolgreichem Sicherheitstest
+   - `VEO_WORKFLOW_MAX_DURATION_SECONDS` – zunächst höchstens `8`, später kontrolliert erhöhen
 4. Auf "Deploy" klicken. Nach 1-2 Minuten bekommst du eine Live-URL wie
    `https://ki-video-studio-deinname.vercel.app`
 
@@ -61,15 +65,29 @@ kostenlose Web-Oberflächen:
    beliebiges zukünftiges Datum, beliebige 3 Ziffern als CVC
 4. Nach der "Zahlung" landest du auf der Erfolgsseite, die auf das Video wartet
 
-## Bekannte Einschränkungen (okay für den Test, wichtig vor Live-Betrieb)
+## Lokaler Test und Live-Betrieb
 
-- Der Job-Speicher (`lib/store.ts`) ist ein einfacher Arbeitsspeicher-Store,
-  keine echte Datenbank. Für den echten Betrieb später durch z.B. Vercel KV
-  oder eine Postgres-Datenbank ersetzen.
-- Die Video-Generierung läuft im Hintergrund nach der Webhook-Antwort weiter
-  — auf Vercel kann das je nach Plan/Timeout-Limits abgeschnitten werden,
-  wenn Veo länger als erwartet braucht. Für den Test reicht es meist.
-- Modellname/Endpunkt für Veo (`lib/veo.ts`) basiert auf der aktuellen
-  Preview-Doku von Google — vor dem Live-Gang bitte gegen
-  https://ai.google.dev/gemini-api/docs/video prüfen, falls sich der
-  Modellname geändert hat.
+- Lokal werden Jobs zusätzlich unter `.video-backend-backups` gesichert. Fehlen
+  Vercel-Blob-Zugangsdaten, werden fertige Videos dort privat gespeichert und
+  weiterhin über die geschützte Download-Route ausgeliefert.
+- In Produktion ist dieser Dateisystem-Fallback absichtlich deaktiviert. Dort
+  müssen Upstash Redis und ein privater Vercel-Blob-Speicher verbunden sein.
+- Der Stripe-Webhook bleibt der primäre Zahlungsweg. Die Erfolgsseite prüft eine
+  zurückkehrende Checkout-Session zusätzlich direkt bei Stripe und kann den
+  idempotenten Renderstart sicher nachholen.
+- `VEO_WORKFLOW_MAX_DURATION_SECONDS` ist die Kosten-Sicherheitsgrenze. Sie darf
+  erst nach einem erfolgreichen Test der jeweiligen Laufzeit erhöht werden.
+- Vor dem Live-Gang Stripe vom Test- in den Live-Modus umstellen, einen separaten
+  Live-Webhook anlegen und Checkout-Branding, Preise, Datenschutz, Impressum,
+  Rückerstattung und Supportprozess kontrollieren.
+- Modellname und Veo-Endpunkt vor dem Live-Gang gegen die aktuelle Google-Doku
+  prüfen, da es sich weiterhin um Preview-Schnittstellen handeln kann.
+
+## Abnahmekriterien vor dem Live-Gang
+
+1. Produktions-Build läuft ohne Typ- oder Kompilierungsfehler.
+2. Stripe-Testzahlung startet genau einen Renderauftrag.
+3. Fortschrittsseite übersteht Aktualisieren und erneutes Öffnen.
+4. Fertiges Video lässt sich abspielen und herunterladen.
+5. Fehlender Blob-/Redis-Speicher wird vor einem Kundenauftrag erkannt.
+6. Ein kompletter Test je freigeschalteter Laufzeit und je Bildformat ist dokumentiert.

@@ -924,22 +924,22 @@ function normalizeMoviePlan(
       : [];
 
   const beatFallbacks = [
-    "Clarify the central conflict and force an immediate reaction.",
-    "Escalate the situation with a visible consequence or complication.",
-    "Reveal new information or introduce an unexpected complication.",
-    "Create a strong emotional or visual turning point.",
-    "Increase the consequences and force a meaningful decision.",
-    "Drive directly toward the climax with rising urgency.",
-    "Deliver a major reveal, confrontation or payoff.",
-    "Create a meaningful new consequence that changes the direction of the story.",
-    "Deepen the emotional stakes while visibly advancing the action.",
-    "Introduce a fresh obstacle, discovery or decision without repeating previous beats.",
-    "Push the main character toward the central climax.",
-    "Escalate urgency through a visible action, consequence or revelation.",
-    "Prepare the decisive confrontation or emotional turning point.",
-    "Deliver a strong late-story development that changes what happens next.",
-    "Drive directly into the final payoff with no dead time.",
-    "Complete the chapter with a strong payoff and a continuation-ready final state.",
+    "Advance the established journey with a clear new spatial or narrative step.",
+    "Continue the current action and reveal visible progress toward the goal.",
+    "Develop the established situation through a fresh but motivated visual beat.",
+    "Create a clear emotional or visual turning point without changing the world rules.",
+    "Move the subject closer to the established destination or payoff.",
+    "Build momentum through continuous, physically plausible action.",
+    "Deliver a meaningful visual development rooted in the established story.",
+    "Create a new consequence that follows naturally from the current action.",
+    "Deepen emotional engagement while visibly advancing the journey.",
+    "Add a motivated discovery or decision without repeating earlier beats.",
+    "Guide the subject naturally toward the central payoff.",
+    "Increase visual momentum without introducing an unrelated obstacle.",
+    "Prepare the decisive emotional or visual turning point.",
+    "Deliver a strong late-story development that follows from prior motion.",
+    "Move directly into the final payoff with no dead time.",
+    "Complete the chapter with a clear payoff and a stable final state.",
   ];
 
   const continuations:
@@ -2251,8 +2251,18 @@ Wenn generationStrategy = "extension-chain":
 - Jede Fortsetzung beschreibt eine direkte Weiterführung, keinen Neustart.
 - Bewahre aktuelle Bewegung, Momentum, Figurenidentität, Kleidung,
   Umgebung, Licht, Kamera und Audio.
+- Die ersten Frames jeder Fortsetzung müssen exakt zum letzten Frame
+  des vorhandenen Videos passen: Position, Maßstab, Silhouette,
+  Objektgeometrie, Kamera, Hintergrund, Licht und Bewegungsrichtung.
+- Nicht-menschliche Figuren und Objekte dürfen Form, Größe, Faltung,
+  Material oder Farbe niemals verändern.
+- Reale Orte behalten plausible Geografie: Gebäude, Straßen,
+  Gewässer und Landmarken dürfen nicht räumlich versetzt werden.
 - Jede Fortsetzung muss die Story sichtbar voranbringen.
 - Keine unnötigen neuen Elemente.
+- Wenn die letzte Fortsetzung über targetDurationSeconds hinausreicht,
+  muss der finale Payoff innerhalb des sichtbaren Reststücks vor dem
+  Schnitt liegen. Wichtige Handlung darf nicht erst danach passieren.
 
 Wenn generationStrategy = "single-shot":
 - continuations = [].

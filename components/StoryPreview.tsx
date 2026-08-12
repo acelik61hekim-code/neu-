@@ -6,10 +6,16 @@ import {
   PlayIcon,
   SparklesIcon,
 } from "./Icons";
+import type {
+  VideoAspectRatio,
+  VideoDurationSeconds,
+} from "@/types/story";
 
 type StoryPreviewProps = {
   prompt: string;
   loading: boolean;
+  targetDurationSeconds: VideoDurationSeconds;
+  aspectRatio: VideoAspectRatio;
 
   /*
    * Bleibt vorübergehend in den Props,
@@ -26,11 +32,17 @@ type StoryPreviewProps = {
 const storyFeatures = [
   "Titel und Story-Konzept",
   "Charaktere und Umgebung",
-  "Opening + 8 direkte Fortsetzungen",
+  "Zusammenhängende Szenen und Fortsetzungen",
   "Kamera-, Licht- und Veo-Regie",
   "Musik, Dialoge und Soundeffekte",
   "Kontinuität für ein zusammenhängendes Video",
 ];
+
+function formatDuration(seconds: VideoDurationSeconds): string {
+  if (seconds < 60) return `${seconds} Sekunden`;
+  const minutes = seconds / 60;
+  return `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`;
+}
 
 export default function StoryPreview(
   props: StoryPreviewProps,
@@ -38,6 +50,8 @@ export default function StoryPreview(
   const {
     prompt,
     loading,
+    targetDurationSeconds,
+    aspectRatio,
   } = props;
 
   const hasPrompt =
@@ -56,6 +70,7 @@ export default function StoryPreview(
   let storyGenre = "";
   let storyMood = "";
   let hasMoviePlan = false;
+  let hasStructuredStory = false;
 
   try {
     const parsed = JSON.parse(
@@ -93,15 +108,11 @@ export default function StoryPreview(
         ? parsed.mood
         : "";
 
-    hasMoviePlan =
-      Boolean(
-        parsed.moviePlan &&
-          parsed.moviePlan.aspectRatio === "9:16" &&
-          Array.isArray(
-            parsed.moviePlan.continuations,
-          ) &&
-          parsed.moviePlan.continuations.length === 8,
-      );
+    hasStructuredStory = true;
+    hasMoviePlan = Boolean(
+      parsed.moviePlan &&
+        typeof parsed.moviePlan === "object",
+    );
   } catch {
     /*
      * Noch kein fertiges Story-JSON.
@@ -122,7 +133,7 @@ export default function StoryPreview(
             </h2>
 
             <p className="mt-0.5 text-xs text-zinc-500">
-              Dein zukünftiges 1-Minuten-Videoprojekt
+              Dein zukünftiges {formatDuration(targetDurationSeconds)}-Videoprojekt
             </p>
           </div>
         </div>
@@ -148,14 +159,16 @@ export default function StoryPreview(
         <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-black/30">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(124,58,237,0.18),transparent_45%)]" />
 
-          <div className="relative flex aspect-[9/16] max-h-[420px] items-center justify-center">
+          <div className={`relative flex max-h-[420px] items-center justify-center ${
+            aspectRatio === "16:9" ? "aspect-video" : "aspect-[9/16]"
+          }`}>
             <div className="px-6 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5 text-zinc-400 backdrop-blur">
                 <PlayIcon />
               </div>
 
               <p className="mt-4 text-sm font-medium text-zinc-300">
-                1-Minuten-Video
+                {formatDuration(targetDurationSeconds)}-Video
               </p>
 
               <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-zinc-600">
@@ -166,11 +179,11 @@ export default function StoryPreview(
           </div>
 
           <div className="absolute bottom-3 left-3 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur">
-            9:16
+            {aspectRatio}
           </div>
 
           <div className="absolute bottom-3 right-3 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur">
-            ca. 1 Minute
+            ca. {formatDuration(targetDurationSeconds)}
           </div>
         </div>
 
@@ -185,7 +198,7 @@ export default function StoryPreview(
 
           <div className="min-h-28 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
             {hasPrompt ? (
-              hasMoviePlan ? (
+              hasStructuredStory ? (
                 <div>
                   {storyTitle && (
                     <h3 className="font-semibold text-white">
@@ -215,6 +228,12 @@ export default function StoryPreview(
                       )}
                     </div>
                   )}
+
+                  {!storyTitle && !storySummary && (
+                    <p className="text-sm leading-6 text-zinc-400">
+                      Deine Story wurde vorbereitet und wird jetzt in einen Filmplan umgewandelt.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-300">
@@ -240,16 +259,20 @@ export default function StoryPreview(
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium text-white">
-                  Vertical Short Film
+                  {aspectRatio === "16:9"
+                    ? "Widescreen Film"
+                    : "Vertical Short Film"}
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-zinc-400">
-                  Optimiert für TikTok, YouTube Shorts und Reels.
+                  {aspectRatio === "16:9"
+                    ? "Optimiert für Film, YouTube und Widescreen-Wiedergabe."
+                    : "Optimiert für TikTok, YouTube Shorts und Reels."}
                 </p>
               </div>
 
               <span className="shrink-0 rounded-lg bg-black/20 px-2.5 py-1 text-xs font-medium text-violet-200">
-                9:16
+                {aspectRatio}
               </span>
             </div>
           </div>

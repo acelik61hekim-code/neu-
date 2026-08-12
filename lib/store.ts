@@ -1,4 +1,12 @@
 import { Redis } from "@upstash/redis";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 
 import type {
   VideoAspectRatio,
@@ -285,6 +293,45 @@ const memoryStore =
       VideoJob
     >());
 
+const localStorePath = join(
+  process.cwd(),
+  ".video-backend-backups",
+  "local-video-jobs.json",
+);
+
+function persistLocalMemoryStore(): void {
+  if (process.env.NODE_ENV !== "development" || redis) return;
+
+  try {
+    mkdirSync(dirname(localStorePath), { recursive: true });
+    const temporaryPath = `${localStorePath}.tmp`;
+    writeFileSync(
+      temporaryPath,
+      JSON.stringify(Object.fromEntries(memoryStore.entries())),
+      "utf8",
+    );
+    renameSync(temporaryPath, localStorePath);
+  } catch (error) {
+    console.error("Lokaler Videoauftrag konnte nicht gesichert werden:", error);
+  }
+}
+
+function hydrateLocalMemoryStore(): void {
+  if (process.env.NODE_ENV !== "development" || redis || !existsSync(localStorePath)) return;
+
+  try {
+    const storedJobs = JSON.parse(readFileSync(localStorePath, "utf8")) as Record<string, VideoJob>;
+    for (const [jobId, job] of Object.entries(storedJobs)) {
+      if (!memoryStore.has(jobId)) memoryStore.set(jobId, job);
+    }
+  } catch (error) {
+    console.error("Lokale Videoaufträge konnten nicht wiederhergestellt werden:", error);
+  }
+}
+
+hydrateLocalMemoryStore();
+persistLocalMemoryStore();
+
 
 const memoryWorkflowStartClaims =
   global.__videoWorkflowStartClaims ??
@@ -389,6 +436,7 @@ export const jobStore = {
       jobId,
       storedJob,
     );
+    persistLocalMemoryStore();
   },
 
   /*

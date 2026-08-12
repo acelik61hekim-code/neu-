@@ -58,6 +58,25 @@ type CheckoutRequest = {
   editingStyle?: unknown;
 };
 
+function missingProductionServices(): string[] {
+  if (process.env.NODE_ENV === "development") return [];
+
+  const missing: string[] = [];
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    missing.push("Redis");
+  }
+  if (
+    !process.env.BLOB_READ_WRITE_TOKEN &&
+    !(process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID)
+  ) {
+    missing.push("Vercel Blob");
+  }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    missing.push("Stripe Webhook");
+  }
+  return missing;
+}
+
 function isVideoDurationSeconds(
   value: unknown,
 ): value is VideoDurationSeconds {
@@ -104,7 +123,7 @@ function normalizeDuration(
   }
 
   /*
-   * RÃ¼ckwÃ¤rtskompatibilitÃ¤t:
+   * Rückwärtskompatibilität:
    *
    * Alte long-Requests waren 60 Sekunden,
    * alte short-Requests 8 Sekunden.
@@ -168,6 +187,18 @@ function editingStyleLabel(
 export async function POST(
   req: NextRequest,
 ) {
+  const missingServices = missingProductionServices();
+  if (missingServices.length > 0) {
+    console.error("Checkout blockiert: Produktionsdienste fehlen:", missingServices);
+    return NextResponse.json(
+      {
+        error:
+          "Die Video-Bestellung ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
+      },
+      { status: 503 },
+    );
+  }
+
   let body:
     CheckoutRequest;
 
@@ -178,7 +209,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Der Request enthÃ¤lt kein gÃ¼ltiges JSON.",
+          "Der Request enthält kein gültiges JSON.",
       },
       {
         status: 400,
@@ -197,7 +228,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Bitte gib eine Beschreibung fÃ¼r dein Video ein.",
+          "Bitte gib eine Beschreibung für dein Video ein.",
       },
       {
         status: 400,
@@ -215,7 +246,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "UngÃ¼ltige VideolÃ¤nge. Erlaubt sind 8, 30, 60, 120, 180, 240 oder 300 Sekunden.",
+          "Ungültige Videolänge. Erlaubt sind 8, 30, 60, 120, 180, 240 oder 300 Sekunden.",
       },
       {
         status: 400,
@@ -233,7 +264,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'UngÃ¼ltiges Bildformat. Erlaubt sind "9:16" oder "16:9".',
+          'Ungültiges Bildformat. Erlaubt sind "9:16" oder "16:9".',
       },
       {
         status: 400,
@@ -251,7 +282,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          'UngÃ¼ltiger Schnittstil. Erlaubt sind "auto", "social", "cinematic" oder "music-video".',
+          'Ungültiger Schnittstil. Erlaubt sind "auto", "social", "cinematic" oder "music-video".',
       },
       {
         status: 400,
@@ -289,8 +320,8 @@ export async function POST(
    * 8 s  -> PRICE_SHORT_CENTS
    * >8 s -> PRICE_LONG_CENTS
    *
-   * Vor einem Ã¶ffentlichen Verkauf von 30 s und
-   * 2â€“5 Min. brauchen wir eine echte Dauer-Preisstaffel
+   * Vor einem öffentlichen Verkauf von 30 s und
+   * 2–5 Min. brauchen wir eine echte Dauer-Preisstaffel
    * in lib/stripe.ts.
    */
   const priceCents =
@@ -307,7 +338,7 @@ export async function POST(
     editingStyleLabel(
       editingStyle,
     ),
-  ].join(" Â· ");
+  ].join(" · ");
 
   const jobId =
     nanoid();
@@ -316,8 +347,8 @@ export async function POST(
    * Hier schreiben wir bewusst nur Felder, die
    * der bestehende lib/store.ts sicher kennt.
    *
-   * Die neuen Werte liegen zusÃ¤tzlich in Stripe-Metadata
-   * und werden im nÃ¤chsten Schritt vom Webhook Ã¼bernommen.
+   * Die neuen Werte liegen zusätzlich in Stripe-Metadata
+   * und werden im nächsten Schritt vom Webhook übernommen.
    */
   await jobStore.set(
     jobId,
@@ -397,7 +428,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Stripe hat keine Checkout-Adresse zurÃ¼ckgegeben.",
+          "Stripe hat keine Checkout-Adresse zurückgegeben.",
       },
       {
         status: 502,
@@ -408,7 +439,7 @@ export async function POST(
   /*
    * Deine neue page.tsx erwartet data.url.
    * Die bisherige Route lieferte checkoutUrl.
-   * FÃ¼r die Ãœbergangsphase liefern wir beides.
+   * Für die Übergangsphase liefern wir beides.
    */
   return NextResponse.json({
     url:

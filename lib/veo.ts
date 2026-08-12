@@ -1166,12 +1166,33 @@ export function buildMovieContinuationPrompt(
       )
       .join("\n");
 
+  const visibleSeconds = Math.max(
+    0,
+    Math.min(
+      continuation.durationSeconds,
+      plan.targetDurationSeconds - continuation.startSecond,
+    ),
+  );
+
+  const finalTrimInstruction =
+    visibleSeconds < continuation.durationSeconds
+      ? [
+          "FINAL OUTPUT CUT (highest priority):",
+          `The finished film is cut at second ${plan.targetDurationSeconds}. Only the first ${visibleSeconds} second${visibleSeconds === 1 ? "" : "s"} of this extension will remain visible.`,
+          `Deliver the final story payoff and a visually stable ending within those first ${visibleSeconds} second${visibleSeconds === 1 ? "" : "s"}.`,
+          "Do not postpone any important action, reveal or resolution beyond the output cut.",
+        ].join("\n")
+      : "";
+
   return [
     continuation
       .continuationPrompt,
     "",
     "THIS IS A DIRECT EXTENSION OF THE EXISTING VIDEO.",
     "Do not restart, reintroduce or redesign the scene.",
+    "BOUNDARY MATCH (highest priority): The first frames must match the source video's final frames exactly: subject position, scale, silhouette, pose, fold geometry, material, camera position, lens, background geometry, lighting and motion vector.",
+    "Continue the existing motion without a cut, jump, wipe, reframe, zoom reset, speed reset or time skip.",
+    "For non-human subjects and objects, preserve the exact dimensions, silhouette, construction, folds, color and material. Never morph, enlarge, redesign or add parts.",
     "",
     `ASPECT RATIO: ${plan.aspectRatio}`,
     editingStyleInstruction(
@@ -1191,6 +1212,7 @@ export function buildMovieContinuationPrompt(
     "ENVIRONMENT CONTINUITY:",
     continuation
       .environmentContinuity,
+    "Preserve physically plausible geography and architecture. Keep landmarks, streets, waterways and buildings in their real spatial relationship; never relocate a landmark into water or invent impossible terrain.",
     "",
     "CAMERA CONTINUITY:",
     continuation
@@ -1222,6 +1244,8 @@ export function buildMovieContinuationPrompt(
     plan.characterContinuityRules,
     plan.visualContinuityRules,
     plan.storyContinuityRules,
+    "",
+    finalTrimInstruction,
     "",
     "NEGATIVE REQUIREMENTS:",
     continuation
