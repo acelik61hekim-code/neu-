@@ -34,14 +34,14 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
   "use workflow";
 
   const prepared = await prepareRenderJobStep(jobId);
-  const enabled = await providerRenderEnabledStep();
-  if (!enabled) {
+  const gate = await providerRenderEnabledStep(prepared.duration);
+  if (!gate.enabled) {
     await markRenderDisabledStep(jobId);
     return {
       jobId,
       providerRenderEnabled: false,
       pipelineComplete: false,
-      reason: "VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.",
+      reason: gate.reason || "Veo-Rendering ist durch den Sicherheitsschalter deaktiviert.",
     };
   }
 
@@ -115,9 +115,17 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
 
 export default renderVideoWorkflow;
 
-async function providerRenderEnabledStep(): Promise<boolean> {
+async function providerRenderEnabledStep(duration: number): Promise<{ enabled: boolean; reason?: string }> {
   "use step";
-  return process.env.VEO_WORKFLOW_RENDER_ENABLED === "true";
+  try {
+    assertProviderRenderAllowed(duration);
+    return { enabled: true };
+  } catch (error) {
+    return {
+      enabled: false,
+      reason: error instanceof Error ? error.message : "Veo-Rendering ist deaktiviert.",
+    };
+  }
 }
 
 async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
@@ -224,6 +232,7 @@ async function startOpeningVideoStep(
   const { startVideoGeneration } = await import("@/lib/veo");
   const job = await jobStore.get(jobId);
   if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
+  assertProviderRenderAllowed(job.targetDurationSeconds);
   const operationType = chapterNumber === 1 && job.generationStrategy !== "chaptered" ? "opening" : "chapter-opening";
   if (
     job.currentOperationName &&
@@ -261,6 +270,7 @@ async function startExtensionVideoStep(
   const { startVideoExtension } = await import("@/lib/veo");
   const job = await jobStore.get(jobId);
   if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
+  assertProviderRenderAllowed(job.targetDurationSeconds);
   if (
     job.currentOperationName &&
     job.currentOperationType === "extension" &&
@@ -408,6 +418,19 @@ async function failRenderJobStep(jobId: string, message: string): Promise<void> 
     renderStage: "failed",
     errorMessage: message,
   });
+}
+
+function assertProviderRenderAllowed(duration: number | undefined): void {
+  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") {
+    throw new Error("VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.");
+  }
+  const maxDuration = Number(process.env.VEO_WORKFLOW_MAX_DURATION_SECONDS || "0");
+  if (!Number.isInteger(maxDuration) || maxDuration < 8) {
+    throw new Error("VEO_WORKFLOW_MAX_DURATION_SECONDS ist nicht sicher konfiguriert.");
+  }
+  if (!duration || duration > maxDuration) {
+    throw new Error(`Die Videodauer ${duration || "unbekannt"}s ueberschreitet die Sicherheitsgrenze von ${maxDuration}s.`);
+  }
 }
 
 function extensionCountFor(seconds: number): number {
