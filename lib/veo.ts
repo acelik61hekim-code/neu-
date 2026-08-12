@@ -261,10 +261,10 @@ function generatedLengthForSingleChain(
  * 8 s:
  *   ein einzelner Veo-Auftrag
  *
- * 30–120 s:
+ * 30�?"120 s:
  *   Opening 8 s + direkte 7-s-Extensions
  *
- * 180–300 s:
+ * 180�?"300 s:
  *   mehrere Kapitel mit maximal 120 s Zielzeit.
  *
  * Das ist dieselbe Zeitarchitektur wie im Story Architect.
@@ -472,6 +472,9 @@ export async function startVideoGeneration(
 
       requestBody.parameters = {
         aspectRatio,
+        durationSeconds: 8,
+        resolution: "720p",
+        numberOfVideos: 1,
       };
     }
 
@@ -731,7 +734,7 @@ export async function waitForVideoCompletion(
  * als Videoquelle an Veo geschickt werden.
  *
  * Wir lesen zuerst die Gemini Files Resource und verwenden
- * anschließend ausschließlich file.uri.
+ * anschlie�Yend ausschlie�Ylich file.uri.
  */
 function extractGeminiFileNameFromUri(
   videoUri: string,
@@ -908,7 +911,7 @@ async function resolveProcessedGeneratedVideoUri(
  * KEIN inlineData
  * KEINE videoBytes
  * KEIN numberOfVideos
- * KEINE resolution
+ * Explizit: 8 Sekunden, 720p, genau ein Video
  */
 export async function startVideoExtension(
   videoUri: string,
@@ -993,6 +996,9 @@ export async function startVideoExtension(
 
               parameters: {
                 aspectRatio,
+                durationSeconds: 8,
+                resolution: "720p",
+                numberOfVideos: 1,
               },
             }),
 
@@ -1057,7 +1063,7 @@ export async function startVideoExtension(
  * den wir vorher temporär im Client hatten.
  *
  * editingStyle und aspectRatio stehen bereits im MoviePlan
- * und fließen damit zusätzlich in jede Fortsetzung ein.
+ * und flie�Yen damit zusätzlich in jede Fortsetzung ein.
  */
 function createDialogueInstruction(
   continuation:
@@ -1236,8 +1242,8 @@ export function buildMovieContinuationPrompt(
  *
  * Nur für Rückwärtskompatibilität.
  *
- * Die neue MoviePlan-Pipeline soll für 30–120 s
- * Extensions und für 3–5 Minuten Chapters verwenden.
+ * Die neue MoviePlan-Pipeline soll für 30�?"120 s
+ * Extensions und für 3�?"5 Minuten Chapters verwenden.
  */
 export async function splitIntoScenes(
   prompt: string,
@@ -1290,7 +1296,7 @@ export async function splitIntoScenes(
                 parts: [
                   {
                     text:
-                      `Teile diese Videoidee in genau ${sceneCount} aufeinanderfolgende, kurze Videoclip-Beschreibungen auf (je ca. 8 Sekunden). Idee: "${cleanedPrompt}". Gib NUR ein JSON-Array mit genau ${sceneCount} Strings zurück, jeder String ist eine bildhafte, eigenständige Beschreibung (Stil, Bewegung, Kameraführung) für einen KI-Videogenerator, die zusammen eine zusammenhängende Geschichte erzählen. Kein Text außerhalb des JSON-Arrays.`,
+                      `Teile diese Videoidee in genau ${sceneCount} aufeinanderfolgende, kurze Videoclip-Beschreibungen auf (je ca. 8 Sekunden). Idee: "${cleanedPrompt}". Gib NUR ein JSON-Array mit genau ${sceneCount} Strings zurück, jeder String ist eine bildhafte, eigenständige Beschreibung (Stil, Bewegung, Kameraführung) für einen KI-Videogenerator, die zusammen eine zusammenhängende Geschichte erzählen. Kein Text au�Yerhalb des JSON-Arrays.`,
                   },
                 ],
               },
