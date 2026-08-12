@@ -13,6 +13,9 @@ const nextConfig = {
       "/api/recover-video": [
         "./node_modules/ffmpeg-static/ffmpeg*",
       ],
+      "/api/analyze-song-voice-idea": [
+        "./node_modules/ffmpeg-static/ffmpeg*",
+      ],
     },
   },
 };

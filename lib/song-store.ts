@@ -25,6 +25,7 @@ export type SongJob = {
   lyrics?: string;
   language: SongLanguage;
   vocalStyle: SongVocalStyle;
+  voiceIdeaAnalysis?: string;
   audioUri?: string;
   audioMimeType?: string;
   generatedLyrics?: string;

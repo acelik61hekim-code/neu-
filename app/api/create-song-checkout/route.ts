@@ -27,6 +27,7 @@ type SongCheckoutRequest = {
   language?: unknown;
   vocalStyle?: unknown;
   rightsAccepted?: unknown;
+  voiceIdeaAnalysis?: unknown;
 };
 
 function textValue(value: unknown, maximum: number): string {
@@ -68,9 +69,10 @@ export async function POST(request: NextRequest) {
   const style = textValue(body.style, 120);
   const mood = textValue(body.mood, 120);
   const lyrics = textValue(body.lyrics, 8_000);
+  const voiceIdeaAnalysis = textValue(body.voiceIdeaAnalysis, 2_500);
 
-  if (description.length < 10) {
-    return NextResponse.json({ error: "Bitte beschreibe deine Songidee etwas genauer." }, { status: 400 });
+  if (description.length < 10 && voiceIdeaAnalysis.length < 20) {
+    return NextResponse.json({ error: "Bitte beschreibe deine Songidee oder füge eine analysierte Sprachidee hinzu." }, { status: 400 });
   }
   if (!isSongLength(body.length) || !isSongLyricsMode(body.lyricsMode) ||
       !isSongLanguage(body.language) || !isSongVocalStyle(body.vocalStyle)) {
@@ -100,7 +102,7 @@ export async function POST(request: NextRequest) {
     renderStage: "queued",
     progressPercent: 0,
     title: title || undefined,
-    description,
+    description: description || "Song nach der analysierten Sprachidee des Kunden",
     style: style || "Modern und hochwertig produziert",
     mood: mood || "Emotional und eingängig",
     length: body.length,
@@ -108,6 +110,7 @@ export async function POST(request: NextRequest) {
     lyrics: body.lyricsMode === "custom" ? lyrics : undefined,
     language: body.language,
     vocalStyle: body.lyricsMode === "instrumental" ? "auto" : body.vocalStyle,
+    voiceIdeaAnalysis: voiceIdeaAnalysis || undefined,
     createdAt: now,
     updatedAt: now,
   });

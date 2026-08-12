@@ -57,6 +57,7 @@ export function buildSongPrompt(input: {
   lyrics?: string;
   language: SongLanguage;
   vocalStyle: SongVocalStyle;
+  voiceIdeaAnalysis?: string;
 }): string {
   const language = input.language === "de"
     ? "German"
@@ -119,6 +120,9 @@ export function buildSongPrompt(input: {
     `Customer's song idea: ${input.description.trim()}`,
     `Music style: ${musicStyle}.`,
     `Mood and energy: ${input.mood.trim() || "emotionally engaging"}.`,
+    input.voiceIdeaAnalysis?.trim()
+      ? `CUSTOMER VOICE-NOTE ANALYSIS (use as high-level musical guidance for a new original composition; never clone the voice or copy a recognizable melody):\n${input.voiceIdeaAnalysis.trim()}`
+      : "",
     vocalDirection,
     lyricsDirection,
     "Create an original composition. Do not imitate a named living artist or reproduce an existing melody, recording or copyrighted lyrics.",

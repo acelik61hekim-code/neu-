@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import Header from "@/components/Header";
 import { ArrowIcon, LockIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
@@ -32,15 +32,108 @@ export default function SongStudio({
   const [language, setLanguage] = useState<SongLanguage>("de");
   const [vocalStyle, setVocalStyle] = useState<SongVocalStyle>("auto");
   const [rightsAccepted, setRightsAccepted] = useState(false);
+  const [voiceIdeaFile, setVoiceIdeaFile] = useState<File | null>(null);
+  const [voiceIdeaUrl, setVoiceIdeaUrl] = useState<string | null>(null);
+  const [voiceIdeaAnalysis, setVoiceIdeaAnalysis] = useState("");
+  const [voiceIdeaConsent, setVoiceIdeaConsent] = useState(false);
+  const [analyzingVoiceIdea, setAnalyzingVoiceIdea] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<Blob[]>([]);
 
   const price = useMemo(() => formatEuroPrice(SONG_PRICE_CENTS[length]), [length]);
 
+  useEffect(() => {
+    return () => {
+      if (voiceIdeaUrl) URL.revokeObjectURL(voiceIdeaUrl);
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [voiceIdeaUrl]);
+
+  function setVoiceIdea(file: File) {
+    if (file.size > 12 * 1024 * 1024) {
+      setError("Die Sprachidee ist zu groß. Maximal erlaubt sind 12 MB.");
+      return;
+    }
+    setError(null);
+    if (voiceIdeaUrl) URL.revokeObjectURL(voiceIdeaUrl);
+    setVoiceIdeaFile(file);
+    setVoiceIdeaUrl(URL.createObjectURL(file));
+    setVoiceIdeaAnalysis("");
+    setVoiceIdeaConsent(false);
+  }
+
+  function removeVoiceIdea() {
+    if (voiceIdeaUrl) URL.revokeObjectURL(voiceIdeaUrl);
+    setVoiceIdeaFile(null);
+    setVoiceIdeaUrl(null);
+    setVoiceIdeaAnalysis("");
+    setVoiceIdeaConsent(false);
+    setError(null);
+  }
+
+  async function analyzeVoiceIdea(file = voiceIdeaFile): Promise<string> {
+    if (!file) throw new Error("Bitte nimm zuerst eine Sprachidee auf oder lade eine Datei hoch.");
+    if (!voiceIdeaConsent) throw new Error("Bitte bestätige zuerst die einmalige KI-Analyse deiner Aufnahme.");
+    setAnalyzingVoiceIdea(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("audio", file, file.name);
+      formData.append("consent", "true");
+      const response = await fetch("/api/analyze-song-voice-idea", { method: "POST", body: formData });
+      const data = await response.json() as { analysis?: string; error?: string };
+      if (!response.ok || !data.analysis) throw new Error(data.error || "Die Sprachidee konnte nicht analysiert werden.");
+      setVoiceIdeaAnalysis(data.analysis);
+      return data.analysis;
+    } finally {
+      setAnalyzingVoiceIdea(false);
+    }
+  }
+
+  async function startRecording() {
+    setError(null);
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("Direkte Aufnahme wird von diesem Browser nicht unterstützt. Bitte lade stattdessen eine Audiodatei hoch.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, preferredType ? { mimeType: preferredType } : undefined);
+      recordingChunksRef.current = [];
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) recordingChunksRef.current.push(event.data); };
+      recorder.onstop = () => {
+        const mimeType = recorder.mimeType || preferredType || "audio/webm";
+        const blob = new Blob(recordingChunksRef.current, { type: mimeType });
+        const extension = mimeType.includes("mp4") ? "m4a" : "webm";
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        if (blob.size >= 1_000) setVoiceIdea(new File([blob], `sprachidee.${extension}`, { type: mimeType }));
+        else setError("Die Aufnahme war zu kurz. Bitte versuche es noch einmal.");
+      };
+      recorder.start(500);
+      setRecording(true);
+    } catch {
+      setError("Das Mikrofon konnte nicht geöffnet werden. Bitte erlaube den Mikrofonzugriff oder lade eine Datei hoch.");
+    }
+  }
+
+  function stopRecording() {
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+    setRecording(false);
+  }
+
   async function checkout() {
     setError(null);
-    if (description.trim().length < 10) {
-      setError("Bitte beschreibe deine Songidee etwas genauer.");
+    if (description.trim().length < 10 && !voiceIdeaFile && !voiceIdeaAnalysis) {
+      setError("Bitte beschreibe deine Songidee oder füge eine Sprachidee hinzu.");
       return;
     }
     if (lyricsMode === "custom" && lyrics.trim().length < 10) {
@@ -54,6 +147,9 @@ export default function SongStudio({
 
     setLoading(true);
     try {
+      const analyzedVoiceIdea = voiceIdeaFile && !voiceIdeaAnalysis
+        ? await analyzeVoiceIdea(voiceIdeaFile)
+        : voiceIdeaAnalysis;
       const response = await fetch("/api/create-song-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -68,6 +164,7 @@ export default function SongStudio({
           language,
           vocalStyle,
           rightsAccepted,
+          voiceIdeaAnalysis: analyzedVoiceIdea || undefined,
         }),
       });
       const data = await response.json() as { url?: string; error?: string };
@@ -115,6 +212,41 @@ export default function SongStudio({
               <SelectField label="Stimmung" value={mood} onChange={setMood} options={moods} />
             </div>
 
+            <Field label="Sprachidee oder Melodie" hint="optional · bis 12 MB">
+              <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] p-4">
+                <p className="text-xs leading-5 text-zinc-400">
+                  Erkläre deinen Musikwunsch oder summe bzw. singe eine Melodie vor. Die KI erkennt Stimmung, Tempo, Rhythmus und Aufbau – deine Stimme wird nicht geklont.
+                </p>
+                <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+                  <button type="button" onClick={() => recording ? stopRecording() : void startRecording()} className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${recording ? "border-red-400/30 bg-red-400/10 text-red-200" : "border-white/10 bg-black/25 text-zinc-200 hover:border-fuchsia-400/30"}`}>
+                    <span className={`h-2.5 w-2.5 rounded-full ${recording ? "animate-pulse bg-red-400" : "bg-fuchsia-400"}`} />
+                    {recording ? "Aufnahme beenden" : "Sprachidee aufnehmen"}
+                  </button>
+                  <label className="flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm font-medium text-zinc-200 transition hover:border-fuchsia-400/30">
+                    Audiodatei hochladen
+                    <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,audio/webm" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) setVoiceIdea(file); event.target.value = ""; }} />
+                  </label>
+                </div>
+                {voiceIdeaFile && voiceIdeaUrl && (
+                  <div className="mt-4 rounded-xl border border-white/10 bg-black/25 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0"><p className="truncate text-xs font-medium text-zinc-200">{voiceIdeaFile.name}</p><p className="mt-1 text-[11px] text-zinc-500">{(voiceIdeaFile.size / 1024 / 1024).toFixed(1)} MB</p></div>
+                      <button type="button" onClick={removeVoiceIdea} className="text-xs text-zinc-500 transition hover:text-red-300">Entfernen</button>
+                    </div>
+                    <audio controls preload="metadata" src={voiceIdeaUrl} className="mt-3 h-10 w-full" />
+                    <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-zinc-400">
+                      <input type="checkbox" checked={voiceIdeaConsent} onChange={(event) => setVoiceIdeaConsent(event.target.checked)} className="mt-0.5 h-4 w-4 accent-fuchsia-500" />
+                      Ich stimme zu, dass diese Aufnahme einmalig durch die Musik-KI analysiert wird. Die Audiodatei wird nicht dauerhaft gespeichert und meine Stimme nicht geklont.
+                    </label>
+                    <button type="button" onClick={() => void analyzeVoiceIdea().catch((analysisError) => setError(analysisError instanceof Error ? analysisError.message : "Die Analyse ist fehlgeschlagen."))} disabled={analyzingVoiceIdea} className="mt-3 w-full rounded-lg bg-fuchsia-500/15 px-3 py-2.5 text-xs font-medium text-fuchsia-200 transition hover:bg-fuchsia-500/25 disabled:cursor-wait disabled:opacity-60">
+                      {analyzingVoiceIdea ? "Sprachidee wird verstanden ..." : voiceIdeaAnalysis ? "Erneut analysieren" : "Sprachidee analysieren"}
+                    </button>
+                  </div>
+                )}
+                {voiceIdeaAnalysis && <div className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-3"><p className="text-[11px] font-medium uppercase tracking-wider text-emerald-300">Musikwunsch erkannt</p><p className="mt-2 text-xs leading-5 text-zinc-400">{voiceIdeaAnalysis}</p></div>}
+              </div>
+            </Field>
+
             <Field label="Songlänge">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Choice active={length === "clip"} onClick={() => setLength("clip")} title="30 Sekunden" description="Hook, Loop oder Vorschau" badge="2,99 €" />
@@ -160,6 +292,7 @@ export default function SongStudio({
                 />
               </div>
             )}
+
           </section>
 
           <aside className="h-fit rounded-3xl border border-fuchsia-400/15 bg-gradient-to-b from-fuchsia-500/[0.09] to-violet-500/[0.04] p-6 shadow-2xl shadow-fuchsia-950/20 lg:sticky lg:top-6">
@@ -184,8 +317,8 @@ export default function SongStudio({
               <span className="text-3xl font-semibold tracking-tight">{price}</span>
             </div>
             {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs leading-5 text-red-200">{error}</p>}
-            <button onClick={() => void checkout()} disabled={loading} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-950/40 transition hover:from-fuchsia-500 hover:to-violet-500 disabled:cursor-wait disabled:opacity-60">
-              {loading ? "Checkout wird geöffnet ..." : `Song für ${price} erstellen`}
+            <button onClick={() => void checkout()} disabled={loading || analyzingVoiceIdea || recording} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-950/40 transition hover:from-fuchsia-500 hover:to-violet-500 disabled:cursor-wait disabled:opacity-60">
+              {analyzingVoiceIdea ? "Sprachidee wird analysiert ..." : loading ? "Checkout wird geöffnet ..." : `Song für ${price} erstellen`}
               {!loading && <ArrowIcon />}
             </button>
             <p className="mt-4 flex items-center justify-center gap-2 text-[11px] text-zinc-500"><LockIcon /> Erst bezahlen, dann wird der Song erzeugt</p>
