@@ -10,6 +10,9 @@ const nextConfig = {
       "/.well-known/workflow/v1/step": [
         "./node_modules/ffmpeg-static/ffmpeg*",
       ],
+      "/api/recover-video": [
+        "./node_modules/ffmpeg-static/ffmpeg*",
+      ],
     },
   },
 };
