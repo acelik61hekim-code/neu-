@@ -1,4 +1,4 @@
-export const SONG_LENGTHS = ["clip", "full"] as const;
+export const SONG_LENGTHS = ["clip", "full2", "full3", "full4"] as const;
 export const SONG_LYRICS_MODES = ["instrumental", "ai", "custom"] as const;
 export const SONG_LANGUAGES = ["de", "en", "auto"] as const;
 export const SONG_VOCAL_STYLES = ["auto", "female", "male", "duet", "choir"] as const;
@@ -10,7 +10,9 @@ export type SongVocalStyle = (typeof SONG_VOCAL_STYLES)[number];
 
 export const SONG_PRICE_CENTS: Record<SongLength, number> = {
   clip: 299,
-  full: 799,
+  full2: 799,
+  full3: 999,
+  full4: 1199,
 };
 
 export function isSongLength(value: unknown): value is SongLength {
@@ -30,11 +32,19 @@ export function isSongVocalStyle(value: unknown): value is SongVocalStyle {
 }
 
 export function songLengthLabel(value: SongLength): string {
-  return value === "clip" ? "30-Sekunden-Song" : "Vollständiger Song";
+  if (value === "clip") return "30-Sekunden-Song";
+  return `${songDurationMinutes(value)}-Minuten-Song`;
 }
 
 export function songModel(value: SongLength): string {
   return value === "clip" ? "lyria-3-clip-preview" : "lyria-3-pro-preview";
+}
+
+export function songDurationMinutes(value: SongLength): 0.5 | 2 | 3 | 4 {
+  if (value === "clip") return 0.5;
+  if (value === "full2") return 2;
+  if (value === "full3") return 3;
+  return 4;
 }
 
 export function buildSongPrompt(input: {
@@ -54,9 +64,16 @@ export function buildSongPrompt(input: {
       ? "English"
       : "the language that best matches the customer's description and lyrics";
 
+  const durationMinutes = songDurationMinutes(input.length);
   const duration = input.length === "clip"
     ? "Create an exactly 30-second polished music clip."
-    : "Create a complete song of about 2 minutes with a clear intro, verses, chorus, bridge and outro.";
+    : [
+        `Create a complete song lasting approximately ${durationMinutes} minutes (${durationMinutes * 60} seconds).`,
+        "This must be a real full song, not a short clip or teaser.",
+        durationMinutes >= 3
+          ? "Use an intro, at least three verses, recurring choruses, a bridge, an instrumental passage and a proper outro so the requested duration is filled naturally."
+          : "Use an intro, at least two verses, recurring choruses, a bridge and a proper outro so the requested duration is filled naturally.",
+      ].join(" ");
 
   const vocalDirection = input.lyricsMode === "instrumental"
     ? "Instrumental only. No singing, spoken words, chants or vocal samples."

@@ -21,7 +21,7 @@ export default function SongsPage() {
   const [description, setDescription] = useState("");
   const [style, setStyle] = useState("Pop");
   const [mood, setMood] = useState("Energiegeladen");
-  const [length, setLength] = useState<SongLength>("full");
+  const [length, setLength] = useState<SongLength>("full3");
   const [lyricsMode, setLyricsMode] = useState<SongLyricsMode>("ai");
   const [lyrics, setLyrics] = useState("");
   const [language, setLanguage] = useState<SongLanguage>("de");
@@ -112,7 +112,9 @@ export default function SongsPage() {
             <Field label="Songlänge">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Choice active={length === "clip"} onClick={() => setLength("clip")} title="30 Sekunden" description="Hook, Loop oder Vorschau" badge="2,99 €" />
-                <Choice active={length === "full"} onClick={() => setLength("full")} title="Vollständiger Song" description="Ca. 2 Min. mit Songstruktur" badge="7,99 €" recommended />
+                <Choice active={length === "full2"} onClick={() => setLength("full2")} title="2 Minuten" description="Vollsong mit Strophen und Refrain" badge="7,99 €" />
+                <Choice active={length === "full3"} onClick={() => setLength("full3")} title="3 Minuten" description="Vollsong mit Bridge und Outro" badge="9,99 €" recommended />
+                <Choice active={false} onClick={() => undefined} title="4 Minuten" description="Qualitätstest läuft – noch nicht buchbar" badge="Demnächst" disabled />
               </div>
             </Field>
 
@@ -159,7 +161,7 @@ export default function SongsPage() {
               <MusicIcon />
             </div>
             <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-fuchsia-300">Dein KI-Song</p>
-            <h2 className="mt-2 text-2xl font-semibold">{length === "clip" ? "30-Sekunden-Song" : "Vollständiger Song"}</h2>
+            <h2 className="mt-2 text-2xl font-semibold">{length === "clip" ? "30-Sekunden-Song" : `${length === "full2" ? 2 : length === "full3" ? 3 : 4}-Minuten-Vollsong`}</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
               {lyricsMode === "instrumental" ? "Originale Instrumentalmusik ohne Gesang." : lyricsMode === "custom" ? "Komponiert und gesungen mit deinen Lyrics." : "Komposition, Gesang und neue Lyrics aus deiner Idee."}
             </p>
@@ -207,8 +209,8 @@ function SelectField({ label, value, onChange, options, labels = {} }: { label: 
   return <Field label={label}><select value={value} onChange={(event) => onChange(event.target.value)} className={inputClass}>{options.map((option) => <option key={option} value={option} className="bg-zinc-950">{labels[option] || option}</option>)}</select></Field>;
 }
 
-function Choice({ active, onClick, title, description, badge, recommended, compact }: { active: boolean; onClick: () => void; title: string; description: string; badge?: string; recommended?: boolean; compact?: boolean }) {
-  return <button type="button" onClick={onClick} className={`relative rounded-2xl border text-left transition ${compact ? "p-3.5" : "p-4"} ${active ? "border-fuchsia-400/40 bg-fuchsia-400/10 shadow-lg shadow-fuchsia-950/20" : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"}`}>{recommended && <span className="absolute right-3 top-3 rounded-full bg-fuchsia-400/15 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-fuchsia-200">Beliebt</span>}<div className="flex items-center justify-between gap-3"><span className={`text-sm font-medium ${active ? "text-white" : "text-zinc-300"}`}>{title}</span>{badge && <span className="text-xs font-semibold text-fuchsia-300">{badge}</span>}</div><p className="mt-1 text-[11px] leading-5 text-zinc-500">{description}</p></button>;
+function Choice({ active, onClick, title, description, badge, recommended, compact, disabled }: { active: boolean; onClick: () => void; title: string; description: string; badge?: string; recommended?: boolean; compact?: boolean; disabled?: boolean }) {
+  return <button type="button" onClick={onClick} disabled={disabled} className={`relative rounded-2xl border text-left transition ${compact ? "p-3.5" : "p-4"} ${disabled ? "cursor-not-allowed border-white/5 bg-black/10 opacity-45" : active ? "border-fuchsia-400/40 bg-fuchsia-400/10 shadow-lg shadow-fuchsia-950/20" : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"}`}>{recommended && <span className="absolute right-3 top-3 rounded-full bg-fuchsia-400/15 px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-fuchsia-200">Beliebt</span>}<div className="flex items-center justify-between gap-3"><span className={`text-sm font-medium ${active ? "text-white" : "text-zinc-300"}`}>{title}</span>{badge && <span className="text-xs font-semibold text-fuchsia-300">{badge}</span>}</div><p className="mt-1 text-[11px] leading-5 text-zinc-500">{description}</p></button>;
 }
 
 function Benefit({ children }: { children: React.ReactNode }) {

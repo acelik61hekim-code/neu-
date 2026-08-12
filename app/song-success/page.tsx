@@ -12,7 +12,7 @@ type SongStatus = {
   renderStage?: "queued" | "generating" | "uploading" | "completed" | "failed";
   progressPercent?: number;
   title?: string;
-  length?: "clip" | "full";
+  length?: "clip" | "full2" | "full3" | "full4";
   lyricsMode?: "instrumental" | "ai" | "custom";
   generatedLyrics?: string;
   audioUrl?: string;
@@ -123,7 +123,7 @@ function Page({ status, connectionError }: { status: SongStatus; connectionError
           <div className="p-5 sm:p-7">
             {working && <div><div className="h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 transition-[width] duration-700" style={{ width: `${Math.max(progress, 3)}%` }} /></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><Step complete={status.paymentStatus === "paid"} active={status.paymentStatus !== "paid"} title="Zahlung" text="Sicher bestätigt" /><Step complete={progress >= 85} active={progress < 85} title="Songerstellung" text="Komposition und Mix" /><Step complete={done} active={progress >= 85} title="MP3" text="Download vorbereiten" /></div>{connectionError && <p className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/5 px-4 py-3 text-xs text-amber-200/80">{connectionError} Dein Auftrag läuft unabhängig davon weiter.</p>}</div>}
 
-            {done && status.audioUrl && <div className="text-center"><div className="mx-auto max-w-2xl rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/5 p-6"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-2xl shadow-fuchsia-950/50"><MusicIcon className="h-8 w-8" /></div><h3 className="mt-5 text-xl font-semibold">{status.title || "Dein KI-Song"}</h3><p className="mt-1 text-xs text-zinc-500">{status.length === "clip" ? "30-Sekunden-Song" : "Vollständiger Song"} · MP3</p><audio className="mt-6 w-full" controls preload="metadata" src={status.audioUrl} /><a className="mt-5 inline-flex items-center justify-center rounded-xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold transition hover:bg-fuchsia-500" href={`${status.audioUrl}&download=1`}>MP3 herunterladen</a></div>{status.generatedLyrics && status.lyricsMode !== "instrumental" && <details className="mx-auto mt-6 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 text-left"><summary className="cursor-pointer text-sm font-medium text-fuchsia-200">Lyrics und Songstruktur anzeigen</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-zinc-400">{status.generatedLyrics}</pre></details>}</div>}
+            {done && status.audioUrl && <div className="text-center"><div className="mx-auto max-w-2xl rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/5 p-6"><div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-2xl shadow-fuchsia-950/50"><MusicIcon className="h-8 w-8" /></div><h3 className="mt-5 text-xl font-semibold">{status.title || "Dein KI-Song"}</h3><p className="mt-1 text-xs text-zinc-500">{songLengthText(status.length)} · MP3</p><audio className="mt-6 w-full" controls preload="metadata" src={status.audioUrl} /><a className="mt-5 inline-flex items-center justify-center rounded-xl bg-fuchsia-600 px-5 py-3 text-sm font-semibold transition hover:bg-fuchsia-500" href={`${status.audioUrl}&download=1`}>MP3 herunterladen</a></div>{status.generatedLyrics && status.lyricsMode !== "instrumental" && <details className="mx-auto mt-6 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 text-left"><summary className="cursor-pointer text-sm font-medium text-fuchsia-200">Lyrics und Songstruktur anzeigen</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-zinc-400">{status.generatedLyrics}</pre></details>}</div>}
 
             {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p></div></div></div>}
 
@@ -137,4 +137,12 @@ function Page({ status, connectionError }: { status: SongStatus; connectionError
 
 function Step({ active, complete, title, text }: { active: boolean; complete: boolean; title: string; text: string }) {
   return <div className={`rounded-2xl border p-4 ${active || complete ? "border-fuchsia-400/20 bg-fuchsia-400/[0.06]" : "border-white/10 bg-white/[0.02]"}`}><div className="flex items-center gap-2"><span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] ${complete ? "bg-emerald-400/15 text-emerald-300" : active ? "bg-fuchsia-400/15 text-fuchsia-300" : "bg-white/5 text-zinc-600"}`}>{complete ? "✓" : active ? <SparklesIcon /> : "·"}</span><p className="text-sm font-medium">{title}</p></div><p className="mt-2 text-xs text-zinc-500">{text}</p></div>;
+}
+
+function songLengthText(length: SongStatus["length"]): string {
+  if (length === "clip") return "30-Sekunden-Song";
+  if (length === "full2") return "2-Minuten-Vollsong";
+  if (length === "full3") return "3-Minuten-Vollsong";
+  if (length === "full4") return "4-Minuten-Vollsong";
+  return "Vollständiger Song";
 }

@@ -76,6 +76,12 @@ export async function POST(request: NextRequest) {
       !isSongLanguage(body.language) || !isSongVocalStyle(body.vocalStyle)) {
     return NextResponse.json({ error: "Bitte prüfe die Song-Einstellungen." }, { status: 400 });
   }
+  if (body.length === "full4") {
+    return NextResponse.json(
+      { error: "Die 4-Minuten-Version befindet sich noch in der Qualitätsprüfung. Es wurde nichts berechnet." },
+      { status: 409 },
+    );
+  }
   if (body.lyricsMode === "custom" && lyrics.length < 10) {
     return NextResponse.json({ error: "Bitte gib deine Lyrics ein." }, { status: 400 });
   }
