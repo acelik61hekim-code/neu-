@@ -26,6 +26,7 @@ export type SongJob = {
   language: SongLanguage;
   vocalStyle: SongVocalStyle;
   voiceIdeaAnalysis?: string;
+  recoveryAttempts?: number;
   audioUri?: string;
   audioMimeType?: string;
   generatedLyrics?: string;
@@ -120,5 +121,13 @@ export const songStore = {
       return undefined;
     }
     return parseWorkflowState(stored.value);
+  },
+
+  async clearWorkflowStart(jobId: string): Promise<void> {
+    if (redis) {
+      await redis.del(workflowKey(jobId));
+      return;
+    }
+    memoryWorkflowStates.delete(jobId);
   },
 };

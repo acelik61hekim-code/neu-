@@ -33,9 +33,15 @@ async function failSongStep(jobId: string, message: string): Promise<void> {
 }
 
 function readableError(error: unknown): string {
-  const message = error instanceof Error ? error.message : "Die Songerstellung wurde unterbrochen.";
-  if (/safety|blocked|copyright|artist/i.test(message)) {
-    return "Die Anfrage wurde vom Musikdienst aus Sicherheits- oder Urheberrechtsgründen abgelehnt. Bitte beschreibe einen eigenen Stil ohne Namen bekannter Künstler oder geschützte Songtexte.";
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === "object" && error !== null && "message" in error && typeof (error as { message?: unknown }).message === "string"
+      ? (error as { message: string }).message
+      : typeof error === "string"
+        ? error
+        : "Die Songerstellung wurde unterbrochen.";
+  if (/safety|blocked|sensitive|prohibited|copyright|artist|\b400\b/i.test(message)) {
+    return "Der Musikdienst hat einzelne Wörter der Songidee oder Lyrics automatisch abgelehnt. Bitte formuliere mögliche doppeldeutige oder sensible Begriffe neutraler und verwende keine Künstlernamen oder bestehenden Liedtexte.";
   }
   return message.slice(0, 600);
 }

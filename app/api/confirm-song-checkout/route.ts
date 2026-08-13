@@ -53,6 +53,23 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const canRecoverAiLyrics = job.paymentStatus === "paid" &&
+      job.stripeSessionId === sessionId &&
+      job.status === "error" &&
+      job.lyricsMode === "ai" &&
+      (job.recoveryAttempts ?? 0) < 1;
+    if (canRecoverAiLyrics) {
+      await songStore.clearWorkflowStart(jobId);
+      await songStore.set(jobId, {
+        ...job,
+        status: "processing",
+        renderStage: "queued",
+        progressPercent: 5,
+        recoveryAttempts: (job.recoveryAttempts ?? 0) + 1,
+        errorMessage: undefined,
+      });
+    }
+
     const existing = await songStore.getWorkflowStartState(jobId);
     if (existing?.status === "started") {
       return NextResponse.json({ confirmed: true, queued: true, workflowRunId: existing.workflowRunId });

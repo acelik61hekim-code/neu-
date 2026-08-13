@@ -112,7 +112,11 @@ function targetLyricsWords(length: SongLength): number {
   return 220;
 }
 
-async function generatePlannedLyrics(ai: GoogleGenAI, job: Awaited<ReturnType<typeof songStore.get>>): Promise<string | undefined> {
+async function generatePlannedLyrics(
+  ai: GoogleGenAI,
+  job: Awaited<ReturnType<typeof songStore.get>>,
+  safetyRewrite = false,
+): Promise<string | undefined> {
   if (!job || job.lyricsMode !== "ai") return undefined;
   const language = lyricLanguage(job.language);
   const response = await ai.interactions.create({
@@ -126,7 +130,13 @@ async function generatePlannedLyrics(ai: GoogleGenAI, job: Awaited<ReturnType<ty
       "Output only the lyrics with clear section tags: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Final Chorus], [Outro].",
       "Every verse must contain new lines that advance the story. The chorus must be short and memorable and may appear twice, but do not duplicate a verse.",
       "Use natural grammar, meaningful imagery, singable line lengths and correct spelling. Do not invent words, stretch spelling or include production notes.",
+      safetyRewrite
+        ? "A previous music-generation attempt was rejected by an automated safety filter. Rewrite the lyrics with clearly harmless, family-friendly wording. Avoid graphic violence, weapons, drugs, self-harm, sexual content, insults, threats, crime instructions and ambiguous slang. Preserve the general emotion and topic without risky wording."
+        : "Keep all wording suitable for a general audience so a music-generation model can perform it safely.",
       job.language === "tr" ? "Doğal ve doğru Türkçe kullan. Her dize anlamlı olsun; uydurma kelime ve başka dil kullanma." : "",
+      safetyRewrite && job.language === "tr"
+        ? "Sözleri tamamen güvenli ve aile dostu ifadelerle yeniden yaz. Şiddet, silah, uyuşturucu, tehdit, hakaret, kendine zarar verme, cinsel içerik ve belirsiz argo kullanma."
+        : "",
     ].filter(Boolean).join("\n\n"),
   });
   const lyrics = response.output_text
@@ -164,10 +174,26 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
     const generationInput = plannedLyrics
       ? { ...job, lyricsMode: "custom" as const, lyrics: plannedLyrics }
       : job;
-    interaction = await ai.interactions.create({
-      model: songModel(job.length),
-      input: buildSongPrompt(generationInput),
-    });
+    try {
+      interaction = await ai.interactions.create({
+        model: songModel(job.length),
+        input: buildSongPrompt(generationInput),
+      });
+    } catch (error) {
+      if (!permanentProviderError(error) || job.lyricsMode !== "ai") throw error;
+      plannedLyrics = await generatePlannedLyrics(ai, job, true);
+      interaction = await ai.interactions.create({
+        model: songModel(job.length),
+        input: buildSongPrompt({
+          ...job,
+          title: undefined,
+          description: `A new original ${job.style} song with a ${job.mood} mood, based only on the safe rewritten lyrics below.`,
+          lyricsMode: "custom",
+          lyrics: plannedLyrics,
+          voiceIdeaAnalysis: undefined,
+        }),
+      });
+    }
   } catch (error) {
     if (permanentProviderError(error)) {
       throw new FatalError(error instanceof Error ? error.message : "Der Musikdienst hat die Songanfrage abgelehnt.");
