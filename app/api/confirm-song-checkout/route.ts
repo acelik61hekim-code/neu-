@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
       job.stripeSessionId === sessionId &&
       job.status === "error" &&
       job.lyricsMode === "ai" &&
-      (job.recoveryAttempts ?? 0) < 1;
+      (job.recoveryAttempts ?? 0) < 2;
     if (canRecoverAiLyrics) {
       await songStore.clearWorkflowStart(jobId);
       await songStore.set(jobId, {

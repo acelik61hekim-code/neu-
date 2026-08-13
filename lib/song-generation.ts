@@ -112,6 +112,45 @@ function targetLyricsWords(length: SongLength): number {
   return 220;
 }
 
+function safeFallbackGenre(style: string): string {
+  const normalized = style.toLocaleLowerCase("de-DE");
+  if (normalized.includes("rap") || normalized.includes("hip-hop")) {
+    return "modern melodic hip-hop and rap with crisp drums, warm bass, clear rhythmic verses and a memorable original hook";
+  }
+  if (normalized.includes("arabesk") || normalized.includes("fantezi")) {
+    return "original Turkish arabesk-pop with expressive vocals, bağlama, warm strings and restrained percussion";
+  }
+  if (normalized.includes("r&b")) return "modern melodic R&B with a warm groove and expressive vocals";
+  if (normalized.includes("afro")) return "modern Afrobeats with a warm danceable groove and melodic vocals";
+  if (normalized.includes("rock")) return "modern melodic rock with organic drums, guitars and expressive vocals";
+  if (normalized.includes("elektr")) return "modern electronic pop with polished synthesizers and a memorable vocal hook";
+  if (normalized.includes("akust")) return "warm acoustic pop with guitar, piano and intimate vocals";
+  return "modern polished pop with a coherent melody, natural vocals and a memorable original hook";
+}
+
+function safeFallbackPrompt(job: NonNullable<Awaited<ReturnType<typeof songStore.get>>>): string {
+  const durationMinutes = songDurationMinutes(job.length);
+  const language = lyricLanguage(job.language);
+  const singer = job.vocalStyle === "female"
+    ? "one consistent natural female lead singer"
+    : job.vocalStyle === "male"
+      ? "one consistent natural male lead singer"
+      : job.vocalStyle === "duet"
+        ? "a consistent female and male duet"
+        : job.vocalStyle === "choir"
+          ? "one natural lead singer with a choir in the choruses"
+          : "one consistent natural lead singer";
+
+  return [
+    `Create a complete original ${durationMinutes}-minute song in ${safeFallbackGenre(job.style)}.`,
+    `Use ${singer}. Write all lyrics entirely in ${language}.`,
+    "Write fresh, harmless, positive, family-friendly lyrics about perseverance, self-belief and a hopeful new beginning.",
+    "Do not refer to real people, performers, brands or existing works. Give the composition its own melody, arrangement and vocal identity.",
+    "Use this structure: [Intro] -> [Verse 1] -> [Chorus] -> [Verse 2 with completely new lines] -> [Bridge] -> [Final Chorus] -> [Outro].",
+    "Keep the singer, language, tempo and genre consistent. Deliver a polished 44.1 kHz stereo mix with clear diction and a clean ending.",
+  ].join("\n\n");
+}
+
 async function generatePlannedLyrics(
   ai: GoogleGenAI,
   job: Awaited<ReturnType<typeof songStore.get>>,
@@ -182,17 +221,26 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
     } catch (error) {
       if (!permanentProviderError(error) || job.lyricsMode !== "ai") throw error;
       plannedLyrics = await generatePlannedLyrics(ai, job, true);
-      interaction = await ai.interactions.create({
-        model: songModel(job.length),
-        input: buildSongPrompt({
-          ...job,
-          title: undefined,
-          description: `A new original ${job.style} song with a ${job.mood} mood, based only on the safe rewritten lyrics below.`,
-          lyricsMode: "custom",
-          lyrics: plannedLyrics,
-          voiceIdeaAnalysis: undefined,
-        }),
-      });
+      try {
+        interaction = await ai.interactions.create({
+          model: songModel(job.length),
+          input: buildSongPrompt({
+            ...job,
+            title: undefined,
+            description: `A new original ${job.style} song with a ${job.mood} mood, based only on the safe rewritten lyrics below.`,
+            lyricsMode: "custom",
+            lyrics: plannedLyrics,
+            voiceIdeaAnalysis: undefined,
+          }),
+        });
+      } catch (safeLyricsError) {
+        if (!permanentProviderError(safeLyricsError)) throw safeLyricsError;
+        plannedLyrics = undefined;
+        interaction = await ai.interactions.create({
+          model: songModel(job.length),
+          input: safeFallbackPrompt(job),
+        });
+      }
     }
   } catch (error) {
     if (permanentProviderError(error)) {
