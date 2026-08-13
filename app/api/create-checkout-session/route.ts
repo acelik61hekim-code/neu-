@@ -6,7 +6,11 @@ import {
 import { nanoid } from "nanoid";
 
 import { stripe } from "../../../lib/stripe";
-import { getVideoPriceCents } from "../../../lib/pricing";
+import {
+  CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
+  getVideoPriceCents,
+  isReleasedVideoDuration,
+} from "../../../lib/pricing";
 import {
   isVideoAudioStyle,
   isVideoSpokenLanguage,
@@ -87,11 +91,6 @@ function missingProductionServices(): string[] {
     missing.push("Stripe Webhook");
   }
   return missing;
-}
-
-function configuredMaxDurationSeconds(): number {
-  const parsed = Number(process.env.VEO_WORKFLOW_MAX_DURATION_SECONDS);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0;
 }
 
 function isVideoDurationSeconds(
@@ -324,12 +323,11 @@ export async function POST(
       body.format,
     );
 
-  const maxDurationSeconds = configuredMaxDurationSeconds();
-  if (targetDurationSeconds > maxDurationSeconds) {
+  if (!isReleasedVideoDuration(targetDurationSeconds)) {
     return NextResponse.json(
       {
         error:
-          `Diese Videolänge befindet sich noch in der Qualitätsprüfung. Aktuell sind maximal ${maxDurationSeconds || 0} Sekunden freigeschaltet. Es wurde nichts berechnet.`,
+          `Diese Videolänge befindet sich noch in der Qualitätsprüfung. Aktuell sind maximal ${CURRENTLY_RELEASED_MAX_DURATION_SECONDS} Sekunden freigeschaltet. Es wurde nichts berechnet.`,
       },
       { status: 409 },
     );

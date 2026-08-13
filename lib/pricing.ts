@@ -10,7 +10,13 @@ export const VIDEO_PRICE_CENTS = {
   300: 17999,
 } as const satisfies Record<VideoDurationSeconds, number>;
 
-export const CURRENTLY_RELEASED_MAX_DURATION_SECONDS: VideoDurationSeconds = 30;
+export const CURRENTLY_RELEASED_MAX_DURATION_SECONDS: VideoDurationSeconds = 120;
+
+export function isReleasedVideoDuration(
+  duration: VideoDurationSeconds,
+): boolean {
+  return duration <= CURRENTLY_RELEASED_MAX_DURATION_SECONDS;
+}
 
 export function getVideoPriceCents(duration: VideoDurationSeconds): number {
   return VIDEO_PRICE_CENTS[duration];

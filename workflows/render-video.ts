@@ -1,4 +1,5 @@
 import { sleep } from "workflow";
+import { CURRENTLY_RELEASED_MAX_DURATION_SECONDS } from "@/lib/pricing";
 import type { VideoAspectRatio, VideoDurationSeconds } from "@/types/story";
 
 type PlannedSegment = {
@@ -499,12 +500,8 @@ function assertProviderRenderAllowed(duration: number | undefined): void {
   if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") {
     throw new Error("VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.");
   }
-  const maxDuration = Number(process.env.VEO_WORKFLOW_MAX_DURATION_SECONDS || "0");
-  if (!Number.isInteger(maxDuration) || maxDuration < 8) {
-    throw new Error("VEO_WORKFLOW_MAX_DURATION_SECONDS ist nicht sicher konfiguriert.");
-  }
-  if (!duration || duration > maxDuration) {
-    throw new Error(`Die Videodauer ${duration || "unbekannt"}s ueberschreitet die Sicherheitsgrenze von ${maxDuration}s.`);
+  if (!duration || duration > CURRENTLY_RELEASED_MAX_DURATION_SECONDS) {
+    throw new Error(`Die Videodauer ${duration || "unbekannt"}s ueberschreitet die freigegebene Grenze von ${CURRENTLY_RELEASED_MAX_DURATION_SECONDS}s.`);
   }
 }
 

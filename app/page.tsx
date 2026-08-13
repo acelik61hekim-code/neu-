@@ -10,9 +10,9 @@ import SongStudio from "@/components/SongStudio";
 import ImageStudio from "@/components/ImageStudio";
 import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
 import {
-  CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
   formatEuroPrice,
   getVideoPriceCents,
+  isReleasedVideoDuration,
 } from "@/lib/pricing";
 
 import type {
@@ -762,7 +762,7 @@ export default function HomePage() {
                 {VIDEO_DURATION_OPTIONS.map(
                   (option) => {
                     const released =
-                      option.value <= CURRENTLY_RELEASED_MAX_DURATION_SECONDS;
+                      isReleasedVideoDuration(option.value);
 
                     return (
                       <button
