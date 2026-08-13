@@ -569,10 +569,11 @@ export async function POST(
     );
   }
 
-  if (
-    event.type !==
-    "checkout.session.completed"
-  ) {
+  const isSuccessfulCheckoutEvent =
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded";
+
+  if (!isSuccessfulCheckoutEvent) {
     return NextResponse.json({
       received:
         true,
