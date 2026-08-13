@@ -112,6 +112,18 @@ function targetLyricsWords(length: SongLength): number {
   return 220;
 }
 
+function streetRapLyricsWords(length: SongLength): number {
+  if (length === "clip") return 70;
+  if (length === "full2") return 190;
+  if (length === "full3") return 275;
+  return 350;
+}
+
+function isGermanStreetRap(style: string): boolean {
+  const normalized = style.trim().toLocaleLowerCase("de-DE");
+  return normalized.includes("deutschrap") || normalized.includes("straßenrap");
+}
+
 function safeFallbackGenre(style: string): string {
   const normalized = style.toLocaleLowerCase("de-DE");
   if (normalized.includes("deutschrap") || normalized.includes("straßenrap")) {
@@ -133,7 +145,7 @@ function safeFallbackGenre(style: string): string {
 
 function safeFallbackPrompt(job: NonNullable<Awaited<ReturnType<typeof songStore.get>>>): string {
   const durationMinutes = songDurationMinutes(job.length);
-  const language = lyricLanguage(job.language);
+  const language = isGermanStreetRap(job.style) ? "German" : lyricLanguage(job.language);
   const singer = job.vocalStyle === "female"
     ? "one consistent natural female lead singer"
     : job.vocalStyle === "male"
@@ -147,11 +159,49 @@ function safeFallbackPrompt(job: NonNullable<Awaited<ReturnType<typeof songStore
   return [
     `Create a complete original ${durationMinutes}-minute song in ${safeFallbackGenre(job.style)}.`,
     `Use ${singer}. Write all lyrics entirely in ${language}.`,
-    "Write fresh, harmless, positive, family-friendly lyrics about perseverance, self-belief and a hopeful new beginning.",
+    isGermanStreetRap(job.style)
+      ? "Write grammatically correct, natural German rap lyrics with two distinct 14-to-16-bar verses, a coherent story and a concise four-line rhythmic hook. Use specific original images, clean internal rhymes and meaningful punchlines. Do not use pseudo-street slang, filler adlibs, status-symbol lists or the stock words Bruda, Para, Yallah, Lan, Baba, Benz, AMG, Block, Kiez, Beton, Blaulicht, Schlamm, Herz aus Stein, ganz unten or nach oben."
+      : "Write fresh, harmless, positive, family-friendly lyrics about perseverance, self-belief and a hopeful new beginning.",
     "Do not refer to real people, performers, brands or existing works. Give the composition its own melody, arrangement and vocal identity.",
     "Use this structure: [Intro] -> [Verse 1] -> [Chorus] -> [Verse 2 with completely new lines] -> [Bridge] -> [Final Chorus] -> [Outro].",
     "Keep the singer, language, tempo and genre consistent. Deliver a polished 44.1 kHz stereo mix with clear diction and a clean ending.",
   ].join("\n\n");
+}
+
+async function polishGermanStreetRapLyrics(
+  ai: GoogleGenAI,
+  job: NonNullable<Awaited<ReturnType<typeof songStore.get>>>,
+  draft: string,
+  safetyRewrite: boolean,
+): Promise<string> {
+  const response = await ai.interactions.create({
+    model: "gemini-3.6-flash",
+    input: [
+      "Du bist ein professioneller deutschsprachiger Rap-Texter und ein sehr strenger Lektor.",
+      "Überarbeite den folgenden Entwurf vollständig zu einem eigenständigen, modernen Deutschrap-Text. Gib ausschließlich den fertigen Songtext aus.",
+      `Thema und Kundenwunsch: ${job.description}`,
+      `Stimmung: ${job.mood}. Gewünschte Länge: ${songDurationMinutes(job.length)} Minuten. Zielumfang: ungefähr ${streetRapLyricsWords(job.length)} Wörter.`,
+      job.title ? `Arbeitstitel: ${job.title}.` : "",
+      "Schreibe zwei inhaltlich unterschiedliche Strophen mit jeweils 14 bis 16 kompakten Bars. Jede Strophe muss die Geschichte weiterführen. Schreibe einen kurzen, druckvollen Refrain mit 4 Zeilen, der beim zweiten Mal exakt wiederholt werden darf. Ergänze eine kurze Bridge und ein knappes Outro.",
+      "Jede Zeile muss wie natürlich gesprochenes, grammatikalisch korrektes Deutsch klingen und rhythmisch rappbar sein. Verwende saubere Paarreime, Binnenreime und gelegentliche mehrsilbige Reime, aber verdrehe niemals die Grammatik nur für einen Reim.",
+      "Nutze konkrete, neue Bilder und Details aus dem Kundenwunsch. Schreibe eine nachvollziehbare Perspektive und einen roten Faden statt einer beliebigen Aneinanderreihung von Statussymbolen.",
+      "Verboten sind automatisch eingefügte Klischees und Füllwörter wie Bruda, Para, Yallah, Lan, Baba, Benz, AMG, Block, Kiez, Beton, Blaulicht, Schlamm, Herz aus Stein, ganz unten und nach oben – außer der Kunde hat den jeweiligen Begriff ausdrücklich verlangt.",
+      "Keine sinnlosen Adlibs, keine erfundene Migrantensprache, keine falschen Artikel oder Fälle, keine unfertigen Sätze, keine austauschbaren Motivationssprüche und keine Reimwörter ohne inhaltlichen Zusammenhang.",
+      "Imitiere weder Text, Stimme, Reimschema noch typische Formulierungen eines bekannten Rappers. Erfinde einen eigenen glaubwürdigen Stil.",
+      safetyRewrite
+        ? "Halte den Text vollständig jugendfrei: keine Gewaltfantasien, Drohungen, Drogenverherrlichung, Hassrede, sexuellen Inhalte oder Anleitungen zu Straftaten. Die Haltung darf trotzdem direkt und selbstbewusst bleiben."
+        : "Keine grafische Gewalt, Drohungen, Hassrede, Drogenverherrlichung oder Anleitungen zu Straftaten.",
+      "Nutze ausschließlich diese Abschnittsüberschriften: [Intro], [Verse 1], [Chorus], [Verse 2], [Bridge], [Final Chorus], [Outro]. Keine Zeitangaben und keine Produktionsanweisungen.",
+      `ENTWURF:\n${draft}`,
+    ].filter(Boolean).join("\n\n"),
+  });
+  const polished = response.output_text
+    ?.trim()
+    .replace(/^```(?:text)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (!polished || polished.length < 160) throw new Error("Der Deutschrap-Text konnte nicht vollständig überarbeitet werden.");
+  return polished.slice(0, 12_000);
 }
 
 async function generatePlannedLyrics(
@@ -160,15 +210,17 @@ async function generatePlannedLyrics(
   safetyRewrite = false,
 ): Promise<string | undefined> {
   if (!job || job.lyricsMode !== "ai") return undefined;
-  const language = lyricLanguage(job.language);
-  const streetRapDirection = job.style.trim() === "Deutschrap / Straßenrap"
-    ? "Write authentic modern German street-rap bars with tight rhythm, internal and multisyllabic rhymes, compact punchlines and a forceful chant-like hook. Use natural contemporary German phrasing. Focus on ambition, setbacks, loyalty, pressure, self-belief and rising above hardship. Keep the attitude raw and confident without graphic violence, threats, hate, drug promotion, crime instructions, real gang references or imitation of a known rapper. Do not turn it into pop, Schlager or a sentimental sung ballad."
+  const language = isGermanStreetRap(job.style) ? "German" : lyricLanguage(job.language);
+  const germanStreetRap = isGermanStreetRap(job.style);
+  const requestedWords = germanStreetRap ? streetRapLyricsWords(job.length) : targetLyricsWords(job.length);
+  const streetRapDirection = germanStreetRap
+    ? "Draft authentic modern German rap with a coherent topic-specific story, 14 to 16 compact bars per verse, natural grammar, internal and multisyllabic rhymes and a concise four-line hook. Never add generic pseudo-street slang, status symbols or filler adlibs unless explicitly requested by the customer. Avoid the stock words Bruda, Para, Yallah, Lan, Baba, Benz, AMG, Block, Kiez, Beton, Blaulicht and Herz aus Stein. Do not imitate a known rapper."
     : "";
   const response = await ai.interactions.create({
     model: "gemini-3.6-flash",
     input: [
       `Write original, release-ready song lyrics in ${language}.`,
-      `Target about ${targetLyricsWords(job.length)} words for a ${songDurationMinutes(job.length)}-minute song.`,
+      `Target about ${requestedWords} words for a ${songDurationMinutes(job.length)}-minute song.`,
       `Song topic and wishes: ${job.description}`,
       `Genre: ${job.style}. Mood: ${job.mood}.`,
       job.title ? `Title: ${job.title}.` : "",
@@ -191,6 +243,7 @@ async function generatePlannedLyrics(
     .replace(/\s*```$/i, "")
     .trim();
   if (!lyrics || lyrics.length < 80) throw new Error("Die KI konnte keinen vollständigen Songtext vorbereiten.");
+  if (germanStreetRap) return polishGermanStreetRapLyrics(ai, job, lyrics, safetyRewrite);
   return lyrics.slice(0, 12_000);
 }
 
@@ -217,13 +270,26 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
   let interaction: Awaited<ReturnType<typeof ai.interactions.create>>;
   try {
     plannedLyrics = await generatePlannedLyrics(ai, job);
+    const revisionDirection = job.revisionMode
+      ? job.revisionApproach === "character"
+        ? "REINTERPRETATION: Preserve the reference analysis's approximate tempo, groove, instrumentation, energy curve, section proportions and generic melodic contour as closely as possible while composing a clearly new melody and harmony. Keep a compatible generic vocal range and delivery, but do not clone a voice or reproduce the source recording."
+        : job.revisionApproach === "new-melody"
+          ? "REINTERPRETATION: Preserve the reference analysis's genre, tempo, groove, instrumentation and energy, but create a clearly different new melody, hook and harmonic progression. Use the selected vocal profile without cloning the source singer."
+          : "REINTERPRETATION: Treat the reference analysis only as loose inspiration. Freely redesign melody, harmony, arrangement and vocal delivery according to the customer's current wishes while creating a fully original song."
+      : "";
     const generationInput = plannedLyrics
       ? { ...job, lyricsMode: "custom" as const, lyrics: plannedLyrics }
       : job;
+    const enrichedGenerationInput = revisionDirection
+      ? {
+          ...generationInput,
+          description: `${generationInput.description}\n\n${revisionDirection}`,
+        }
+      : generationInput;
     try {
       interaction = await ai.interactions.create({
         model: songModel(job.length),
-        input: buildSongPrompt(generationInput),
+        input: buildSongPrompt(enrichedGenerationInput),
       });
     } catch (error) {
       if (!permanentProviderError(error) || job.lyricsMode !== "ai") throw error;

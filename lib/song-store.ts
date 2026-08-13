@@ -26,6 +26,8 @@ export type SongJob = {
   language: SongLanguage;
   vocalStyle: SongVocalStyle;
   voiceIdeaAnalysis?: string;
+  revisionMode?: boolean;
+  revisionApproach?: "character" | "new-melody" | "free";
   recoveryAttempts?: number;
   audioUri?: string;
   audioMimeType?: string;

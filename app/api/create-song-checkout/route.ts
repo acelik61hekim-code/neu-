@@ -30,6 +30,9 @@ type SongCheckoutRequest = {
   vocalStyle?: unknown;
   rightsAccepted?: unknown;
   voiceIdeaAnalysis?: unknown;
+  revisionMode?: unknown;
+  revisionApproach?: unknown;
+  referenceRightsAccepted?: unknown;
 };
 
 function textValue(value: unknown, maximum: number): string {
@@ -72,6 +75,10 @@ export async function POST(request: NextRequest) {
   const mood = textValue(body.mood, 120);
   const lyrics = textValue(body.lyrics, 8_000);
   const voiceIdeaAnalysis = textValue(body.voiceIdeaAnalysis, 2_500);
+  const revisionMode = body.revisionMode === true;
+  const revisionApproach = body.revisionApproach === "character" || body.revisionApproach === "new-melody" || body.revisionApproach === "free"
+    ? body.revisionApproach
+    : undefined;
 
   if (description.length < 10 && voiceIdeaAnalysis.length < 20) {
     return NextResponse.json({ error: "Bitte beschreibe deine Songidee oder füge eine analysierte Sprachidee hinzu." }, { status: 400 });
@@ -79,6 +86,12 @@ export async function POST(request: NextRequest) {
   if (!isSongLength(body.length) || !isSongLyricsMode(body.lyricsMode) ||
       !isSongLanguage(body.language) || !isSongVocalStyle(body.vocalStyle)) {
     return NextResponse.json({ error: "Bitte prüfe die Song-Einstellungen." }, { status: 400 });
+  }
+  if (revisionMode && (!revisionApproach || voiceIdeaAnalysis.length < 40)) {
+    return NextResponse.json({ error: "Bitte lade den Ausgangssong hoch und lasse ihn zuerst analysieren." }, { status: 400 });
+  }
+  if (revisionMode && body.referenceRightsAccepted !== true) {
+    return NextResponse.json({ error: "Bitte bestätige, dass du den hochgeladenen Song verwenden und neu bearbeiten darfst." }, { status: 400 });
   }
   if (body.length === "full4") {
     return NextResponse.json(
@@ -123,6 +136,8 @@ export async function POST(request: NextRequest) {
     language: body.language,
     vocalStyle: body.lyricsMode === "instrumental" ? "auto" : body.vocalStyle,
     voiceIdeaAnalysis: voiceIdeaAnalysis || undefined,
+    revisionMode,
+    revisionApproach,
     createdAt: now,
     updatedAt: now,
   });
@@ -135,8 +150,10 @@ export async function POST(request: NextRequest) {
         price_data: {
           currency: "eur",
           product_data: {
-            name: `KI-Song · ${songLengthLabel(body.length)} · MP3`,
-            description: body.lyricsMode === "instrumental"
+            name: `${revisionMode ? "Song-Neuinterpretation" : "KI-Song"} · ${songLengthLabel(body.length)} · MP3`,
+            description: revisionMode
+              ? "Neue Originalversion nach der analysierten Klangidee deines Songs"
+              : body.lyricsMode === "instrumental"
               ? "Originaler Instrumental-Song ohne Video"
               : body.lyricsMode === "custom"
                 ? "Originaler KI-Song mit deinen Lyrics"

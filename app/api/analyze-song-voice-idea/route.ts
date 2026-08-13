@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 4 * 1024 * 1024;
 const exec = promisify(execFile);
 const SUPPORTED_AUDIO_TYPES = new Set([
   "audio/wav",
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Die Aufnahme ist zu kurz oder leer." }, { status: 400 });
     }
     if (value.size > MAX_AUDIO_BYTES) {
-      return NextResponse.json({ error: "Die Aufnahme ist zu groß. Maximal erlaubt sind 12 MB." }, { status: 413 });
+      return NextResponse.json({ error: "Die Analysefassung ist zu groß. Bitte versuche den Upload erneut." }, { status: 413 });
     }
 
     const mimeType = normalizedMimeType(value.type || "audio/mpeg");
@@ -90,18 +90,27 @@ export async function POST(request: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
     const inputAudio = await normalizeAudioForAnalysis(Buffer.from(await value.arrayBuffer()), mimeType);
+    const referenceSong = formData.get("purpose") === "reference-song";
     const interaction = await ai.interactions.create({
       model: "gemini-3.6-flash",
       input: [
         {
           type: "text",
-          text: [
-            "Analyze this customer's voice note, hummed melody or rough musical demo as guidance for creating a new original song.",
-            "Identify the intended mood, approximate tempo or pace, rhythm/groove, genre influences, vocal delivery, instrumentation, dynamics, and likely song structure.",
-            "If the customer speaks, include the useful musical requests they describe. If they hum or sing, describe only general melodic movement, phrasing and energy.",
-            "Do not identify, imitate or clone the speaker or any named artist. Do not reproduce a recognizable melody. Convert the idea into safe high-level production guidance for an original composition.",
-            "Return only a concise German production brief of 4 to 7 sentences. Do not use Markdown and do not include a transcript.",
-          ].join(" "),
+          text: referenceSong
+            ? [
+                "Analyze this complete reference song so a new, legally distinct reinterpretation can be composed.",
+                "Describe approximate BPM or pace, groove, tonal mood, instrumentation, bass and drum character, melodic contour, harmonic feel, dynamics, section structure and the generic vocal profile and delivery.",
+                "Mention the approximate duration and language if audible. Do not transcribe or quote lyrics, identify a performer, clone a voice, name an existing work, or reproduce a recognizable melody.",
+                "Convert the recording into detailed but high-level German production guidance for a new original composition.",
+                "Return only a concise German production brief of 6 to 9 sentences without Markdown.",
+              ].join(" ")
+            : [
+                "Analyze this customer's voice note, hummed melody or rough musical demo as guidance for creating a new original song.",
+                "Identify the intended mood, approximate tempo or pace, rhythm/groove, genre influences, vocal delivery, instrumentation, dynamics, and likely song structure.",
+                "If the customer speaks, include the useful musical requests they describe. If they hum or sing, describe only general melodic movement, phrasing and energy.",
+                "Do not identify, imitate or clone the speaker or any named artist. Do not reproduce a recognizable melody. Convert the idea into safe high-level production guidance for an original composition.",
+                "Return only a concise German production brief of 4 to 7 sentences. Do not use Markdown and do not include a transcript.",
+              ].join(" "),
         },
         { type: "audio", data: inputAudio.bytes.toString("base64"), mime_type: inputAudio.mimeType },
       ],

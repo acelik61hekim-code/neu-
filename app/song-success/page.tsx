@@ -127,7 +127,7 @@ function Page({ status, connectionError }: { status: SongStatus; connectionError
 
             {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p></div></div></div>}
 
-            <div className="mt-7 flex justify-center border-t border-white/10 pt-6"><a className="text-sm font-medium text-fuchsia-300 transition hover:text-fuchsia-200" href="/songs">← Weiteren Song erstellen</a></div>
+            <div className="mt-7 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-6"><a className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-2.5 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href="/?studio=song&revise=1">Diesen Song bearbeiten</a><a className="px-4 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:text-fuchsia-200" href="/songs">Weiteren Song erstellen</a></div>
           </div>
         </section>
       </div>

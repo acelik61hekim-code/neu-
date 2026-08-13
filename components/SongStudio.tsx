@@ -18,6 +18,7 @@ import {
 
 const styles = ["Pop", "Deutschrap / Straßenrap", "Hip-Hop / Rap", "Türkischer Arabesk", "Türkischer Arabesk-Pop / Fantezi", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
 const moods = ["Energiegeladen", "Emotional", "Hüzünlü / Sehnsüchtig", "Dramatisch", "Romantisch", "Düster", "Entspannt", "Motivierend", "Fröhlich", "Episch"];
+type RevisionApproach = "character" | "new-melody" | "free";
 
 export default function SongStudio({
   onStudioChange,
@@ -38,6 +39,10 @@ export default function SongStudio({
   const [voiceIdeaUrl, setVoiceIdeaUrl] = useState<string | null>(null);
   const [voiceIdeaAnalysis, setVoiceIdeaAnalysis] = useState("");
   const [voiceIdeaConsent, setVoiceIdeaConsent] = useState(false);
+  const [revisionMode, setRevisionMode] = useState(false);
+  const [revisionApproach, setRevisionApproach] = useState<RevisionApproach>("character");
+  const [referenceRightsAccepted, setReferenceRightsAccepted] = useState(false);
+  const [compressingReference, setCompressingReference] = useState(false);
   const [analyzingVoiceIdea, setAnalyzingVoiceIdea] = useState(false);
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,9 +62,17 @@ export default function SongStudio({
     };
   }, [voiceIdeaUrl]);
 
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("revise") === "1") {
+      setRevisionMode(true);
+      setLyricsMode("custom");
+    }
+  }, []);
+
   function setVoiceIdea(file: File) {
-    if (file.size > 12 * 1024 * 1024) {
-      setError("Die Sprachidee ist zu groß. Maximal erlaubt sind 12 MB.");
+    const maximumBytes = revisionMode ? 100 * 1024 * 1024 : 12 * 1024 * 1024;
+    if (file.size > maximumBytes) {
+      setError(revisionMode ? "Die Audiodatei ist zu groß. Maximal erlaubt sind 100 MB." : "Die Sprachidee ist zu groß. Maximal erlaubt sind 12 MB.");
       return;
     }
     setError(null);
@@ -86,8 +99,10 @@ export default function SongStudio({
     setError(null);
     try {
       const formData = new FormData();
-      formData.append("audio", file, file.name);
+      const analysisFile = revisionMode || file.size > 3.8 * 1024 * 1024 ? await prepareReferenceForAnalysis(file) : file;
+      formData.append("audio", analysisFile, analysisFile.name);
       formData.append("consent", "true");
+      if (revisionMode) formData.append("purpose", "reference-song");
       const response = await fetch("/api/analyze-song-voice-idea", { method: "POST", body: formData });
       const data = await response.json() as { analysis?: string; error?: string };
       if (!response.ok || !data.analysis) throw new Error(data.error || "Die Sprachidee konnte nicht analysiert werden.");
@@ -95,6 +110,44 @@ export default function SongStudio({
       return data.analysis;
     } finally {
       setAnalyzingVoiceIdea(false);
+    }
+  }
+
+  async function prepareReferenceForAnalysis(file: File): Promise<File> {
+    if (file.size <= 3.8 * 1024 * 1024 && file.type !== "audio/wav" && file.type !== "audio/x-wav" && file.type !== "audio/flac") return file;
+    setCompressingReference(true);
+    try {
+      const context = new AudioContext();
+      try {
+        const decoded = await context.decodeAudioData(await file.arrayBuffer());
+        const sampleRate = 8_000;
+        const analysisSeconds = Math.min(decoded.duration, 220);
+        const length = Math.ceil(analysisSeconds * sampleRate);
+        const offline = new OfflineAudioContext(1, length, sampleRate);
+        const source = offline.createBufferSource();
+        source.buffer = decoded;
+        source.connect(offline.destination);
+        source.start();
+        const rendered = await offline.startRendering();
+        const samples = rendered.getChannelData(0);
+        const output = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(output);
+        const write = (offset: number, value: string) => { for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index)); };
+        write(0, "RIFF"); view.setUint32(4, 36 + samples.length * 2, true); write(8, "WAVE"); write(12, "fmt ");
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, samples.length * 2, true);
+        for (let index = 0; index < samples.length; index += 1) {
+          const sample = Math.max(-1, Math.min(1, samples[index]));
+          view.setInt16(44 + index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+        }
+        return new File([output], "referenzsong-analyse.wav", { type: "audio/wav" });
+      } finally {
+        await context.close();
+      }
+    } catch {
+      throw new Error("Diese Audiodatei konnte im Browser nicht vorbereitet werden. Bitte nutze MP3, WAV oder M4A.");
+    } finally {
+      setCompressingReference(false);
     }
   }
 
@@ -152,6 +205,14 @@ export default function SongStudio({
       setError("Bitte bestätige, dass du die Lyrics verwenden darfst.");
       return;
     }
+    if (revisionMode && !voiceIdeaFile) {
+      setError("Bitte lade zuerst den fertigen Ausgangssong hoch.");
+      return;
+    }
+    if (revisionMode && !referenceRightsAccepted) {
+      setError("Bitte bestätige, dass du den Ausgangssong verwenden und neu bearbeiten darfst.");
+      return;
+    }
 
     setLoading(true);
     try {
@@ -173,6 +234,9 @@ export default function SongStudio({
           vocalStyle,
           rightsAccepted,
           voiceIdeaAnalysis: analyzedVoiceIdea || undefined,
+          revisionMode,
+          revisionApproach: revisionMode ? revisionApproach : undefined,
+          referenceRightsAccepted,
         }),
       });
       const data = await response.json() as { url?: string; error?: string };
@@ -202,10 +266,20 @@ export default function SongStudio({
             Erstelle reine Musik ohne Video – instrumental, mit neu geschriebenen KI-Lyrics oder mit deinem eigenen Songtext. Als hochwertige MP3 zum Anhören und Herunterladen.
           </p>
           <StudioChooser active="song" onChange={onStudioChange} />
+          <div className="mx-auto mt-5 flex max-w-xl rounded-2xl border border-white/10 bg-black/25 p-1.5">
+            <button type="button" onClick={() => { setRevisionMode(false); removeVoiceIdea(); }} className={`flex-1 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${!revisionMode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white"}`}>Neuen Song erstellen</button>
+            <button type="button" onClick={() => { setRevisionMode(true); setLyricsMode("custom"); setRightsAccepted(false); setVoiceIdeaConsent(false); setVoiceIdeaAnalysis(""); }} className={`flex-1 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${revisionMode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white"}`}>Fertigen Song bearbeiten</button>
+          </div>
         </section>
 
         <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_360px]">
           <section className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-7">
+            {revisionMode && (
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/[0.06] p-4 text-sm leading-6 text-zinc-300">
+                <p className="font-semibold text-cyan-100">Song als neue Version bearbeiten</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-400">Die KI analysiert Klang, Tempo, Aufbau und Gesangsart. Danach entsteht eine neue Originalversion mit deinen geänderten Lyrics und Einstellungen. Eine exakt identische Melodie oder Stimme kann technisch nicht garantiert werden.</p>
+              </div>
+            )}
             <Field label="Songtitel" hint="optional">
               <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={100} placeholder="Zum Beispiel: Lichter der Nacht" className={inputClass} />
             </Field>
@@ -216,27 +290,27 @@ export default function SongStudio({
             </Field>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <SelectField label="Musikstil" value={style} onChange={setStyle} options={styles} />
+              <SelectField label="Musikstil" value={style} onChange={(value) => { setStyle(value); if (value === "Deutschrap / Straßenrap") setLanguage("de"); }} options={styles} />
               <SelectField label="Stimmung" value={mood} onChange={setMood} options={moods} />
             </div>
             {style === "Deutschrap / Straßenrap" && (
               <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
-                Automatisch mit hartem Deutschrap-Flow, druckvollem Subbass und 808s, markanter dunkler Melodie, Beat-Drops und gerapptem Hook – kein weicher Pop-Rap.
+                Automatisch mit natürlichen deutschen Rap-Lyrics, zwei langen Strophen, sauberem Reimschema und einer zusammenhängenden Geschichte. Keine erfundene Grammatik und keine automatisch eingestreuten Klischeewörter.
               </div>
             )}
 
-            <Field label="Sprachidee oder Melodie" hint="optional · bis 12 MB">
+            <Field label={revisionMode ? "Fertigen Ausgangssong hochladen" : "Sprachidee oder Melodie"} hint={revisionMode ? "MP3, WAV, M4A · bis 100 MB" : "optional · bis 12 MB"}>
               <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] p-4">
                 <p className="text-xs leading-5 text-zinc-400">
-                  Erkläre deinen Musikwunsch oder summe bzw. singe eine Melodie vor. Die KI erkennt Stimmung, Tempo, Rhythmus und Aufbau – deine Stimme wird nicht geklont.
+                  {revisionMode ? "Lade deinen gekauften oder eigenen Song hoch. Die KI erkennt Tempo, Groove, Instrumente, Aufbau und den allgemeinen Gesangscharakter; die Datei selbst wird nicht dauerhaft gespeichert." : "Erkläre deinen Musikwunsch oder summe bzw. singe eine Melodie vor. Die KI erkennt Stimmung, Tempo, Rhythmus und Aufbau – deine Stimme wird nicht geklont."}
                 </p>
                 <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-                  <button type="button" onClick={() => recording ? stopRecording() : void startRecording()} className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${recording ? "border-red-400/30 bg-red-400/10 text-red-200" : "border-white/10 bg-black/25 text-zinc-200 hover:border-fuchsia-400/30"}`}>
+                  {!revisionMode && <button type="button" onClick={() => recording ? stopRecording() : void startRecording()} className={`flex flex-1 items-center justify-center gap-2 rounded-xl border px-4 py-3 text-sm font-medium transition ${recording ? "border-red-400/30 bg-red-400/10 text-red-200" : "border-white/10 bg-black/25 text-zinc-200 hover:border-fuchsia-400/30"}`}>
                     <span className={`h-2.5 w-2.5 rounded-full ${recording ? "animate-pulse bg-red-400" : "bg-fuchsia-400"}`} />
                     {recording ? "Aufnahme beenden" : "Sprachidee aufnehmen"}
-                  </button>
+                  </button>}
                   <label className="flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm font-medium text-zinc-200 transition hover:border-fuchsia-400/30">
-                    Audiodatei hochladen
+                    {revisionMode ? "Ausgangssong auswählen" : "Audiodatei hochladen"}
                     <input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,audio/webm" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) setVoiceIdea(file); event.target.value = ""; }} />
                   </label>
                 </div>
@@ -249,16 +323,30 @@ export default function SongStudio({
                     <audio controls preload="metadata" src={voiceIdeaUrl} className="mt-3 h-10 w-full" />
                     <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-lg border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-zinc-400">
                       <input type="checkbox" checked={voiceIdeaConsent} onChange={(event) => setVoiceIdeaConsent(event.target.checked)} className="mt-0.5 h-4 w-4 accent-fuchsia-500" />
-                      Ich stimme zu, dass diese Aufnahme einmalig durch die Musik-KI analysiert wird. Die Audiodatei wird nicht dauerhaft gespeichert und meine Stimme nicht geklont.
+                       {revisionMode ? "Ich stimme der einmaligen KI-Analyse dieses Songs zu. Die Audiodatei wird nicht dauerhaft gespeichert und die Stimme nicht geklont." : "Ich stimme zu, dass diese Aufnahme einmalig durch die Musik-KI analysiert wird. Die Audiodatei wird nicht dauerhaft gespeichert und meine Stimme nicht geklont."}
                     </label>
                     <button type="button" onClick={() => void analyzeVoiceIdea().catch((analysisError) => setError(analysisError instanceof Error ? analysisError.message : "Die Analyse ist fehlgeschlagen."))} disabled={analyzingVoiceIdea} className="mt-3 w-full rounded-lg bg-fuchsia-500/15 px-3 py-2.5 text-xs font-medium text-fuchsia-200 transition hover:bg-fuchsia-500/25 disabled:cursor-wait disabled:opacity-60">
-                      {analyzingVoiceIdea ? "Sprachidee wird verstanden ..." : voiceIdeaAnalysis ? "Erneut analysieren" : "Sprachidee analysieren"}
+                       {compressingReference ? "Analysefassung wird vorbereitet ..." : analyzingVoiceIdea ? (revisionMode ? "Song wird analysiert ..." : "Sprachidee wird verstanden ...") : voiceIdeaAnalysis ? "Erneut analysieren" : revisionMode ? "Ausgangssong analysieren" : "Sprachidee analysieren"}
                     </button>
                   </div>
                 )}
-                {voiceIdeaAnalysis && <div className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-3"><p className="text-[11px] font-medium uppercase tracking-wider text-emerald-300">Musikwunsch erkannt</p><p className="mt-2 text-xs leading-5 text-zinc-400">{voiceIdeaAnalysis}</p></div>}
+                {voiceIdeaAnalysis && <div className="mt-3 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-3"><p className="text-[11px] font-medium uppercase tracking-wider text-emerald-300">{revisionMode ? "Ausgangssong analysiert" : "Musikwunsch erkannt"}</p><p className="mt-2 text-xs leading-5 text-zinc-400">{voiceIdeaAnalysis}</p></div>}
               </div>
             </Field>
+
+            {revisionMode && (
+              <Field label="Was soll musikalisch verändert werden?">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Choice compact active={revisionApproach === "character"} onClick={() => setRevisionApproach("character")} title="Klang nah halten" description="Tempo, Groove und Aufbau möglichst ähnlich" />
+                  <Choice compact active={revisionApproach === "new-melody"} onClick={() => setRevisionApproach("new-melody")} title="Neue Melodie" description="Ähnlicher Stil, aber neue Hook und Melodie" />
+                  <Choice compact active={revisionApproach === "free"} onClick={() => setRevisionApproach("free")} title="Frei verändern" description="Arrangement, Melodie und Stimme neu denken" />
+                </div>
+                <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-5 text-zinc-400">
+                  <input type="checkbox" checked={referenceRightsAccepted} onChange={(event) => setReferenceRightsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-fuchsia-500" />
+                  Ich bestätige, dass mir der Song gehört oder ich die notwendigen Rechte und Erlaubnisse für diese neue Version habe.
+                </label>
+              </Field>
+            )}
 
             <Field label="Songlänge">
               <div className="grid gap-3 sm:grid-cols-2">
@@ -316,7 +404,7 @@ export default function SongStudio({
             <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-fuchsia-300">Dein KI-Song</p>
             <h2 className="mt-2 text-2xl font-semibold">{length === "clip" ? "30-Sekunden-Song" : `${length === "full2" ? 2 : length === "full3" ? 3 : 4}-Minuten-Vollsong`}</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
-              {lyricsMode === "instrumental" ? "Originale Instrumentalmusik ohne Gesang." : lyricsMode === "custom" ? "Komponiert und gesungen mit deinen Lyrics." : "Komposition, Gesang und neue Lyrics aus deiner Idee."}
+              {revisionMode ? "Eine neue Originalversion nach der Analyse deines Ausgangssongs und deinen Änderungen." : lyricsMode === "instrumental" ? "Originale Instrumentalmusik ohne Gesang." : lyricsMode === "custom" ? "Komponiert und gesungen mit deinen Lyrics." : "Komposition, Gesang und neue Lyrics aus deiner Idee."}
             </p>
             <div className="my-6 h-px bg-white/10" />
             <ul className="space-y-3 text-sm text-zinc-300">
@@ -332,7 +420,7 @@ export default function SongStudio({
             </div>
             {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs leading-5 text-red-200">{error}</p>}
             <button onClick={() => void checkout()} disabled={loading || analyzingVoiceIdea || recording} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-950/40 transition hover:from-fuchsia-500 hover:to-violet-500 disabled:cursor-wait disabled:opacity-60">
-              {analyzingVoiceIdea ? "Sprachidee wird analysiert ..." : loading ? "Checkout wird geöffnet ..." : `Song für ${price} erstellen`}
+              {compressingReference ? "Audiodatei wird vorbereitet ..." : analyzingVoiceIdea ? (revisionMode ? "Ausgangssong wird analysiert ..." : "Sprachidee wird analysiert ...") : loading ? "Checkout wird geöffnet ..." : revisionMode ? `Neue Version für ${price} erstellen` : `Song für ${price} erstellen`}
               {!loading && <ArrowIcon />}
             </button>
             <p className="mt-4 flex items-center justify-center gap-2 text-[11px] text-zinc-500"><LockIcon /> Erst bezahlen, dann wird der Song erzeugt</p>
