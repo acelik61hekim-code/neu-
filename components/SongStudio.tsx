@@ -377,9 +377,9 @@ export default function SongStudio({
 
             <Field label="Songlänge">
               <div className="grid gap-3 sm:grid-cols-2">
-                <Choice active={length === "clip"} onClick={() => setLength("clip")} title="30 Sekunden" description="Hook, Loop oder Vorschau" badge="2,99 €" />
-                <Choice active={length === "full2"} onClick={() => setLength("full2")} title="2 Minuten" description="Vollsong mit Strophen und Refrain" badge="7,99 €" />
-                <Choice active={length === "full3"} onClick={() => setLength("full3")} title="3 Minuten" description="Vollsong mit Bridge und Outro" badge="9,99 €" recommended />
+                <Choice active={length === "clip"} onClick={() => setLength("clip")} title="30 Sekunden" description="Hook, Loop oder Vorschau" badge={formatEuroPrice(SONG_PRICE_CENTS.clip)} />
+                <Choice active={length === "full2"} onClick={() => setLength("full2")} title="2 Minuten" description="Vollsong mit Strophen und Refrain" badge={formatEuroPrice(SONG_PRICE_CENTS.full2)} />
+                <Choice active={length === "full3"} onClick={() => setLength("full3")} title="3 Minuten" description="Vollsong mit Bridge und Outro" badge={formatEuroPrice(SONG_PRICE_CENTS.full3)} recommended />
                 <Choice active={false} onClick={() => undefined} title="4 Minuten" description="Qualitätstest läuft – noch nicht buchbar" badge="Demnächst" disabled />
               </div>
             </Field>
