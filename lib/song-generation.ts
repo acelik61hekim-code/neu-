@@ -9,6 +9,7 @@ import ffmpegPath from "ffmpeg-static";
 import { FatalError } from "workflow";
 
 import { buildSongPrompt, songDurationMinutes, songModel, type SongLanguage, type SongLength } from "@/lib/song";
+import { assessSongLyricQuality, lyricQualityRetryDirection, type SongLyricQuality } from "@/lib/song-quality";
 import { songStore } from "@/lib/song-store";
 
 const localSongRoot = resolve(process.cwd(), ".video-backend-backups", "local-song-output");
@@ -45,6 +46,11 @@ function findAudioData(interaction: unknown): { data: string; mimeType: string }
     }
   }
   return null;
+}
+
+function findOutputText(interaction: unknown): string | undefined {
+  const value = (interaction as { output_text?: unknown }).output_text;
+  return typeof value === "string" ? value : undefined;
 }
 
 async function storeAudio(jobId: string, audio: Buffer, mimeType: string): Promise<string> {
@@ -189,6 +195,7 @@ async function polishGermanStreetRapLyrics(
       job.title ? `Arbeitstitel: ${job.title}.` : "",
       "Schreibe zwei inhaltlich unterschiedliche Strophen mit jeweils 14 bis 16 kompakten Bars. Jede Strophe muss die Geschichte weiterführen. Schreibe einen kurzen, druckvollen Refrain mit 4 Zeilen, der beim zweiten Mal exakt wiederholt werden darf. Ergänze eine kurze Bridge und ein knappes Outro.",
       "Jede Zeile muss wie natürlich gesprochenes, grammatikalisch korrektes Deutsch klingen und rhythmisch rappbar sein. Verwende saubere Paarreime, Binnenreime und gelegentliche mehrsilbige Reime, aber verdrehe niemals die Grammatik nur für einen Reim.",
+      "Schreibe pro Rapzeile ungefähr 6 bis 12 Wörter. Keine überlangen Zeilen, keine künstlich gedehnten Schreibweisen und keine Fülllaute. Setze Satzzeichen so, dass natürliche Atempausen entstehen.",
       "Nutze konkrete, neue Bilder und Details aus dem Kundenwunsch. Schreibe eine nachvollziehbare Perspektive und einen roten Faden statt einer beliebigen Aneinanderreihung von Statussymbolen.",
       "Verboten sind automatisch eingefügte Klischees und Füllwörter wie Bruda, Para, Yallah, Lan, Baba, Benz, AMG, Block, Kiez, Beton, Blaulicht, Schlamm, Herz aus Stein, ganz unten und nach oben – außer der Kunde hat den jeweiligen Begriff ausdrücklich verlangt.",
       "Keine sinnlosen Adlibs, keine erfundene Migrantensprache, keine falschen Artikel oder Fälle, keine unfertigen Sätze, keine austauschbaren Motivationssprüche und keine Reimwörter ohne inhaltlichen Zusammenhang.",
@@ -206,6 +213,43 @@ async function polishGermanStreetRapLyrics(
     .replace(/\s*```$/i, "")
     .trim();
   if (!polished || polished.length < 160) throw new Error("Der Deutschrap-Text konnte nicht vollständig überarbeitet werden.");
+  return polished.slice(0, 12_000);
+}
+
+async function polishLyricsForPerformance(
+  ai: GoogleGenAI,
+  job: NonNullable<Awaited<ReturnType<typeof songStore.get>>>,
+  draft: string,
+  requestedWords: number,
+  safetyRewrite: boolean,
+): Promise<string> {
+  const language = lyricLanguage(job.language);
+  const response = await ai.interactions.create({
+    model: "gemini-3.6-flash",
+    input: [
+      "You are a meticulous native lyric editor and vocal arranger. Return only the final lyrics, never an explanation.",
+      `Edit the draft into natural, release-ready lyrics entirely in ${language} for a ${job.style} song with a ${job.mood} mood.`,
+      `Keep the customer's subject and intended story. Target roughly ${requestedWords} words for ${songDurationMinutes(job.length)} minutes; do not make the text denser merely to fill time.`,
+      "Use only [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Final Chorus] and [Outro] section tags. Do not add timestamps, stage directions or production notes.",
+      "Each sung line should normally contain 4 to 9 words, one natural phrase and a clear breathing point. A chorus should be concise. Every verse must introduce new content.",
+      "Use correct native grammar, spelling, punctuation, stress and idiom. Remove tongue-twisting word clusters, awkward inversions, incomplete sentences and meaningless rhymes.",
+      "Never spell sustained notes phonetically, repeat letters inside words, invent word endings or write filler strings such as aaa, ooo, iii, ahhh or ohhh. A sustained note must keep the normally written word unchanged.",
+      "Keep the average vocal delivery steady and intelligible. Do not cram a paragraph into one line and do not stretch a few words across an entire section.",
+      job.language === "tr"
+        ? "Türkçe sözleri doğal ve güncel bir dille düzenle. Ğ, ı, İ, ö, ş, ç ve ü harflerini doğru kullan; heceleri bozma, kelime sonlarını değiştirme ve gereksiz melisma çağrıştıran yazımlar ekleme."
+        : "",
+      safetyRewrite
+        ? "Keep every line unambiguously family-friendly and free of violence, threats, drugs, sexual content, self-harm, hate or crime instructions."
+        : "Keep the wording suitable for a general audience.",
+      `DRAFT:\n${draft}`,
+    ].filter(Boolean).join("\n\n"),
+  });
+  const polished = response.output_text
+    ?.trim()
+    .replace(/^```(?:text)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  if (!polished || polished.length < 120) throw new Error("Der Songtext konnte nicht für einen natürlichen Gesang vorbereitet werden.");
   return polished.slice(0, 12_000);
 }
 
@@ -249,7 +293,7 @@ async function generatePlannedLyrics(
     .trim();
   if (!lyrics || lyrics.length < 80) throw new Error("Die KI konnte keinen vollständigen Songtext vorbereiten.");
   if (germanStreetRap) return polishGermanStreetRapLyrics(ai, job, lyrics, safetyRewrite);
-  return lyrics.slice(0, 12_000);
+  return polishLyricsForPerformance(ai, job, lyrics, requestedWords, safetyRewrite);
 }
 
 export async function generateAndStoreSong(jobId: string): Promise<void> {
@@ -273,6 +317,7 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
   const ai = new GoogleGenAI({ apiKey });
   let plannedLyrics: string | undefined;
   let interaction: Awaited<ReturnType<typeof ai.interactions.create>>;
+  let generationPrompt = "";
   try {
     plannedLyrics = await generatePlannedLyrics(ai, job);
     const revisionDirection = job.revisionMode
@@ -291,32 +336,35 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
           description: `${generationInput.description}\n\n${revisionDirection}`,
         }
       : generationInput;
+    generationPrompt = buildSongPrompt(enrichedGenerationInput);
     try {
       interaction = await ai.interactions.create({
         model: songModel(job.length),
-        input: buildSongPrompt(enrichedGenerationInput),
+        input: generationPrompt,
       });
     } catch (error) {
       if (!permanentProviderError(error) || job.lyricsMode !== "ai") throw error;
       plannedLyrics = await generatePlannedLyrics(ai, job, true);
       try {
+        generationPrompt = buildSongPrompt({
+          ...job,
+          title: undefined,
+          description: `A new original ${job.style} song with a ${job.mood} mood, based only on the safe rewritten lyrics below.`,
+          lyricsMode: "custom",
+          lyrics: plannedLyrics,
+          voiceIdeaAnalysis: undefined,
+        });
         interaction = await ai.interactions.create({
           model: songModel(job.length),
-          input: buildSongPrompt({
-            ...job,
-            title: undefined,
-            description: `A new original ${job.style} song with a ${job.mood} mood, based only on the safe rewritten lyrics below.`,
-            lyricsMode: "custom",
-            lyrics: plannedLyrics,
-            voiceIdeaAnalysis: undefined,
-          }),
+          input: generationPrompt,
         });
       } catch (safeLyricsError) {
         if (!permanentProviderError(safeLyricsError)) throw safeLyricsError;
         plannedLyrics = undefined;
+        generationPrompt = safeFallbackPrompt(job);
         interaction = await ai.interactions.create({
           model: songModel(job.length),
-          input: safeFallbackPrompt(job),
+          input: generationPrompt,
         });
       }
     }
@@ -326,30 +374,51 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
     }
     throw error;
   }
-  const generatedAudio = findAudioData(interaction);
-  if (!generatedAudio) throw new Error("Der Musikdienst hat keine Audiodatei zurückgegeben.");
+  await songStore.update(jobId, (current) => ({
+    ...current,
+    renderStage: "quality-check",
+    progressPercent: 72,
+  }));
+
+  let candidate = await inspectSongCandidate(interaction, job, plannedLyrics);
+  let candidateIssues = songCandidateIssues(candidate, job.length, job.lyricsMode === "instrumental");
+  if (candidateIssues.length > 0 && (job.qualityRepairAttempts ?? 0) < 1) {
+    await songStore.update(jobId, (current) => ({
+      ...current,
+      renderStage: "generating",
+      progressPercent: 45,
+      qualityRetryUsed: true,
+      qualityRepairAttempts: (current.qualityRepairAttempts ?? 0) + 1,
+    }));
+    const correctedInteraction = await ai.interactions.create({
+      model: songModel(job.length),
+      input: [
+        generationPrompt,
+        job.lyricsMode === "instrumental" || candidate.lyricQuality.passed
+          ? "QUALITY CORRECTION ATTEMPT: The previous audio failed the technical duration or stereo check. Regenerate the complete song at the booked duration as a polished 44.1 kHz stereo MP3 with a clean ending."
+          : lyricQualityRetryDirection(candidate.lyricQuality),
+        `Previous version problems:\n${candidateIssues.map((issue) => `- ${issue}`).join("\n")}`,
+      ].join("\n\n"),
+    });
+    candidate = await inspectSongCandidate(correctedInteraction, job, plannedLyrics);
+    candidateIssues = songCandidateIssues(candidate, job.length, job.lyricsMode === "instrumental");
+    interaction = correctedInteraction;
+  }
+
+  if (candidateIssues.length > 0) {
+    throw new FatalError(`Die automatische Gesangsprüfung hat die erzeugte Version abgelehnt: ${candidateIssues.join(" ")}`);
+  }
 
   await songStore.update(jobId, (current) => ({
     ...current,
     renderStage: "uploading",
-    progressPercent: 85,
+    progressPercent: 88,
   }));
 
-  const audio = Buffer.from(generatedAudio.data, "base64");
-  if (audio.length < 10_000) throw new Error("Die erzeugte Audiodatei ist unvollständig.");
-  const quality = await inspectAudio(audio);
-  const expectedSeconds = songDurationMinutes(job.length) * 60;
-  const minimumSeconds = job.length === "clip" ? 28 : expectedSeconds - 20;
-  const maximumSeconds = job.length === "clip" ? 32 : expectedSeconds + 15;
-  if (quality.durationSeconds < minimumSeconds || quality.durationSeconds > maximumSeconds) {
-    throw new Error(`Die erzeugte Songlänge liegt außerhalb des gebuchten Bereichs (${quality.durationSeconds.toFixed(1)} Sekunden).`);
-  }
-  if (quality.sampleRate < 44_100 || quality.channels < 2) {
-    throw new Error("Die erzeugte Audiodatei erfüllt die Qualitätsanforderungen nicht.");
-  }
-  const audioUri = await storeAudio(jobId, audio, generatedAudio.mimeType);
-  const generatedLyrics = typeof interaction.output_text === "string"
-    ? interaction.output_text.slice(0, 30_000)
+  const audioUri = await storeAudio(jobId, candidate.audio, candidate.generatedAudio.mimeType);
+  const outputText = findOutputText(interaction);
+  const generatedLyrics = outputText
+    ? outputText.slice(0, 30_000)
     : plannedLyrics;
 
   await songStore.update(jobId, (current) => ({
@@ -358,8 +427,55 @@ export async function generateAndStoreSong(jobId: string): Promise<void> {
     renderStage: "completed",
     progressPercent: 100,
     audioUri,
-    audioMimeType: generatedAudio.mimeType,
+    audioMimeType: candidate.generatedAudio.mimeType,
     generatedLyrics,
+    qualityScore: candidate.lyricQuality.score,
     completedAt: Date.now(),
   }));
+}
+
+function songCandidateIssues(
+  candidate: Awaited<ReturnType<typeof inspectSongCandidate>>,
+  length: SongLength,
+  instrumental: boolean,
+): string[] {
+  const issues = instrumental ? [] : [...candidate.lyricQuality.issues];
+  const expectedSeconds = songDurationMinutes(length) * 60;
+  const minimumSeconds = length === "clip" ? 28 : expectedSeconds - 20;
+  const maximumSeconds = length === "clip" ? 32 : expectedSeconds + 15;
+  if (candidate.audioQuality.durationSeconds < minimumSeconds || candidate.audioQuality.durationSeconds > maximumSeconds) {
+    issues.push(`Die Songlänge liegt außerhalb des gebuchten Bereichs (${candidate.audioQuality.durationSeconds.toFixed(1)} Sekunden).`);
+  }
+  if (candidate.audioQuality.sampleRate < 44_100 || candidate.audioQuality.channels < 2) {
+    issues.push("Die Audiodatei ist nicht in hochwertigem 44,1-kHz-Stereo.");
+  }
+  return issues;
+}
+
+async function inspectSongCandidate(
+  interaction: unknown,
+  job: NonNullable<Awaited<ReturnType<typeof songStore.get>>>,
+  plannedLyrics?: string,
+): Promise<{
+  generatedAudio: { data: string; mimeType: string };
+  audio: Buffer;
+  audioQuality: Awaited<ReturnType<typeof inspectAudio>>;
+  lyricQuality: SongLyricQuality;
+}> {
+  const generatedAudio = findAudioData(interaction);
+  if (!generatedAudio) throw new Error("Der Musikdienst hat keine Audiodatei zurückgegeben.");
+  const audio = Buffer.from(generatedAudio.data, "base64");
+  if (audio.length < 10_000) throw new Error("Die erzeugte Audiodatei ist unvollständig.");
+  const audioQuality = await inspectAudio(audio);
+  const expectedLyrics = plannedLyrics ?? (job.lyricsMode === "custom" ? job.lyrics : undefined);
+  const lyricQuality = job.lyricsMode === "instrumental"
+    ? { passed: true, score: 100, issues: [], suspiciousTokens: [], sectionRates: [] }
+    : assessSongLyricQuality({
+        outputText: findOutputText(interaction),
+        expectedLyrics,
+        language: job.language,
+        style: job.style,
+        durationSeconds: audioQuality.durationSeconds,
+      });
+  return { generatedAudio, audio, audioQuality, lyricQuality };
 }

@@ -9,7 +9,7 @@ import { LoadingIcon, MusicIcon, SparklesIcon, WarningIcon } from "@/components/
 type SongStatus = {
   status?: "pending" | "processing" | "done" | "error";
   paymentStatus?: "unpaid" | "paid" | "failed" | "refunded";
-  renderStage?: "queued" | "generating" | "uploading" | "completed" | "failed";
+  renderStage?: "queued" | "generating" | "quality-check" | "uploading" | "completed" | "failed";
   progressPercent?: number;
   title?: string;
   length?: "clip" | "full2" | "full3" | "full4";
@@ -22,6 +22,7 @@ type SongStatus = {
 const stageLabels: Record<NonNullable<SongStatus["renderStage"]>, string> = {
   queued: "Dein Songauftrag wird vorbereitet",
   generating: "Komposition, Arrangement und Mix entstehen",
+  "quality-check": "Aussprache, Lyrics und Gesangstempo werden geprüft",
   uploading: "Die fertige MP3 wird bereitgestellt",
   completed: "Dein Song ist fertig",
   failed: "Die Songerstellung wurde unterbrochen",

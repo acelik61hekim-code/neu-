@@ -9,7 +9,10 @@ import { formatEuroPrice } from "@/lib/pricing";
 import {
   SONG_PRICE_CENTS,
   countLyricsWords,
+  customLyricsPronunciationRisks,
+  maximumCustomLyricsWords,
   minimumCustomLyricsWords,
+  recommendedCustomLyricsWords,
   type SongLanguage,
   type SongLength,
   type SongLyricsMode,
@@ -54,6 +57,10 @@ export default function SongStudio({
   const price = useMemo(() => formatEuroPrice(SONG_PRICE_CENTS[length]), [length]);
   const lyricsWordCount = useMemo(() => countLyricsWords(lyrics), [lyrics]);
   const minimumLyricsWords = minimumCustomLyricsWords(length);
+  const maximumLyricsWords = maximumCustomLyricsWords(length, style);
+  const recommendedLyricsWords = recommendedCustomLyricsWords(length, style);
+  const lyricsPronunciationRisks = useMemo(() => customLyricsPronunciationRisks(lyrics), [lyrics]);
+  const lyricsWordCountValid = lyricsWordCount >= minimumLyricsWords && lyricsWordCount <= maximumLyricsWords;
 
   useEffect(() => {
     return () => {
@@ -199,6 +206,14 @@ export default function SongStudio({
     }
     if (lyricsMode === "custom" && lyricsWordCount < minimumLyricsWords) {
       setError(`Für diese Songlänge brauchst du mindestens ${minimumLyricsWords} Wörter. So werden ganze Strophen nicht unnötig wiederholt.`);
+      return;
+    }
+    if (lyricsMode === "custom" && lyricsWordCount > maximumLyricsWords) {
+      setError(`Für diese Songlänge sind ${lyricsWordCount} Wörter zu viel. Bitte kürze den Text auf höchstens ${maximumLyricsWords} Wörter, damit der Gesang nicht gehetzt wird.`);
+      return;
+    }
+    if (lyricsMode === "custom" && lyricsPronunciationRisks.length > 0) {
+      setError(`${lyricsPronunciationRisks[0]}. Bitte schreibe jedes Wort normal aus. Lange Töne erzeugt die Musik-KI selbst.`);
       return;
     }
     if (lyricsMode === "custom" && !rightsAccepted) {
@@ -380,7 +395,9 @@ export default function SongStudio({
             {lyricsMode === "custom" && (
               <Field label="Deine Lyrics" hint="[Verse], [Chorus] und [Bridge] helfen bei der Struktur">
                 <textarea value={lyrics} onChange={(event) => setLyrics(event.target.value)} maxLength={8000} rows={12} placeholder={"[Verse 1]\n...\n\n[Chorus]\n...\n\n[Verse 2]\n..."} className={`${inputClass} font-mono text-sm`} />
-                <div className={`mt-2 flex items-center justify-between text-[11px] ${lyricsWordCount >= minimumLyricsWords ? "text-emerald-400/70" : "text-amber-300/70"}`}><span>{lyricsWordCount} Wörter</span><span>Mindestens {minimumLyricsWords} für diese Länge</span></div>
+                <div className={`mt-2 flex items-center justify-between gap-3 text-[11px] ${lyricsWordCountValid ? "text-emerald-400/70" : "text-amber-300/70"}`}><span>{lyricsWordCount} Wörter</span><span>{minimumLyricsWords}–{maximumLyricsWords} erlaubt</span></div>
+                <p className="mt-1 text-[11px] leading-5 text-zinc-500">Für {style} und diese Länge empfohlen: {recommendedLyricsWords.minimum}–{recommendedLyricsWords.maximum} Wörter. Das sorgt für ein natürlicheres Gesangstempo.</p>
+                {lyricsPronunciationRisks.length > 0 && <p className="mt-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.06] px-3 py-2 text-[11px] leading-5 text-amber-200/80">{lyricsPronunciationRisks[0]}. Bitte normal schreiben, zum Beispiel „değil“ statt „değiiil“.</p>}
                 <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-5 text-zinc-400">
                   <input type="checkbox" checked={rightsAccepted} onChange={(event) => setRightsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-fuchsia-500" />
                   Ich bestätige, dass der Text von mir stammt oder ich die nötigen Rechte und Einwilligungen zur Nutzung habe.

@@ -61,23 +61,36 @@ function languageQualityDirection(language: SongLanguage): string {
       "Türkçe telaffuz, vurgu ve heceleme net ve doğru olmalı; başka bir dile geçme.",
       "Şarkı sözlerindeki ğ, ı, İ, ö, ş, ç ve ü harflerini doğru telaffuz et.",
       "Uydurma kelime kullanma ve kelimelerin yazımını ya da sonlarını değiştirme.",
+      "Her kelimeyi standart yazımıyla söyle; uzun nota için kelimenin içine veya sonuna fazladan harf ekleme.",
+      "Sözleri doğal nefes gruplarıyla orta hızda söyle. Heceleri yutma, acele etme ve gereksiz yere uzatma.",
     ].join(" ");
   }
-  if (language === "de") return "Der gesamte Gesang muss ausschließlich in natürlichem, gut verständlichem Deutsch sein. Sprich jede Silbe deutlich aus, wechsle nicht die Sprache und erfinde keine Wörter.";
-  if (language === "en") return "All vocals must be exclusively in natural, intelligible English. Pronounce every lyric clearly, do not switch languages, and do not invent words.";
-  return "Keep one consistent language throughout the entire song. Use natural pronunciation and do not invent words.";
+  if (language === "de") return "Der gesamte Gesang muss ausschließlich in natürlichem, gut verständlichem Deutsch sein. Sprich jede Silbe in einem gleichmäßigen, natürlichen Tempo deutlich aus, wechsle nicht die Sprache, erfinde keine Wörter und verlängere geschriebene Wörter niemals durch zusätzliche Buchstaben oder Fülllaute.";
+  if (language === "en") return "All vocals must be exclusively in natural, intelligible English at a steady conversational singing pace. Pronounce every lyric clearly, do not switch languages, invent words, add filler vocalizations or change spelling to represent sustained notes.";
+  return "Keep one consistent language throughout the entire song. Use natural pronunciation and a steady intelligible vocal pace. Do not invent words, filler sounds or altered spellings.";
 }
 
-export function prepareCustomLyrics(lyrics: string, length: SongLength): string {
+function wrapLyricLine(line: string, maximumWords: number): string[] {
+  if (/^\s*\[[^\]]+\]\s*$/u.test(line)) return [line.trim()];
+  const words = line.trim().split(/\s+/u).filter(Boolean);
+  if (words.length <= maximumWords) return [line.trim()];
+  const lines: string[] = [];
+  for (let index = 0; index < words.length; index += maximumWords) lines.push(words.slice(index, index + maximumWords).join(" "));
+  return lines;
+}
+
+export function prepareCustomLyrics(lyrics: string, length: SongLength, style = ""): string {
   const normalized = lyrics
     .replace(/\r\n?/g, "\n")
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-  if (!normalized || /^\s*\[(?:intro|verse|strophe|kıta|chorus|refrain|nakarat|bridge|köprü|outro|pre[- ]?chorus)[^\]]*\]/im.test(normalized)) {
-    return normalized;
+  const maximumWordsPerLine = /rap|hip-hop/i.test(style) ? 12 : 9;
+  const phrased = normalized.split("\n").flatMap((line) => line.trim() ? wrapLyricLine(line, maximumWordsPerLine) : [""]).join("\n");
+  if (!phrased || /^\s*\[(?:intro|verse|strophe|kıta|chorus|refrain|nakarat|bridge|köprü|outro|pre[- ]?chorus)[^\]]*\]/im.test(phrased)) {
+    return phrased;
   }
-  const lines = normalized.split("\n").filter((line) => line.trim());
+  const lines = phrased.split("\n").filter((line) => line.trim());
   if (length === "clip") return `[Verse / Hook]\n${lines.join("\n")}`;
   const thirds = Math.max(2, Math.ceil(lines.length / 3));
   const first = lines.slice(0, thirds);
@@ -97,6 +110,36 @@ export function minimumCustomLyricsWords(length: SongLength): number {
   return 90;
 }
 
+export function maximumCustomLyricsWords(length: SongLength, style = ""): number {
+  const rap = /rap|hip-hop/i.test(style);
+  if (length === "clip") return rap ? 105 : 75;
+  if (length === "full2") return rap ? 310 : 230;
+  if (length === "full3") return rap ? 440 : 330;
+  return rap ? 570 : 430;
+}
+
+export function recommendedCustomLyricsWords(length: SongLength, style = ""): { minimum: number; maximum: number } {
+  const normalized = style.toLocaleLowerCase("de-DE");
+  const rap = normalized.includes("rap") || normalized.includes("hip-hop");
+  const slow = normalized.includes("arabesk") || normalized.includes("fantezi") || normalized.includes("ballad");
+  if (length === "clip") return rap ? { minimum: 45, maximum: 80 } : { minimum: 22, maximum: 52 };
+  if (length === "full2") return rap ? { minimum: 150, maximum: 250 } : slow ? { minimum: 85, maximum: 170 } : { minimum: 105, maximum: 195 };
+  if (length === "full3") return rap ? { minimum: 230, maximum: 370 } : slow ? { minimum: 125, maximum: 235 } : { minimum: 155, maximum: 280 };
+  return rap ? { minimum: 310, maximum: 500 } : slow ? { minimum: 175, maximum: 320 } : { minimum: 215, maximum: 380 };
+}
+
+export function customLyricsPronunciationRisks(lyrics: string): string[] {
+  const risks: string[] = [];
+  const stretched = lyrics.match(/\b[^\s\[\]]*(?:([aeiouyäöüıİâêîôû])\1{2,}|([\p{L}])\2{3,})[^\s\[\]]*\b/giu) ?? [];
+  if (stretched.length) risks.push(`Künstlich verlängerte Schreibweisen: ${[...new Set(stretched)].slice(0, 5).join(", ")}`);
+  const vocalNoise = lyrics.split(/\r?\n/u).filter((line) => {
+    const letters = line.replace(/\[[^\]]+\]/g, "").replace(/[^\p{L}]/gu, "");
+    return letters.length >= 5 && new Set([...letters.toLocaleLowerCase()]).size <= 2;
+  });
+  if (vocalNoise.length) risks.push("Mehrere Zeilen bestehen nur aus langen Fülllauten.");
+  return risks;
+}
+
 export function countLyricsWords(lyrics: string): number {
   return lyrics
     .replace(/\[[^\]]+\]/g, " ")
@@ -104,6 +147,25 @@ export function countLyricsWords(lyrics: string): number {
     .split(/\s+/u)
     .filter(Boolean)
     .length;
+}
+
+function vocalTimingDirection(lyrics: string | undefined, length: SongLength, style: string): string {
+  if (!lyrics?.trim() || length === "clip") return "";
+  const words = countLyricsWords(lyrics);
+  const durationSeconds = songDurationMinutes(length) * 60;
+  const normalizedStyle = style.toLocaleLowerCase("de-DE");
+  const targetRate = normalizedStyle.includes("rap") || normalizedStyle.includes("hip-hop")
+    ? 138
+    : normalizedStyle.includes("arabesk") || normalizedStyle.includes("fantezi")
+      ? 82
+      : 105;
+  const requiredVocalSeconds = Math.max(38, Math.min(durationSeconds - 18, Math.round(words / targetRate * 60)));
+  const instrumentalSeconds = Math.max(12, durationSeconds - requiredVocalSeconds);
+  return [
+    `VOCAL PACING PLAN: The supplied lyrics contain about ${words} words. Allocate about ${requiredVocalSeconds} seconds of the song to clearly intelligible vocals and about ${instrumentalSeconds} seconds to intro, transitions, instrumental development and outro.`,
+    `Aim for an average delivery near ${targetRate} words per minute during vocal passages, with no section below ${Math.round(targetRate * 0.58)} or above ${Math.round(targetRate * 1.35)} words per minute.`,
+    "Give longer lyric sections proportionally more musical time and shorter sections less time. Do not force every verse or chorus into identical fixed-length windows.",
+  ].join(" ");
 }
 
 export function buildSongPrompt(input: {
@@ -155,14 +217,13 @@ export function buildSongPrompt(input: {
         : input.style.trim() || "modern, polished production";
 
   const durationMinutes = songDurationMinutes(input.length);
+  const timingDirection = input.lyricsMode === "custom" ? vocalTimingDirection(input.lyrics, input.length, input.style) : "";
   const duration = input.length === "clip"
     ? "Create an exactly 30-second polished music clip."
     : [
         `Create a complete song targeting ${durationMinutes} minutes (${durationMinutes * 60} seconds), with a tolerance of no more than 10 seconds.`,
         "This must be a real full song, not a short clip or teaser.",
-        durationMinutes >= 3
-          ? "Use this timeline: [0:00 Intro] -> [0:12 Verse 1] -> [0:42 Chorus] -> [1:08 Verse 2 with new lyrics and melodic variation] -> [1:38 Instrumental development using the main motif] -> [2:04 Bridge] -> [2:30 Final chorus with a tasteful lift] -> [2:52 Outro and clean ending]."
-          : "Use this timeline: [0:00 Intro] -> [0:08 Verse 1] -> [0:32 Chorus] -> [0:58 Verse 2 with new lyrics] -> [1:22 Bridge] -> [1:38 Final chorus] -> [1:52 Outro and clean ending].",
+        "Use the section order [Intro] -> [Verse 1] -> [Chorus] -> [Verse 2] -> [Bridge or instrumental development] -> [Final Chorus] -> [Outro]. Distribute section durations according to the actual lyric word count and natural phrasing instead of forcing fixed timestamp windows.",
       ].join(" ");
 
   const vocalDirection = input.lyricsMode === "instrumental"
@@ -188,9 +249,11 @@ export function buildSongPrompt(input: {
         "Perform the customer-provided original lyrics faithfully as written below.",
         "Do not rewrite, translate, paraphrase, reorder, omit or add words or lines.",
         "Do not stretch a written word by inventing extra letters in the performed or returned lyrics.",
+        "Never write or return phonetic vowel extensions such as aaa, ooo, iii or altered word endings. Sustain notes musically while keeping the written and pronounced word intact.",
+        "Sing at an even, intelligible pace with natural breaths between phrases. Do not cram many words into one bar and do not drag short phrases across long empty sections.",
         "Repeat only sections explicitly marked as [Chorus] or [Refrain]; never repeat a verse merely to fill the duration.",
         "Use instrumental bars, melodic development, solos, backing harmonies and a longer outro to fill remaining time instead of repeating verses.",
-        `CUSTOMER LYRICS:\n${prepareCustomLyrics(input.lyrics?.trim() || "", input.length)}`,
+        `CUSTOMER LYRICS:\n${prepareCustomLyrics(input.lyrics?.trim() || "", input.length, input.style)}`,
       ].join("\n\n")
     : input.lyricsMode === "ai"
       ? `Write polished, meaningful original lyrics in ${language}. Use distinct verses that advance the story, a concise memorable chorus, natural rhyme and singable line lengths. Repeat the chorus at most three times, never recycle a verse, and do not use filler syllables excessively. Do not quote or imitate existing copyrighted lyrics.`
@@ -207,9 +270,10 @@ export function buildSongPrompt(input: {
       : "",
     vocalDirection,
     genreArrangementDirection,
+    timingDirection,
     languageQualityDirection(input.language),
     lyricsDirection,
-    "QUALITY RULES: Keep the melody coherent and memorable. Avoid abrupt key, tempo, singer, genre or language changes. Use natural transitions between sections. Keep the lead vocal centered, clear and intelligible above the instruments without clipping, distortion, robotic artifacts or excessive reverb. Avoid awkward silence at the beginning, mid-song cutoffs, fake endings and restarting the song after the outro.",
+    "QUALITY RULES: Keep the melody coherent and memorable. Avoid abrupt key, tempo, singer, genre or language changes. Use natural transitions between sections. Keep the lead vocal centered, clear and intelligible above the instruments without clipping, distortion, robotic artifacts or excessive reverb. Keep vocal phrasing steady and conversationally natural; every syllable must remain understandable. Never output stretched spellings, meaningless vocal strings or invented syllables. Avoid awkward silence at the beginning, mid-song cutoffs, fake endings and restarting the song after the outro.",
     "Create a new original composition with its own melody, arrangement and vocal identity.",
     "Deliver a release-ready stereo mix with a clean ending and no spoken explanation outside the song.",
   ].filter(Boolean).join("\n\n");

@@ -9,7 +9,7 @@ import type {
 
 export type SongJobStatus = "pending" | "processing" | "done" | "error";
 export type SongPaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
-export type SongRenderStage = "queued" | "generating" | "uploading" | "completed" | "failed";
+export type SongRenderStage = "queued" | "generating" | "quality-check" | "uploading" | "completed" | "failed";
 
 export type SongJob = {
   status: SongJobStatus;
@@ -32,6 +32,9 @@ export type SongJob = {
   audioUri?: string;
   audioMimeType?: string;
   generatedLyrics?: string;
+  qualityScore?: number;
+  qualityRetryUsed?: boolean;
+  qualityRepairAttempts?: number;
   stripeSessionId?: string;
   workflowRunId?: string;
   paidAt?: number;

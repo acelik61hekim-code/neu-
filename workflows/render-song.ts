@@ -43,5 +43,8 @@ function readableError(error: unknown): string {
   if (/safety|blocked|sensitive|prohibited|copyright|artist|\b400\b/i.test(message)) {
     return "Der Musikdienst hat einzelne Wörter der Songidee oder Lyrics automatisch abgelehnt. Bitte formuliere mögliche doppeldeutige oder sensible Begriffe neutraler und verwende keine Künstlernamen oder bestehenden Liedtexte.";
   }
+  if (/automatische Gesangsprüfung/i.test(message)) {
+    return "Unsere Qualitätsprüfung hat Aussprache, Gesangstempo, Songlänge oder Audioqualität abgelehnt. Falls möglich, wurde bereits automatisch eine korrigierte Version erstellt. So liefern wir dir bewusst keinen fehlerhaften Song aus.";
+  }
   return message.slice(0, 600);
 }

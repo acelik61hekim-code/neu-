@@ -8,6 +8,8 @@ import {
   isSongLyricsMode,
   isSongVocalStyle,
   countLyricsWords,
+  customLyricsPronunciationRisks,
+  maximumCustomLyricsWords,
   minimumCustomLyricsWords,
   SONG_PRICE_CENTS,
   songLengthLabel,
@@ -104,10 +106,24 @@ export async function POST(request: NextRequest) {
   }
   if (body.lyricsMode === "custom" && isSongLength(body.length)) {
     const minimumWords = minimumCustomLyricsWords(body.length);
+    const maximumWords = maximumCustomLyricsWords(body.length, style);
     const wordCount = countLyricsWords(lyrics);
     if (wordCount < minimumWords) {
       return NextResponse.json(
         { error: `Für diese Songlänge ist der Text zu kurz (${wordCount} von mindestens ${minimumWords} Wörtern). Ein längerer Text verhindert, dass ganze Strophen unnötig wiederholt werden.` },
+        { status: 400 },
+      );
+    }
+    if (wordCount > maximumWords) {
+      return NextResponse.json(
+        { error: `Für diese Songlänge ist der Text zu lang (${wordCount} von höchstens ${maximumWords} Wörtern). Bitte kürze ihn, damit die Wörter nicht zu schnell gesungen werden.` },
+        { status: 400 },
+      );
+    }
+    const pronunciationRisks = customLyricsPronunciationRisks(lyrics);
+    if (pronunciationRisks.length > 0) {
+      return NextResponse.json(
+        { error: `${pronunciationRisks[0]}. Bitte schreibe Wörter ohne künstlich wiederholte Buchstaben oder lange Fülllaute.` },
         { status: 400 },
       );
     }
