@@ -86,7 +86,7 @@ export default function ImageStudio({ onStudioChange }: { onStudioChange: (mode:
             <h2 className="mt-2 text-2xl font-semibold">{quality === "professional" ? "Professional 2K" : "Premium 4K"}</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">Ein individuelles, professionell erzeugtes Bild im Format {aspectRatio}.</p>
             <div className="my-6 h-px bg-white/10" />
-            <div className="grid gap-3"><Quality active={quality === "professional"} onClick={() => setQuality("professional")} title="Professional 2K" price="3,99 €" text="Schnell und hochwertig" /><Quality active={quality === "premium"} onClick={() => setQuality("premium")} title="Premium 4K" price="6,99 €" text="Maximale Details für Print & Werbung" /></div>
+            <div className="grid gap-3"><Quality active={quality === "professional"} onClick={() => setQuality("professional")} title="Professional 2K" price={formatEuroPrice(IMAGE_PRICE_CENTS.professional)} text="Schnell und hochwertig" /><Quality active={quality === "premium"} onClick={() => setQuality("premium")} title="Premium 4K" price={formatEuroPrice(IMAGE_PRICE_CENTS.premium)} text="Maximale Details für Print & Werbung" /></div>
             <div className="my-6 h-px bg-white/10" />
             <ul className="space-y-3 text-sm text-zinc-300"><Benefit>Professionelle Komposition</Benefit><Benefit>JPG in hoher Auflösung</Benefit><Benefit>Sicherer Download</Benefit><Benefit>Individuell nach deinem Wunsch</Benefit></ul>
             <div className="my-6 h-px bg-white/10" />

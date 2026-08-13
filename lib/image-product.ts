@@ -7,8 +7,8 @@ export type ImageAspectRatio = (typeof IMAGE_ASPECT_RATIOS)[number];
 export type ImageStyle = (typeof IMAGE_STYLES)[number];
 
 export const IMAGE_PRICE_CENTS: Record<ImageQuality, number> = {
-  professional: 399,
-  premium: 699,
+  professional: 199,
+  premium: 349,
 };
 
 export function isImageQuality(value: unknown): value is ImageQuality {

@@ -9,10 +9,10 @@ export type SongLanguage = (typeof SONG_LANGUAGES)[number];
 export type SongVocalStyle = (typeof SONG_VOCAL_STYLES)[number];
 
 export const SONG_PRICE_CENTS: Record<SongLength, number> = {
-  clip: 299,
-  full2: 799,
-  full3: 999,
-  full4: 1199,
+  clip: 149,
+  full2: 399,
+  full3: 499,
+  full4: 599,
 };
 
 export function isSongLength(value: unknown): value is SongLength {
