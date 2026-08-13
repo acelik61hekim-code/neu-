@@ -7,6 +7,8 @@ import {
   isSongLength,
   isSongLyricsMode,
   isSongVocalStyle,
+  countLyricsWords,
+  minimumCustomLyricsWords,
   SONG_PRICE_CENTS,
   songLengthLabel,
 } from "@/lib/song";
@@ -86,6 +88,16 @@ export async function POST(request: NextRequest) {
   }
   if (body.lyricsMode === "custom" && lyrics.length < 10) {
     return NextResponse.json({ error: "Bitte gib deine Lyrics ein." }, { status: 400 });
+  }
+  if (body.lyricsMode === "custom" && isSongLength(body.length)) {
+    const minimumWords = minimumCustomLyricsWords(body.length);
+    const wordCount = countLyricsWords(lyrics);
+    if (wordCount < minimumWords) {
+      return NextResponse.json(
+        { error: `Für diese Songlänge ist der Text zu kurz (${wordCount} von mindestens ${minimumWords} Wörtern). Ein längerer Text verhindert, dass ganze Strophen unnötig wiederholt werden.` },
+        { status: 400 },
+      );
+    }
   }
   if (body.lyricsMode === "custom" && body.rightsAccepted !== true) {
     return NextResponse.json(

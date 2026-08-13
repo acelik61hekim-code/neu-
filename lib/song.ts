@@ -47,6 +47,65 @@ export function songDurationMinutes(value: SongLength): 0.5 | 2 | 3 | 4 {
   return 4;
 }
 
+function songLanguageName(language: SongLanguage): string {
+  if (language === "de") return "German";
+  if (language === "tr") return "Turkish";
+  if (language === "en") return "English";
+  return "the language that best matches the customer's description and lyrics";
+}
+
+function languageQualityDirection(language: SongLanguage): string {
+  if (language === "tr") {
+    return [
+      "Tüm şarkı yalnızca doğal ve akıcı Türkçe olmalı.",
+      "Türkçe telaffuz, vurgu ve heceleme net ve doğru olmalı; başka bir dile geçme.",
+      "Şarkı sözlerindeki ğ, ı, İ, ö, ş, ç ve ü harflerini doğru telaffuz et.",
+      "Uydurma kelime kullanma ve kelimelerin yazımını ya da sonlarını değiştirme.",
+    ].join(" ");
+  }
+  if (language === "de") return "Der gesamte Gesang muss ausschließlich in natürlichem, gut verständlichem Deutsch sein. Sprich jede Silbe deutlich aus, wechsle nicht die Sprache und erfinde keine Wörter.";
+  if (language === "en") return "All vocals must be exclusively in natural, intelligible English. Pronounce every lyric clearly, do not switch languages, and do not invent words.";
+  return "Keep one consistent language throughout the entire song. Use natural pronunciation and do not invent words.";
+}
+
+export function prepareCustomLyrics(lyrics: string, length: SongLength): string {
+  const normalized = lyrics
+    .replace(/\r\n?/g, "\n")
+    .replace(/[ \t]+$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  if (!normalized || /^\s*\[(?:intro|verse|strophe|kıta|chorus|refrain|nakarat|bridge|köprü|outro|pre[- ]?chorus)[^\]]*\]/im.test(normalized)) {
+    return normalized;
+  }
+  const lines = normalized.split("\n").filter((line) => line.trim());
+  if (length === "clip") return `[Verse / Hook]\n${lines.join("\n")}`;
+  const thirds = Math.max(2, Math.ceil(lines.length / 3));
+  const first = lines.slice(0, thirds);
+  const second = lines.slice(thirds, thirds * 2);
+  const third = lines.slice(thirds * 2);
+  return [
+    `[Verse 1]\n${first.join("\n")}`,
+    second.length ? `[Chorus]\n${second.join("\n")}` : "",
+    third.length ? `[Verse 2 / Bridge]\n${third.join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+export function minimumCustomLyricsWords(length: SongLength): number {
+  if (length === "clip") return 8;
+  if (length === "full2") return 45;
+  if (length === "full3") return 70;
+  return 90;
+}
+
+export function countLyricsWords(lyrics: string): number {
+  return lyrics
+    .replace(/\[[^\]]+\]/g, " ")
+    .trim()
+    .split(/\s+/u)
+    .filter(Boolean)
+    .length;
+}
+
 export function buildSongPrompt(input: {
   title?: string;
   description: string;
@@ -59,13 +118,7 @@ export function buildSongPrompt(input: {
   vocalStyle: SongVocalStyle;
   voiceIdeaAnalysis?: string;
 }): string {
-  const language = input.language === "de"
-    ? "German"
-    : input.language === "tr"
-      ? "Turkish"
-    : input.language === "en"
-      ? "English"
-      : "the language that best matches the customer's description and lyrics";
+  const language = songLanguageName(input.language);
 
   const musicStyle = input.style.trim() === "Türkischer Arabesk"
     ? [
@@ -89,29 +142,36 @@ export function buildSongPrompt(input: {
   const duration = input.length === "clip"
     ? "Create an exactly 30-second polished music clip."
     : [
-        `Create a complete song lasting approximately ${durationMinutes} minutes (${durationMinutes * 60} seconds).`,
+        `Create a complete song targeting ${durationMinutes} minutes (${durationMinutes * 60} seconds), with a tolerance of no more than 10 seconds.`,
         "This must be a real full song, not a short clip or teaser.",
         durationMinutes >= 3
-          ? "Use an intro, at least three verses, recurring choruses, a bridge, an instrumental passage and a proper outro so the requested duration is filled naturally."
-          : "Use an intro, at least two verses, recurring choruses, a bridge and a proper outro so the requested duration is filled naturally.",
+          ? "Use this timeline: [0:00 Intro] -> [0:12 Verse 1] -> [0:42 Chorus] -> [1:08 Verse 2 with new lyrics and melodic variation] -> [1:38 Instrumental development using the main motif] -> [2:04 Bridge] -> [2:30 Final chorus with a tasteful lift] -> [2:52 Outro and clean ending]."
+          : "Use this timeline: [0:00 Intro] -> [0:08 Verse 1] -> [0:32 Chorus] -> [0:58 Verse 2 with new lyrics] -> [1:22 Bridge] -> [1:38 Final chorus] -> [1:52 Outro and clean ending].",
       ].join(" ");
 
   const vocalDirection = input.lyricsMode === "instrumental"
     ? "Instrumental only. No singing, spoken words, chants or vocal samples."
     : input.vocalStyle === "female"
-      ? "Use a natural female lead vocal."
+      ? "Use one consistent natural female lead singer with a rich warm alto-to-mezzo range, expressive but controlled phrasing, stable timbre, clear diction and no robotic formants."
       : input.vocalStyle === "male"
-        ? "Use a natural male lead vocal."
+        ? "Use one consistent natural male lead singer with a warm resonant baritone-to-tenor range, emotionally expressive but controlled delivery, stable timbre, clear diction and no robotic formants."
         : input.vocalStyle === "duet"
-          ? "Use a complementary male and female duet."
+          ? "Use a complementary male and female duet with clearly distinguishable stable voices. Assign complete lines to each singer and reserve simultaneous singing for the chorus; do not randomly switch voices mid-line."
           : input.vocalStyle === "choir"
-            ? "Use expressive choir vocals where musically appropriate."
-            : "Choose the lead vocal that best fits the song.";
+            ? "Use a stable natural lead singer supported by an expressive choir in choruses only. Keep verses intimate and intelligible; do not let the choir obscure the words."
+            : "Choose one natural lead singer that fits the genre, then keep the same singer identity, range, accent and timbre throughout the entire song.";
 
   const lyricsDirection = input.lyricsMode === "custom"
-    ? `Use the customer's lyrics below. Preserve their wording as closely as musical phrasing and safety allow.\n\nCUSTOMER LYRICS:\n${input.lyrics?.trim() || ""}`
+    ? [
+        "Perform the customer-provided original lyrics faithfully as written below.",
+        "Do not rewrite, translate, paraphrase, reorder, omit or add words or lines.",
+        "Do not stretch a written word by inventing extra letters in the performed or returned lyrics.",
+        "Repeat only sections explicitly marked as [Chorus] or [Refrain]; never repeat a verse merely to fill the duration.",
+        "Use instrumental bars, melodic development, solos, backing harmonies and a longer outro to fill remaining time instead of repeating verses.",
+        `CUSTOMER LYRICS:\n${prepareCustomLyrics(input.lyrics?.trim() || "", input.length)}`,
+      ].join("\n\n")
     : input.lyricsMode === "ai"
-      ? `Write original lyrics in ${language}. The lyrics must match the customer's topic and include a memorable repeating chorus. Do not quote or imitate existing copyrighted lyrics.`
+      ? `Write polished, meaningful original lyrics in ${language}. Use distinct verses that advance the story, a concise memorable chorus, natural rhyme and singable line lengths. Repeat the chorus at most three times, never recycle a verse, and do not use filler syllables excessively. Do not quote or imitate existing copyrighted lyrics.`
       : "Do not generate lyrics.";
 
   return [
@@ -124,8 +184,10 @@ export function buildSongPrompt(input: {
       ? `CUSTOMER VOICE-NOTE ANALYSIS (use as high-level musical guidance for a new original composition; never clone the voice or copy a recognizable melody):\n${input.voiceIdeaAnalysis.trim()}`
       : "",
     vocalDirection,
+    languageQualityDirection(input.language),
     lyricsDirection,
-    "Create an original composition. Do not imitate a named living artist or reproduce an existing melody, recording or copyrighted lyrics.",
+    "QUALITY RULES: Keep the melody coherent and memorable. Avoid abrupt key, tempo, singer, genre or language changes. Use natural transitions between sections. Keep the lead vocal centered, clear and intelligible above the instruments without clipping, distortion, robotic artifacts or excessive reverb. Avoid awkward silence at the beginning, mid-song cutoffs, fake endings and restarting the song after the outro.",
+    "Create a new original composition with its own melody, arrangement and vocal identity.",
     "Deliver a release-ready stereo mix with a clean ending and no spoken explanation outside the song.",
   ].filter(Boolean).join("\n\n");
 }

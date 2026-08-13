@@ -8,6 +8,8 @@ import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
 import { formatEuroPrice } from "@/lib/pricing";
 import {
   SONG_PRICE_CENTS,
+  countLyricsWords,
+  minimumCustomLyricsWords,
   type SongLanguage,
   type SongLength,
   type SongLyricsMode,
@@ -45,6 +47,8 @@ export default function SongStudio({
   const recordingChunksRef = useRef<Blob[]>([]);
 
   const price = useMemo(() => formatEuroPrice(SONG_PRICE_CENTS[length]), [length]);
+  const lyricsWordCount = useMemo(() => countLyricsWords(lyrics), [lyrics]);
+  const minimumLyricsWords = minimumCustomLyricsWords(length);
 
   useEffect(() => {
     return () => {
@@ -138,6 +142,10 @@ export default function SongStudio({
     }
     if (lyricsMode === "custom" && lyrics.trim().length < 10) {
       setError("Bitte gib deine Lyrics ein.");
+      return;
+    }
+    if (lyricsMode === "custom" && lyricsWordCount < minimumLyricsWords) {
+      setError(`Für diese Songlänge brauchst du mindestens ${minimumLyricsWords} Wörter. So werden ganze Strophen nicht unnötig wiederholt.`);
       return;
     }
     if (lyricsMode === "custom" && !rightsAccepted) {
@@ -267,6 +275,7 @@ export default function SongStudio({
             {lyricsMode === "custom" && (
               <Field label="Deine Lyrics" hint="[Verse], [Chorus] und [Bridge] helfen bei der Struktur">
                 <textarea value={lyrics} onChange={(event) => setLyrics(event.target.value)} maxLength={8000} rows={12} placeholder={"[Verse 1]\n...\n\n[Chorus]\n...\n\n[Verse 2]\n..."} className={`${inputClass} font-mono text-sm`} />
+                <div className={`mt-2 flex items-center justify-between text-[11px] ${lyricsWordCount >= minimumLyricsWords ? "text-emerald-400/70" : "text-amber-300/70"}`}><span>{lyricsWordCount} Wörter</span><span>Mindestens {minimumLyricsWords} für diese Länge</span></div>
                 <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border border-white/10 bg-black/20 p-4 text-xs leading-5 text-zinc-400">
                   <input type="checkbox" checked={rightsAccepted} onChange={(event) => setRightsAccepted(event.target.checked)} className="mt-0.5 h-4 w-4 accent-fuchsia-500" />
                   Ich bestätige, dass der Text von mir stammt oder ich die nötigen Rechte und Einwilligungen zur Nutzung habe.
