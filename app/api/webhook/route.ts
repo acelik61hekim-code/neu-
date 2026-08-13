@@ -952,7 +952,7 @@ export async function POST(
         0,
 
       maxRetries:
-        3,
+        12,
 
       nextAttemptAt:
         now,

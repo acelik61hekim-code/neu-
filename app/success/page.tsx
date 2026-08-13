@@ -14,6 +14,7 @@ type VideoStatus = {
   renderStage?:
     | "queued"
     | "planning"
+    | "waiting-provider"
     | "generating-opening"
     | "extending"
     | "generating-chapter"
@@ -33,6 +34,8 @@ type VideoStatus = {
   totalChapters?: number;
   currentExtension?: number;
   totalExtensions?: number;
+  retryCount?: number;
+  nextAttemptAt?: number;
   videoUrl?: string;
   errorMessage?: string;
 };
@@ -40,6 +43,7 @@ type VideoStatus = {
 const STAGE_LABELS: Record<NonNullable<VideoStatus["renderStage"]>, string> = {
   queued: "Dein Auftrag wird vorbereitet",
   planning: "Der Filmplan wird geprüft",
+  "waiting-provider": "Google-Limit erreicht – automatischer neuer Versuch",
   "generating-opening": "Die erste Filmsequenz entsteht",
   extending: "Dein Film wird Szene für Szene erweitert",
   "generating-chapter": "Ein weiterer Filmabschnitt entsteht",
@@ -332,6 +336,13 @@ function StatusCard({
               {connectionError && (
                 <p className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/5 px-4 py-3 text-xs leading-5 text-amber-200/80">
                   Die Statusanzeige verbindet sich erneut. Dein Videoauftrag läuft davon unabhängig weiter.
+                </p>
+              )}
+
+              {videoStatus.renderStage === "waiting-provider" && (
+                <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-xs leading-5 text-amber-100/80">
+                  Dein bezahlter Auftrag ist sicher gespeichert. Die Video-KI versucht den Start automatisch erneut – ohne erneute Zahlung und ohne einen bereits gestarteten Abschnitt doppelt auszulösen.
+                  {videoStatus.nextAttemptAt ? ` Nächster Versuch ungefähr um ${new Date(videoStatus.nextAttemptAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.` : ""}
                 </p>
               )}
             </div>

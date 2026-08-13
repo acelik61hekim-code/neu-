@@ -38,6 +38,7 @@ export type VideoPaymentStatus =
 export type VideoRenderStage =
   | "queued"
   | "planning"
+  | "waiting-provider"
   | "generating-opening"
   | "extending"
   | "generating-chapter"
@@ -255,6 +256,16 @@ const workflowStartKeyFor = (
 ) =>
   `job:${jobId}:workflow-start`;
 
+const VIDEO_PROVIDER_PAUSE_KEY = "video-provider:checkout-pause";
+
+export type VideoProviderPause = {
+  until: number;
+  reason: string;
+  sourceJobId: string;
+  httpStatus?: number;
+  updatedAt: number;
+};
+
 const hasUpstashConfig =
   Boolean(
     process.env
@@ -337,6 +348,12 @@ function persistLocalMemoryStore(): void {
   } catch (error) {
     console.error("Lokaler Videoauftrag konnte nicht gesichert werden:", error);
   }
+}
+
+declare global {
+  var __videoProviderPause:
+    | VideoProviderPause
+    | undefined;
 }
 
 function hydrateLocalMemoryStore(): void {
@@ -460,6 +477,52 @@ export const jobStore = {
       storedJob,
     );
     persistLocalMemoryStore();
+  },
+
+  async getProviderPause(): Promise<VideoProviderPause | undefined> {
+    const pause = redis
+      ? await redis.get<VideoProviderPause>(VIDEO_PROVIDER_PAUSE_KEY)
+      : global.__videoProviderPause;
+
+    if (!pause) return undefined;
+    if (pause.until > Date.now()) return pause;
+
+    if (redis) {
+      await redis.del(VIDEO_PROVIDER_PAUSE_KEY);
+    } else {
+      global.__videoProviderPause = undefined;
+    }
+
+    return undefined;
+  },
+
+  async pauseProvider(
+    pause: Omit<VideoProviderPause, "updatedAt">,
+  ): Promise<void> {
+    const storedPause: VideoProviderPause = {
+      ...pause,
+      updatedAt: Date.now(),
+    };
+    const ttlSeconds = Math.max(60, Math.ceil((pause.until - Date.now()) / 1000));
+
+    if (redis) {
+      await redis.set(VIDEO_PROVIDER_PAUSE_KEY, storedPause, { ex: ttlSeconds });
+    } else {
+      global.__videoProviderPause = storedPause;
+    }
+  },
+
+  async clearProviderPause(sourceJobId?: string): Promise<void> {
+    if (sourceJobId) {
+      const current = await this.getProviderPause();
+      if (current && current.sourceJobId !== sourceJobId) return;
+    }
+
+    if (redis) {
+      await redis.del(VIDEO_PROVIDER_PAUSE_KEY);
+    } else {
+      global.__videoProviderPause = undefined;
+    }
   },
 
   /*

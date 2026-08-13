@@ -90,6 +90,12 @@ function missingProductionServices(): string[] {
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
     missing.push("Stripe Webhook");
   }
+  if (!process.env.GEMINI_API_KEY) {
+    missing.push("Google AI");
+  }
+  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") {
+    missing.push("Veo Render");
+  }
   return missing;
 }
 
@@ -223,6 +229,25 @@ export async function POST(
           "Die Video-Bestellung ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
       },
       { status: 503 },
+    );
+  }
+
+  const providerPause = await jobStore.getProviderPause();
+  if (providerPause) {
+    const retryAfterSeconds = Math.max(
+      60,
+      Math.ceil((providerPause.until - Date.now()) / 1000),
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Die Video-KI hat momentan ihr Google-Limit erreicht. Es wird keine Zahlung gestartet. Bitte versuche es später erneut.",
+      },
+      {
+        status: 503,
+        headers: { "Retry-After": String(retryAfterSeconds) },
+      },
     );
   }
 

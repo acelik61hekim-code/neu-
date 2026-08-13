@@ -54,6 +54,52 @@ type PredictLongRunningResponse =
     done?: boolean;
   };
 
+const SAFELY_RETRYABLE_PROVIDER_START_STATUSES = new Set([
+  429,
+  503,
+]);
+
+export class VeoProviderStartError extends Error {
+  readonly provider = "google-veo";
+  readonly phase = "start";
+  readonly httpStatus: number;
+  readonly safeToRetry: boolean;
+  readonly retryAfterMs?: number;
+
+  constructor(
+    message: string,
+    options: { httpStatus: number; retryAfterMs?: number },
+  ) {
+    super(message);
+    this.name = "VeoProviderStartError";
+    this.httpStatus = options.httpStatus;
+    this.safeToRetry = SAFELY_RETRYABLE_PROVIDER_START_STATUSES.has(options.httpStatus);
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}
+
+export function getRetryableVeoStartError(
+  error: unknown,
+): { message: string; httpStatus: number; retryAfterMs?: number } | null {
+  if (typeof error !== "object" || error === null) return null;
+
+  const candidate = error as Partial<VeoProviderStartError>;
+  if (
+    candidate.provider !== "google-veo" ||
+    candidate.phase !== "start" ||
+    candidate.safeToRetry !== true ||
+    typeof candidate.httpStatus !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    message: typeof candidate.message === "string" ? candidate.message : "Google Veo ist vorübergehend nicht verfügbar.",
+    httpStatus: candidate.httpStatus,
+    retryAfterMs: typeof candidate.retryAfterMs === "number" ? candidate.retryAfterMs : undefined,
+  };
+}
+
 type GeminiFileResource =
   GoogleApiError & {
     name?: string;
@@ -260,6 +306,22 @@ function createRetryDelay(
   return (
     10000 * attempt
   );
+}
+
+function parseRetryAfterMs(value: string | null): number | undefined {
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.max(1000, Math.round(seconds * 1000));
+  }
+
+  const date = Date.parse(value);
+  if (Number.isFinite(date)) {
+    return Math.max(1000, date - Date.now());
+  }
+
+  return undefined;
 }
 
 function generatedLengthForSingleChain(
@@ -542,11 +604,15 @@ export async function startVideoGeneration(
       continue;
     }
 
-    throw new Error(
+    throw new VeoProviderStartError(
       getGoogleErrorMessage(
         data,
         `Veo-Anfrage fehlgeschlagen. HTTP ${response.status}.`,
       ),
+      {
+        httpStatus: response.status,
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+      },
     );
   }
 
@@ -1045,11 +1111,15 @@ export async function startVideoExtension(
       continue;
     }
 
-    throw new Error(
+    throw new VeoProviderStartError(
       getGoogleErrorMessage(
         data,
         `Google Veo Extension fehlgeschlagen. HTTP ${response.status}.`,
       ),
+      {
+        httpStatus: response.status,
+        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+      },
     );
   }
 

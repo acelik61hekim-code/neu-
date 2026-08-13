@@ -42,6 +42,8 @@ export async function GET(req: NextRequest) {
     totalChapters: job.totalChapters ?? 0,
     currentExtension: job.currentExtension ?? 0,
     totalExtensions: job.totalExtensions ?? 0,
+    retryCount: job.retryCount ?? 0,
+    nextAttemptAt: job.nextAttemptAt,
     videoReady,
     videoUrl,
     errorMessage: job.errorMessage,

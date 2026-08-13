@@ -31,6 +31,29 @@ type PollResult = {
   mimeType?: string;
 };
 
+type ProviderStartResult =
+  | { started: true; operationName: string }
+  | {
+      started: false;
+      retryAfterMs: number;
+      httpStatus: number;
+    };
+
+const PROVIDER_RETRY_DELAYS_MS = [
+  60_000,
+  5 * 60_000,
+  15 * 60_000,
+  30 * 60_000,
+  60 * 60_000,
+  2 * 60 * 60_000,
+  4 * 60 * 60_000,
+  8 * 60 * 60_000,
+  12 * 60 * 60_000,
+  12 * 60 * 60_000,
+  12 * 60 * 60_000,
+  12 * 60 * 60_000,
+] as const;
+
 export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> {
   "use workflow";
 
@@ -51,7 +74,7 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
     let completedExtensions = 0;
 
     for (const segment of prepared.segments) {
-      const openingOperation = await startOpeningVideoStep(
+      const openingOperation = await startOpeningWithProviderRetry(
         jobId,
         segment.openingPrompt,
         prepared.aspectRatio,
@@ -67,7 +90,7 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
 
       for (let index = 0; index < segment.continuationPrompts.length; index += 1) {
         const globalExtensionNumber = completedExtensions + 1;
-        const operation = await startExtensionVideoStep(
+        const operation = await startExtensionWithProviderRetry(
           jobId,
           currentUri,
           segment.continuationPrompts[index],
@@ -135,6 +158,56 @@ export async function recoverVideoFinalizationWorkflow(jobId: string): Promise<R
     await failRenderJobStep(jobId, message);
     throw error;
   }
+}
+
+async function startOpeningWithProviderRetry(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+): Promise<string> {
+  for (let attempt = 0; attempt <= PROVIDER_RETRY_DELAYS_MS.length; attempt += 1) {
+    const plannedRetryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt] ?? 0;
+    const result = await startOpeningVideoStep(
+      jobId,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+      plannedRetryDelayMs,
+    );
+
+    if (result.started) return result.operationName;
+    await sleep(`${Math.ceil(result.retryAfterMs / 1000)}s`);
+  }
+
+  throw new Error("Google Veo konnte nach mehreren sicheren Versuchen nicht gestartet werden.");
+}
+
+async function startExtensionWithProviderRetry(
+  jobId: string,
+  previousVideoUri: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  extensionNumber: number,
+): Promise<string> {
+  for (let attempt = 0; attempt <= PROVIDER_RETRY_DELAYS_MS.length; attempt += 1) {
+    const plannedRetryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt] ?? 0;
+    const result = await startExtensionVideoStep(
+      jobId,
+      previousVideoUri,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+      extensionNumber,
+      plannedRetryDelayMs,
+    );
+
+    if (result.started) return result.operationName;
+    await sleep(`${Math.ceil(result.retryAfterMs / 1000)}s`);
+  }
+
+  throw new Error("Google Veo konnte die Fortsetzung nach mehreren sicheren Versuchen nicht starten.");
 }
 
 async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUri: string; duration: VideoDurationSeconds }> {
@@ -287,7 +360,8 @@ async function startOpeningVideoStep(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
-): Promise<string> {
+  plannedRetryDelayMs: number,
+): Promise<ProviderStartResult> {
   "use step";
   if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
   const { jobStore } = await import("@/lib/store");
@@ -300,7 +374,7 @@ async function startOpeningVideoStep(
     job.currentOperationName &&
     job.currentOperationType === operationType &&
     (operationType !== "chapter-opening" || job.currentChapter === chapterNumber)
-  ) return job.currentOperationName;
+  ) return { started: true, operationName: job.currentOperationName };
 
   const referenceImage =
     chapterNumber === 1 && job.referenceImageUrl
@@ -310,11 +384,48 @@ async function startOpeningVideoStep(
         )
       : undefined;
 
-  const operationName = await startVideoGeneration(prompt, {
-    aspectRatio,
-    referenceImage,
-    maxAttempts: 1,
-  });
+  let operationName: string;
+  try {
+    operationName = await startVideoGeneration(prompt, {
+      aspectRatio,
+      referenceImage,
+      maxAttempts: 1,
+    });
+  } catch (error) {
+    const { getRetryableVeoStartError } = await import("@/lib/veo");
+    const providerError = getRetryableVeoStartError(error);
+    if (!providerError || plannedRetryDelayMs <= 0) throw error;
+
+    const retryAfterMs = Math.min(
+      12 * 60 * 60_000,
+      Math.max(plannedRetryDelayMs, providerError.retryAfterMs ?? 0),
+    );
+    const nextAttemptAt = Date.now() + retryAfterMs;
+    const message = providerError.httpStatus === 429
+      ? "Das Google-Kontingent ist vorübergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
+      : "Google Veo ist vorübergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
+
+    await jobStore.pauseProvider({
+      until: nextAttemptAt,
+      reason: message,
+      sourceJobId: jobId,
+      httpStatus: providerError.httpStatus,
+    });
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      renderStage: "waiting-provider",
+      retryCount: (job.retryCount ?? 0) + 1,
+      nextAttemptAt,
+      errorMessage: message,
+    });
+
+    return {
+      started: false,
+      retryAfterMs,
+      httpStatus: providerError.httpStatus,
+    };
+  }
   const latest = await jobStore.get(jobId);
   if (!latest) throw new Error("Render-Job ist nach dem Veo-Start verschwunden.");
   await jobStore.set(jobId, {
@@ -325,8 +436,11 @@ async function startOpeningVideoStep(
     currentOperationName: operationName,
     currentOperationType: operationType,
     lastProviderRequestAt: Date.now(),
+    nextAttemptAt: undefined,
+    errorMessage: undefined,
   });
-  return operationName;
+  await jobStore.clearProviderPause(jobId);
+  return { started: true, operationName };
 }
 startOpeningVideoStep.maxRetries = 0;
 
@@ -337,7 +451,8 @@ async function startExtensionVideoStep(
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
   extensionNumber: number,
-): Promise<string> {
+  plannedRetryDelayMs: number,
+): Promise<ProviderStartResult> {
   "use step";
   if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
   const { jobStore } = await import("@/lib/store");
@@ -350,13 +465,50 @@ async function startExtensionVideoStep(
     job.currentOperationType === "extension" &&
     job.currentChapter === chapterNumber &&
     job.currentExtension === extensionNumber
-  ) return job.currentOperationName;
+  ) return { started: true, operationName: job.currentOperationName };
 
-  const operationName = await startVideoExtension(previousVideoUri, prompt, {
-    aspectRatio,
-    extensionNumber,
-    maxAttempts: 1,
-  });
+  let operationName: string;
+  try {
+    operationName = await startVideoExtension(previousVideoUri, prompt, {
+      aspectRatio,
+      extensionNumber,
+      maxAttempts: 1,
+    });
+  } catch (error) {
+    const { getRetryableVeoStartError } = await import("@/lib/veo");
+    const providerError = getRetryableVeoStartError(error);
+    if (!providerError || plannedRetryDelayMs <= 0) throw error;
+
+    const retryAfterMs = Math.min(
+      12 * 60 * 60_000,
+      Math.max(plannedRetryDelayMs, providerError.retryAfterMs ?? 0),
+    );
+    const nextAttemptAt = Date.now() + retryAfterMs;
+    const message = providerError.httpStatus === 429
+      ? "Das Google-Kontingent ist vorübergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
+      : "Google Veo ist vorübergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
+
+    await jobStore.pauseProvider({
+      until: nextAttemptAt,
+      reason: message,
+      sourceJobId: jobId,
+      httpStatus: providerError.httpStatus,
+    });
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      renderStage: "waiting-provider",
+      retryCount: (job.retryCount ?? 0) + 1,
+      nextAttemptAt,
+      errorMessage: message,
+    });
+
+    return {
+      started: false,
+      retryAfterMs,
+      httpStatus: providerError.httpStatus,
+    };
+  }
   const latest = await jobStore.get(jobId);
   if (!latest) throw new Error("Render-Job ist nach dem Veo-Extension-Start verschwunden.");
   await jobStore.set(jobId, {
@@ -368,8 +520,11 @@ async function startExtensionVideoStep(
     currentOperationName: operationName,
     currentOperationType: "extension",
     lastProviderRequestAt: Date.now(),
+    nextAttemptAt: undefined,
+    errorMessage: undefined,
   });
-  return operationName;
+  await jobStore.clearProviderPause(jobId);
+  return { started: true, operationName };
 }
 startExtensionVideoStep.maxRetries = 0;
 

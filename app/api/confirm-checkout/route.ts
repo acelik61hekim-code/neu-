@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
         currentExtension: 0,
         totalExtensions: countExtensions(durationPlan.chapterTargets),
         retryCount: 0,
-        maxRetries: 3,
+        maxRetries: 12,
         nextAttemptAt: now,
         workerId: undefined,
         claimedAt: undefined,
