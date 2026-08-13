@@ -53,12 +53,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const canRecoverAiLyrics = job.paymentStatus === "paid" &&
+    const recoveryLimit = job.lyricsMode === "ai" ? 2 : 1;
+    const canRecoverPaidSong = job.paymentStatus === "paid" &&
       job.stripeSessionId === sessionId &&
       job.status === "error" &&
-      job.lyricsMode === "ai" &&
-      (job.recoveryAttempts ?? 0) < 2;
-    if (canRecoverAiLyrics) {
+      (job.recoveryAttempts ?? 0) < recoveryLimit;
+    if (canRecoverPaidSong) {
       await songStore.clearWorkflowStart(jobId);
       await songStore.set(jobId, {
         ...job,
