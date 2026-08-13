@@ -125,6 +125,43 @@ export type WaitForVideoOptions = {
   timeoutMs?: number;
 };
 
+export function buildOpeningVideoRequestBody(
+  prompt: string,
+  options: Pick<VeoGenerationOptions, "aspectRatio" | "referenceImage"> = {},
+): Record<string, unknown> {
+  const cleanedPrompt = prompt.trim();
+  if (!cleanedPrompt) throw new Error("Für die Videogenerierung fehlt der Prompt.");
+
+  const instance: Record<string, unknown> = { prompt: cleanedPrompt };
+  if (options.referenceImage) {
+    const { data, mimeType } = options.referenceImage;
+    if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+      throw new Error("Die Veo-Bildreferenz ist ungültig.");
+    }
+
+    // predictLongRunning erwartet Bildbytes direkt im Image-Objekt.
+    // inlineData gehört zu anderen Gemini-Endpunkten und wird von diesem
+    // Veo-Modell mit HTTP 400 abgelehnt.
+    instance.image = {
+      bytesBase64Encoded: data,
+      mimeType,
+    };
+  }
+
+  const requestBody: Record<string, unknown> = { instances: [instance] };
+  if (options.aspectRatio !== undefined) {
+    if (!isVideoAspectRatio(options.aspectRatio)) {
+      throw new Error('Ungültiges Veo-Bildformat. Erlaubt sind "9:16" oder "16:9".');
+    }
+    requestBody.parameters = {
+      aspectRatio: options.aspectRatio,
+      durationSeconds: 8,
+      resolution: "720p",
+    };
+  }
+  return requestBody;
+}
+
 export type VideoDurationPlan = {
   targetDurationSeconds:
     VideoDurationSeconds;
@@ -444,56 +481,7 @@ export async function startVideoGeneration(
     attempt <= maxAttempts;
     attempt += 1
   ) {
-    const aspectRatio =
-      options.aspectRatio;
-
-    const instance: Record<string, unknown> = {
-      prompt: cleanedPrompt,
-    };
-
-    if (options.referenceImage) {
-      const { data, mimeType } = options.referenceImage;
-      if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        throw new Error("Die Veo-Bildreferenz ist ungültig.");
-      }
-
-      instance.image = {
-        inlineData: {
-          mimeType,
-          data,
-        },
-      };
-    }
-
-    const requestBody:
-      Record<string, unknown> = {
-      instances: [instance],
-    };
-
-    /*
-     * Alte Aufrufe ohne options bleiben unverändert.
-     * Neue Aufrufe können 9:16 oder 16:9 explizit setzen.
-     */
-    if (
-      aspectRatio !==
-      undefined
-    ) {
-      if (
-        !isVideoAspectRatio(
-          aspectRatio,
-        )
-      ) {
-        throw new Error(
-          'Ungültiges Veo-Bildformat. Erlaubt sind "9:16" oder "16:9".',
-        );
-      }
-
-      requestBody.parameters = {
-        aspectRatio,
-        durationSeconds: 8,
-        resolution: "720p",
-      };
-    }
+    const requestBody = buildOpeningVideoRequestBody(cleanedPrompt, options);
 
     const response =
       await fetch(

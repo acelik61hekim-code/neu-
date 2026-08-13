@@ -520,6 +520,10 @@ function readableRenderError(error: unknown): string {
     return "Die finale Videodatei konnte nicht gespeichert werden. Das vorhandene Rohvideo kann ohne neue KI-Generierung wiederhergestellt werden.";
   }
 
+  if (/inlineData.*isn(?:'|’)t supported by this model/i.test(rawMessage)) {
+    return "Das freigegebene Vorschaubild konnte nicht an die Video-KI übergeben werden. Der Auftrag kann ohne neue Zahlung erneut gestartet werden.";
+  }
+
   return rawMessage;
 }
 

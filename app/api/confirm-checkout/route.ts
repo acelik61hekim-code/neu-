@@ -88,7 +88,37 @@ export async function POST(request: NextRequest) {
     }
 
     if (locallyVerifiedPayment && job.status === "error") {
-      return NextResponse.json({ confirmed: true, queued: false, failed: true });
+      const canRepairImageTransportFailure =
+        (job.retryCount ?? 0) < 1 &&
+        !job.currentOperationName &&
+        /`?inlineData`?.*isn(?:'|’)t supported by this model/i.test(job.errorMessage || "");
+
+      if (!canRepairImageTransportFailure) {
+        return NextResponse.json({ confirmed: true, queued: false, failed: true });
+      }
+
+      // Dieser Fehler entstand vor dem Start einer kostenpflichtigen Veo-Operation.
+      // Nach dem Transport-Fix darf derselbe bezahlte Auftrag genau einmal sicher
+      // wieder aufgenommen werden, ohne eine zweite Zahlung zu verlangen.
+      await jobStore.clearWorkflowStart(jobId);
+      await jobStore.set(jobId, {
+        ...job,
+        status: "processing",
+        renderStage: "queued",
+        progressPercent: 1,
+        currentChapter: 0,
+        currentExtension: 0,
+        currentOperationName: undefined,
+        currentOperationType: undefined,
+        workerId: undefined,
+        claimedAt: undefined,
+        leaseExpiresAt: undefined,
+        startedAt: undefined,
+        completedAt: undefined,
+        retryCount: (job.retryCount ?? 0) + 1,
+        nextAttemptAt: Date.now(),
+        errorMessage: undefined,
+      });
     }
 
     if (locallyVerifiedPayment && job.status === "processing" && job.workerId) {

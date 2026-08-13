@@ -678,6 +678,19 @@ export const jobStore = {
     return undefined;
   },
 
+  async clearWorkflowStart(
+    jobId: string,
+  ): Promise<void> {
+    if (redis) {
+      await redis.del(
+        workflowStartKeyFor(jobId),
+      );
+      return;
+    }
+
+    memoryWorkflowStartClaims.delete(jobId);
+  },
+
   /*
    * Bequemer Helper für Worker-Fortschritt.
    *
