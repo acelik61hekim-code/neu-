@@ -290,12 +290,24 @@ export default function SongStudio({
             </Field>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <SelectField label="Musikstil" value={style} onChange={(value) => { setStyle(value); if (value === "Deutschrap / Straßenrap") setLanguage("de"); }} options={styles} />
+              <SelectField label="Musikstil" value={style} onChange={(value) => {
+                setStyle(value);
+                if (value === "Deutschrap / Straßenrap") setLanguage("de");
+                if (value === "Türkischer Arabesk") {
+                  setLanguage("tr");
+                  setMood("Hüzünlü / Sehnsüchtig");
+                }
+              }} options={styles} />
               <SelectField label="Stimmung" value={mood} onChange={setMood} options={moods} />
             </div>
             {style === "Deutschrap / Straßenrap" && (
               <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
                 Automatisch mit natürlichen deutschen Rap-Lyrics, zwei langen Strophen, sauberem Reimschema und einer zusammenhängenden Geschichte. Keine erfundene Grammatik und keine automatisch eingestreuten Klischeewörter.
+              </div>
+            )}
+            {style === "Türkischer Arabesk" && (
+              <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
+                Automatisch langsam, dramatisch und tief traurig mit großem Streichorchester, Piano und dezentem Bağlama – kein orientalischer Tanzklang und keine dominante Darbuka, Oud oder Kanun.
               </div>
             )}
 

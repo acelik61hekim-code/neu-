@@ -132,8 +132,11 @@ function safeFallbackGenre(style: string): string {
   if (normalized.includes("rap") || normalized.includes("hip-hop")) {
     return "modern melodic hip-hop and rap with crisp drums, warm bass, clear rhythmic verses and a memorable original hook";
   }
+  if (normalized.includes("arabesk") && !normalized.includes("pop") && !normalized.includes("fantezi")) {
+    return "slow dramatic Turkish arabesk ballad in a dark minor key with profound sadness, cinematic string orchestra, sorrowful piano, deep warm bass, restrained drums, a discreet bağlama texture and expressive clear Turkish vocals; not Middle Eastern folklore, not oriental dance music, no oud, kanun, zurna, ney, darbuka solos or busy hand percussion";
+  }
   if (normalized.includes("arabesk") || normalized.includes("fantezi")) {
-    return "original Turkish arabesk-pop with expressive vocals, bağlama, warm strings and restrained percussion";
+    return "original Turkish arabesk-pop with expressive vocals, piano, lush warm strings, subtle bağlama and restrained modern percussion";
   }
   if (normalized.includes("r&b")) return "modern melodic R&B with a warm groove and expressive vocals";
   if (normalized.includes("afro")) return "modern Afrobeats with a warm danceable groove and melodic vocals";
@@ -161,7 +164,9 @@ function safeFallbackPrompt(job: NonNullable<Awaited<ReturnType<typeof songStore
     `Use ${singer}. Write all lyrics entirely in ${language}.`,
     isGermanStreetRap(job.style)
       ? "Write grammatically correct, natural German rap lyrics with two distinct 14-to-16-bar verses, a coherent story and a concise four-line rhythmic hook. Use specific original images, clean internal rhymes and meaningful punchlines. Do not use pseudo-street slang, filler adlibs, status-symbol lists or the stock words Bruda, Para, Yallah, Lan, Baba, Benz, AMG, Block, Kiez, Beton, Blaulicht, Schlamm, Herz aus Stein, ganz unten or nach oben."
-      : "Write fresh, harmless, positive, family-friendly lyrics about perseverance, self-belief and a hopeful new beginning.",
+      : job.style.trim() === "Türkischer Arabesk"
+        ? "Write natural, poetic and family-friendly Turkish lyrics about loss, longing, separation and memories that remain. Keep the story deeply sad and emotionally coherent without violence, threats, melodramatic clichés or a forced happy ending."
+        : "Write fresh, harmless, positive, family-friendly lyrics about perseverance, self-belief and a hopeful new beginning.",
     "Do not refer to real people, performers, brands or existing works. Give the composition its own melody, arrangement and vocal identity.",
     "Use this structure: [Intro] -> [Verse 1] -> [Chorus] -> [Verse 2 with completely new lines] -> [Bridge] -> [Final Chorus] -> [Outro].",
     "Keep the singer, language, tempo and genre consistent. Deliver a polished 44.1 kHz stereo mix with clear diction and a clean ending.",

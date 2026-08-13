@@ -135,11 +135,14 @@ export function buildSongPrompt(input: {
       ].join("; ")
     : input.style.trim() === "Türkischer Arabesk"
       ? [
-        "Original Turkish arabesk with a deeply melancholic and dramatic atmosphere",
-        "expressive Turkish-style vocal ornamentation",
-        "prominent bağlama/saz, sweeping string orchestra, kanun, oud and restrained darbuka percussion",
-        "an emotional build and a powerful, memorable chorus",
-        "Do not imitate any named singer, existing song, melody or recording",
+        "Original Turkish dramatic arabesk ballad with profound sadness, longing, heartbreak and emotional weight",
+        "slow to moderate tempo in a dark minor key with restrained rhythm and no dance groove",
+        "cinematic grand string orchestra, sorrowful piano, deep warm bass, subtle acoustic guitar and only a very discreet bağlama texture for Turkish character",
+        "the arrangement must sound dramatic, tragic, intimate and orchestral rather than Middle Eastern, folkloric, exotic or festive",
+        "avoid oud, kanun, zurna, ney, darbuka solos, belly-dance rhythms, busy hand percussion and stereotypical oriental melodic runs",
+        "use a controlled expressive Turkish vocal with clear diction, deep feeling and tasteful ornamentation; avoid excessive melisma and theatrical wailing",
+        "start intimate, build gradually with strings and harmony, reach a powerful sorrowful chorus, then end quietly and unresolved",
+        "Do not imitate any named singer, existing song, melody, voice or recording",
         ].join("; ")
       : input.style.trim() === "Türkischer Arabesk-Pop / Fantezi"
         ? [
@@ -176,7 +179,9 @@ export function buildSongPrompt(input: {
 
   const genreArrangementDirection = input.style.trim() === "Deutschrap / Straßenrap"
     ? "DEUTSCHRAP PRODUCTION PRIORITY: The beat and melody are as important as the vocal. Keep the sub-bass physically powerful, the 808 tuned to the song key, and the kick clearly audible without clipping. Build a dark catchy original main motif, vary drums and bass tastefully between sections, and create a strong drop into every hook. Do not replace the rap beat with pop chords or soft ballad instrumentation."
-    : "";
+    : input.style.trim() === "Türkischer Arabesk"
+      ? "ARABESK PRODUCTION PRIORITY: Make sorrow, longing and dramatic emotional tension the defining qualities. The core sound is cinematic strings, piano and deep bass. Keep all Turkish folk color subtle and secondary. Do not use an oriental dance groove, exotic instrumental solos, festive percussion or a cheerful resolution. Favor spacious phrases, descending melodic tension, minor harmonies and a restrained tragic ending."
+      : "";
 
   const lyricsDirection = input.lyricsMode === "custom"
     ? [
