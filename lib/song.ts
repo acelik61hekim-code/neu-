@@ -120,23 +120,36 @@ export function buildSongPrompt(input: {
 }): string {
   const language = songLanguageName(input.language);
 
-  const musicStyle = input.style.trim() === "Türkischer Arabesk"
+  const musicStyle = input.style.trim() === "Deutschrap / Straßenrap"
     ? [
+        "Original hard-edged modern German street rap with an authentic urban sound",
+        "massive deep sub-bass and hard controlled 808 bass that hits with weight but stays clean and undistorted",
+        "a hard punchy kick locked tightly to the bass, dry snare or clap, sharp rolling hi-hats and modern trap percussion",
+        "a striking dark minor-key melody with memorable piano notes, tense synth or string layers and an unmistakable original instrumental motif",
+        "use impactful beat drops, short pauses, bass transitions and rising energy between verse and hook so the production feels cinematic and powerful",
+        "tight rhythmic rap delivery with compact bars, confident cadence, clear German diction and natural contemporary phrasing",
+        "a short forceful rhythmic hook rather than a soft sung pop chorus",
+        "the instrumental must feel powerful and exciting on its own, with club-ready low end and a polished wide mix while leaving space for the rap vocal",
+        "serious, raw and energetic production; not Schlager, soft pop-rap, comedy rap or a sentimental pop ballad",
+        "Do not imitate any named rapper, collective, existing song, melody, voice or recording",
+      ].join("; ")
+    : input.style.trim() === "Türkischer Arabesk"
+      ? [
         "Original Turkish arabesk with a deeply melancholic and dramatic atmosphere",
         "expressive Turkish-style vocal ornamentation",
         "prominent bağlama/saz, sweeping string orchestra, kanun, oud and restrained darbuka percussion",
         "an emotional build and a powerful, memorable chorus",
         "Do not imitate any named singer, existing song, melody or recording",
-      ].join("; ")
-    : input.style.trim() === "Türkischer Arabesk-Pop / Fantezi"
-      ? [
+        ].join("; ")
+      : input.style.trim() === "Türkischer Arabesk-Pop / Fantezi"
+        ? [
           "Original modern Turkish arabesk-pop and fantezi music",
           "romantic, cinematic and emotionally intense with a polished contemporary production",
           "expressive Turkish-style vocals, lush string orchestra, piano, bağlama/saz and tasteful darbuka percussion",
           "clear pop song structure, soaring chorus and dramatic instrumental transitions",
           "Do not imitate any named singer, existing song, melody or recording",
-        ].join("; ")
-    : input.style.trim() || "modern, polished production";
+          ].join("; ")
+        : input.style.trim() || "modern, polished production";
 
   const durationMinutes = songDurationMinutes(input.length);
   const duration = input.length === "clip"
@@ -161,6 +174,10 @@ export function buildSongPrompt(input: {
             ? "Use a stable natural lead singer supported by an expressive choir in choruses only. Keep verses intimate and intelligible; do not let the choir obscure the words."
             : "Choose one natural lead singer that fits the genre, then keep the same singer identity, range, accent and timbre throughout the entire song.";
 
+  const genreArrangementDirection = input.style.trim() === "Deutschrap / Straßenrap"
+    ? "DEUTSCHRAP PRODUCTION PRIORITY: The beat and melody are as important as the vocal. Keep the sub-bass physically powerful, the 808 tuned to the song key, and the kick clearly audible without clipping. Build a dark catchy original main motif, vary drums and bass tastefully between sections, and create a strong drop into every hook. Do not replace the rap beat with pop chords or soft ballad instrumentation."
+    : "";
+
   const lyricsDirection = input.lyricsMode === "custom"
     ? [
         "Perform the customer-provided original lyrics faithfully as written below.",
@@ -184,6 +201,7 @@ export function buildSongPrompt(input: {
       ? `CUSTOMER VOICE-NOTE ANALYSIS (use as high-level musical guidance for a new original composition; never clone the voice or copy a recognizable melody):\n${input.voiceIdeaAnalysis.trim()}`
       : "",
     vocalDirection,
+    genreArrangementDirection,
     languageQualityDirection(input.language),
     lyricsDirection,
     "QUALITY RULES: Keep the melody coherent and memorable. Avoid abrupt key, tempo, singer, genre or language changes. Use natural transitions between sections. Keep the lead vocal centered, clear and intelligible above the instruments without clipping, distortion, robotic artifacts or excessive reverb. Avoid awkward silence at the beginning, mid-song cutoffs, fake endings and restarting the song after the outro.",

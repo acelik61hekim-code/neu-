@@ -114,6 +114,9 @@ function targetLyricsWords(length: SongLength): number {
 
 function safeFallbackGenre(style: string): string {
   const normalized = style.toLocaleLowerCase("de-DE");
+  if (normalized.includes("deutschrap") || normalized.includes("straßenrap")) {
+    return "hard-edged modern German street rap with massive clean sub-bass, hard tuned 808s, a punchy kick, sharp rolling hi-hats, a striking dark minor-key piano and synth motif, impactful beat drops, tight rhythmic verses and a forceful spoken hook without pop singing";
+  }
   if (normalized.includes("rap") || normalized.includes("hip-hop")) {
     return "modern melodic hip-hop and rap with crisp drums, warm bass, clear rhythmic verses and a memorable original hook";
   }
@@ -158,6 +161,9 @@ async function generatePlannedLyrics(
 ): Promise<string | undefined> {
   if (!job || job.lyricsMode !== "ai") return undefined;
   const language = lyricLanguage(job.language);
+  const streetRapDirection = job.style.trim() === "Deutschrap / Straßenrap"
+    ? "Write authentic modern German street-rap bars with tight rhythm, internal and multisyllabic rhymes, compact punchlines and a forceful chant-like hook. Use natural contemporary German phrasing. Focus on ambition, setbacks, loyalty, pressure, self-belief and rising above hardship. Keep the attitude raw and confident without graphic violence, threats, hate, drug promotion, crime instructions, real gang references or imitation of a known rapper. Do not turn it into pop, Schlager or a sentimental sung ballad."
+    : "";
   const response = await ai.interactions.create({
     model: "gemini-3.6-flash",
     input: [
@@ -169,6 +175,7 @@ async function generatePlannedLyrics(
       "Output only the lyrics with clear section tags: [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Final Chorus], [Outro].",
       "Every verse must contain new lines that advance the story. The chorus must be short and memorable and may appear twice, but do not duplicate a verse.",
       "Use natural grammar, meaningful imagery, singable line lengths and correct spelling. Do not invent words, stretch spelling or include production notes.",
+      streetRapDirection,
       safetyRewrite
         ? "A previous music-generation attempt was rejected by an automated safety filter. Rewrite the lyrics with clearly harmless, family-friendly wording. Avoid graphic violence, weapons, drugs, self-harm, sexual content, insults, threats, crime instructions and ambiguous slang. Preserve the general emotion and topic without risky wording."
         : "Keep all wording suitable for a general audience so a music-generation model can perform it safely.",

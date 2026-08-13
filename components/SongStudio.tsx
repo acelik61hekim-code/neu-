@@ -16,7 +16,7 @@ import {
   type SongVocalStyle,
 } from "@/lib/song";
 
-const styles = ["Pop", "Türkischer Arabesk", "Türkischer Arabesk-Pop / Fantezi", "Hip-Hop / Rap", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
+const styles = ["Pop", "Deutschrap / Straßenrap", "Hip-Hop / Rap", "Türkischer Arabesk", "Türkischer Arabesk-Pop / Fantezi", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
 const moods = ["Energiegeladen", "Emotional", "Hüzünlü / Sehnsüchtig", "Dramatisch", "Romantisch", "Düster", "Entspannt", "Motivierend", "Fröhlich", "Episch"];
 
 export default function SongStudio({
@@ -219,6 +219,11 @@ export default function SongStudio({
               <SelectField label="Musikstil" value={style} onChange={setStyle} options={styles} />
               <SelectField label="Stimmung" value={mood} onChange={setMood} options={moods} />
             </div>
+            {style === "Deutschrap / Straßenrap" && (
+              <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
+                Automatisch mit hartem Deutschrap-Flow, druckvollem Subbass und 808s, markanter dunkler Melodie, Beat-Drops und gerapptem Hook – kein weicher Pop-Rap.
+              </div>
+            )}
 
             <Field label="Sprachidee oder Melodie" hint="optional · bis 12 MB">
               <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] p-4">
