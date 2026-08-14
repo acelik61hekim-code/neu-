@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
+
 import { FilmIcon, ImageIcon, MusicIcon } from "@/components/Icons";
+import { STUDIO_PATHS } from "@/lib/site";
 
 export type StudioMode = "video" | "song" | "image";
 
@@ -18,30 +21,39 @@ export default function StudioChooser({
       className={`grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2 shadow-xl shadow-black/20 sm:grid-cols-3 ${compact ? "w-full max-w-2xl" : "mx-auto mt-7 w-full max-w-2xl"}`}
       aria-label="Was möchtest du erstellen?"
     >
-      <button
-        type="button"
-        onClick={() => onChange("video")}
+      <Link
+        href={STUDIO_PATHS.video}
+        onClick={(event) => {
+          event.preventDefault();
+          onChange("video");
+        }}
         className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${active === "video" ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white shadow-lg shadow-violet-950/40" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
       >
         <FilmIcon />
         Video erstellen
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("song")}
+      </Link>
+      <Link
+        href={STUDIO_PATHS.song}
+        onClick={(event) => {
+          event.preventDefault();
+          onChange("song");
+        }}
         className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${active === "song" ? "bg-gradient-to-r from-fuchsia-600 to-violet-600 text-white shadow-lg shadow-fuchsia-950/40" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
       >
         <MusicIcon />
         Song erstellen
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("image")}
+      </Link>
+      <Link
+        href={STUDIO_PATHS.image}
+        onClick={(event) => {
+          event.preventDefault();
+          onChange("image");
+        }}
         className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition ${active === "image" ? "bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg shadow-cyan-950/40" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
       >
         <ImageIcon />
         Bild erstellen
-      </button>
+      </Link>
     </div>
   );
 }

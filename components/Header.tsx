@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+
+import { STUDIO_PATHS } from "@/lib/site";
 import { FilmIcon, ImageIcon, MusicIcon } from "./Icons";
 
 type HeaderProps = {
@@ -28,30 +31,42 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
         </div>
 
         <nav className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.035] p-1" aria-label="Studio auswählen">
-          <button
-            type="button"
-            onClick={() => onStudioChange ? onStudioChange("video") : window.location.assign("/")}
+          <Link
+            href={STUDIO_PATHS.video}
+            onClick={(event) => {
+              if (!onStudioChange) return;
+              event.preventDefault();
+              onStudioChange("video");
+            }}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "video" ? "bg-violet-500/20 text-violet-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
           >
             <FilmIcon className="hidden sm:block" />
             Video
-          </button>
-          <button
-            type="button"
-            onClick={() => onStudioChange ? onStudioChange("song") : window.location.assign("/?studio=song")}
+          </Link>
+          <Link
+            href={STUDIO_PATHS.song}
+            onClick={(event) => {
+              if (!onStudioChange) return;
+              event.preventDefault();
+              onStudioChange("song");
+            }}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "song" ? "bg-fuchsia-500/20 text-fuchsia-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
           >
             <MusicIcon className="hidden sm:block" />
             Songs
-          </button>
-          <button
-            type="button"
-            onClick={() => onStudioChange ? onStudioChange("image") : window.location.assign("/?studio=image")}
+          </Link>
+          <Link
+            href={STUDIO_PATHS.image}
+            onClick={(event) => {
+              if (!onStudioChange) return;
+              event.preventDefault();
+              onStudioChange("image");
+            }}
             className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "image" ? "bg-cyan-500/20 text-cyan-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
           >
             <ImageIcon className="hidden sm:block" />
             Bilder
-          </button>
+          </Link>
         </nav>
       </div>
     </header>

@@ -14,6 +14,7 @@ import {
   getVideoPriceCents,
   isReleasedVideoDuration,
 } from "@/lib/pricing";
+import { STUDIO_PATHS } from "@/lib/site";
 
 import type {
   VideoAspectRatio,
@@ -167,8 +168,12 @@ async function optimizeReferenceImage(file: File): Promise<string> {
   }
 }
 
-export default function HomePage() {
-  const [studioMode, setStudioMode] = useState<StudioMode>("video");
+export default function HomePage({
+  initialStudio = "video",
+}: {
+  initialStudio?: StudioMode;
+}) {
+  const [studioMode, setStudioMode] = useState<StudioMode>(initialStudio);
 
   useEffect(() => {
     const requestedStudio = new URLSearchParams(window.location.search).get("studio");
@@ -176,11 +181,12 @@ export default function HomePage() {
   }, []);
 
   function selectStudio(mode: StudioMode) {
+    const targetPath = STUDIO_PATHS[mode];
+    if (window.location.pathname !== targetPath) {
+      window.location.assign(targetPath);
+      return;
+    }
     setStudioMode(mode);
-    const url = new URL(window.location.href);
-    if (mode === "song" || mode === "image") url.searchParams.set("studio", mode);
-    else url.searchParams.delete("studio");
-    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
