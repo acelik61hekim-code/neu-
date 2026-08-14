@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     const appUrl = process.env.APP_URL ?? "http://localhost:3000";
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      allow_promotion_codes: true,
       line_items: [{ price_data: { currency: "eur", product_data: { name: `Professionelles KI-Bild · ${imageQualityLabel(body.quality)}`, description: `Ein individuelles Bild im Format ${body.aspectRatio}` }, unit_amount: IMAGE_PRICE_CENTS[body.quality] }, quantity: 1 }],
       metadata: { productType: "image", jobId, quality: body.quality, aspectRatio: body.aspectRatio, style: body.style },
       success_url: `${appUrl}/image-success?jobId=${encodeURIComponent(jobId)}&session_id={CHECKOUT_SESSION_ID}`,

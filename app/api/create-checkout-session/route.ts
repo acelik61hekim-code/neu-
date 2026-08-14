@@ -488,6 +488,9 @@ export async function POST(
       mode:
         "payment",
 
+      allow_promotion_codes:
+        true,
+
       line_items: [
         {
           price_data: {
