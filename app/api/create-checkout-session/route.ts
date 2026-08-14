@@ -395,7 +395,7 @@ export async function POST(
       ? body.closingText.trim()
       : "";
 
-  const maximumVoiceoverWords = Math.max(18, Math.floor(targetDurationSeconds * 2.2));
+  const maximumVoiceoverWords = Math.max(18, Math.floor((targetDurationSeconds + 2) * 2));
   const voiceoverWords = voiceoverText ? voiceoverText.split(/\s+/).filter(Boolean).length : 0;
 
   if (voiceMode === "voiceover" && !voiceoverText) {

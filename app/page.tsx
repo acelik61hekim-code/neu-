@@ -826,6 +826,9 @@ export default function HomePage({
                   },
                 )}
               </div>
+              <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                Für einen vollständigen Satz und einen sauberen Abschluss darf das fertige Video technisch bis zu 2 Sekunden länger auslaufen.
+              </p>
             </div>
 
             <div>
@@ -1020,7 +1023,7 @@ export default function HomePage({
                     className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
                   />
                   <span className="mt-1 block text-[11px] text-zinc-600">
-                    Wird separat und deutlich gesprochen – nicht von der Video-KI improvisiert.
+                    Wird separat und deutlich gesprochen. Das Video darf für einen vollständigen Satz bis zu 2 Sekunden länger auslaufen.
                   </span>
                 </label>
 

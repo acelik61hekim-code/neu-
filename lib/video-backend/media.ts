@@ -23,7 +23,12 @@ type GeneratedNarration = {
   mimeType: string;
   sampleRate: number;
   channels: number;
+  durationSeconds: number;
 };
+
+const MAX_FINISHING_GRACE_SECONDS = 2;
+const NARRATION_START_DELAY_SECONDS = 0.65;
+const NARRATION_TAIL_SECONDS = 0.35;
 const localOutputRoot = resolve(
   process.cwd(),
   ".video-backend-backups",
@@ -131,6 +136,39 @@ function wrapOverlayText(value: string): string {
   return lines.slice(0, 4).join("\n");
 }
 
+function readDurationFromFfmpegOutput(value: string): number | undefined {
+  const match = value.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
+  if (!match) return undefined;
+  const duration = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+}
+
+async function inspectContainerDuration(
+  binary: string,
+  pathname: string,
+): Promise<number | undefined> {
+  try {
+    const result = await exec(binary, ["-hide_banner", "-i", pathname], {
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    return readDurationFromFfmpegOutput(`${result.stdout}\n${result.stderr}`);
+  } catch (error) {
+    const details = error as { stdout?: string; stderr?: string };
+    return readDurationFromFfmpegOutput(`${details.stdout ?? ""}\n${details.stderr ?? ""}`);
+  }
+}
+
+function buildAtempoFilters(rate: number): string[] {
+  const filters: string[] = [];
+  let remaining = Math.max(1, rate);
+  while (remaining > 2) {
+    filters.push("atempo=2");
+    remaining /= 2;
+  }
+  if (remaining > 1.0005) filters.push(`atempo=${remaining.toFixed(5)}`);
+  return filters;
+}
+
 async function generateNarration(
   dir: string,
   text: string,
@@ -176,8 +214,16 @@ async function generateNarration(
 
   const extension = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "pcm";
   const pathname = join(dir, `voiceover.${extension}`);
-  await writeFile(pathname, Buffer.concat(chunks));
-  return { pathname, mimeType, sampleRate, channels };
+  const audio = Buffer.concat(chunks);
+  await writeFile(pathname, audio);
+  const isRawPcm = mimeType.includes("l16") || extension === "pcm";
+  const durationSeconds = isRawPcm
+    ? audio.length / Math.max(1, sampleRate * channels * 2)
+    : await inspectContainerDuration(ffmpegPath as string, pathname);
+  if (!durationSeconds || !Number.isFinite(durationSeconds)) {
+    throw new Error("Die Länge des erzeugten Voice-overs konnte nicht geprüft werden.");
+  }
+  return { pathname, mimeType, sampleRate, channels, durationSeconds };
 }
 
 async function finishVideo(
@@ -193,6 +239,7 @@ async function finishVideo(
   const voiceoverText = options.voiceoverText?.trim() ?? "";
   const closingText = options.closingText?.trim() ?? "";
   const args: string[] = ["-y", "-i", input];
+  const sourceDuration = await inspectContainerDuration(binary, input);
   let narration: GeneratedNarration | undefined;
   if (voiceoverText) {
     narration = await generateNarration(
@@ -213,26 +260,59 @@ async function finishVideo(
     }
   }
 
+  const maximumOutputSeconds = seconds + MAX_FINISHING_GRACE_SECONDS;
+  const naturalVideoEnd = Math.min(maximumOutputSeconds, Math.max(seconds, sourceDuration ?? seconds));
+  const naturalNarrationEnd = narration
+    ? NARRATION_START_DELAY_SECONDS + narration.durationSeconds + NARRATION_TAIL_SECONDS
+    : seconds;
+  const outputSeconds = Math.min(
+    maximumOutputSeconds,
+    Math.max(naturalVideoEnd, naturalNarrationEnd),
+  );
+  const availableNarrationSeconds = Math.max(
+    1,
+    outputSeconds - NARRATION_START_DELAY_SECONDS - NARRATION_TAIL_SECONDS,
+  );
+  const narrationTempo = narration
+    ? Math.max(1, narration.durationSeconds / availableNarrationSeconds)
+    : 1;
+
   const filters: string[] = [];
   let videoMap = "0:v:0";
   let audioMap = "0:a:0?";
-  if (closingText) {
+  const needsVideoPadding = outputSeconds > (sourceDuration ?? seconds) + 0.02;
+  if (closingText || needsVideoPadding || outputSeconds > seconds + 0.02) {
+    const videoFilters: string[] = [];
+    if (needsVideoPadding) {
+      videoFilters.push(
+        `tpad=stop_mode=clone:stop_duration=${MAX_FINISHING_GRACE_SECONDS}`,
+      );
+    }
     const textFile = join(dir, "closing-text.txt");
-    await writeFile(textFile, wrapOverlayText(closingText), "utf8");
-    const startSecond = Math.max(0, seconds - 6);
-    filters.push([
-      "[0:v]",
-      `drawbox=x=w*0.04:y=h*0.64:w=w*0.92:h=h*0.30:color=black@0.84:t=fill:enable='between(t,${startSecond},${seconds})'`,
-      `drawtext=font='Sans':textfile='${escapeFilterPath(textFile)}':fontcolor=white:fontsize=h/24:line_spacing=18:x=(w-text_w)/2:y=h*0.72:enable='between(t,${startSecond},${seconds})'`,
-      "format=yuv420p[v]",
-    ].join(","));
+    if (closingText) {
+      await writeFile(textFile, wrapOverlayText(closingText), "utf8");
+      const startSecond = Math.max(0, outputSeconds - 6);
+      videoFilters.push(
+        `drawbox=x=w*0.04:y=h*0.64:w=w*0.92:h=h*0.30:color=black@0.84:t=fill:enable='between(t,${startSecond},${outputSeconds})'`,
+        `drawtext=font='Sans':textfile='${escapeFilterPath(textFile)}':fontcolor=white:fontsize=h/24:line_spacing=18:x=(w-text_w)/2:y=h*0.72:enable='between(t,${startSecond},${outputSeconds})'`,
+      );
+    }
+    videoFilters.push(`trim=duration=${outputSeconds}`, "setpts=PTS-STARTPTS", "format=yuv420p");
+    filters.push(`[0:v]${videoFilters.join(",")}[v]`);
     videoMap = "[v]";
   }
   if (narration) {
+    const voiceFilters = [
+      `adelay=${Math.round(NARRATION_START_DELAY_SECONDS * 1000)}:all=1`,
+      ...buildAtempoFilters(narrationTempo),
+      "volume=1.30",
+      "highpass=f=80",
+      "lowpass=f=12000",
+    ];
     filters.push(
-      "[0:a]volume=0.16[background]",
-      "[1:a]adelay=800:all=1,volume=1.30,highpass=f=80,lowpass=f=12000[voice]",
-      "[background][voice]amix=inputs=2:duration=first:dropout_transition=2,loudnorm=I=-15:TP=-1.5:LRA=9[a]",
+      `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
+      `[1:a]${voiceFilters.join(",")}[voice]`,
+      `[background][voice]amix=inputs=2:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
     );
     audioMap = "[a]";
   }
@@ -241,7 +321,7 @@ async function finishVideo(
   args.push(
     "-map", videoMap,
     "-map", audioMap,
-    "-t", String(seconds),
+    "-t", String(outputSeconds),
     "-c:v", "libx264", "-preset", "fast", "-crf", "20",
     "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
     "-movflags", "+faststart", output,

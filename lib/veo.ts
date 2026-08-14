@@ -1253,21 +1253,26 @@ export function buildMovieContinuationPrompt(
       )
       .join("\n");
 
+  const protectedOutputSecond = Math.min(
+    plan.generatedDurationSeconds,
+    plan.targetDurationSeconds + 2,
+  );
+
   const visibleSeconds = Math.max(
     0,
     Math.min(
       continuation.durationSeconds,
-      plan.targetDurationSeconds - continuation.startSecond,
+      protectedOutputSecond - continuation.startSecond,
     ),
   );
 
   const finalTrimInstruction =
     visibleSeconds < continuation.durationSeconds
       ? [
-          "FINAL OUTPUT CUT (highest priority):",
-          `The finished film is cut at second ${plan.targetDurationSeconds}. Only the first ${visibleSeconds} second${visibleSeconds === 1 ? "" : "s"} of this extension will remain visible.`,
-          `Deliver the final story payoff and a visually stable ending within those first ${visibleSeconds} second${visibleSeconds === 1 ? "" : "s"}.`,
-          "Do not postpone any important action, reveal or resolution beyond the output cut.",
+          "PROTECTED ENDING WINDOW (highest priority):",
+          `The booked duration is approximately ${plan.targetDurationSeconds} seconds. The finishing pipeline may preserve footage through second ${protectedOutputSecond} so speech, gestures and movement can end naturally.`,
+          `Deliver the final story payoff and reach a visually stable resting frame within the first ${visibleSeconds} second${visibleSeconds === 1 ? "" : "s"} of this extension.`,
+          "Do not begin a new sentence, gesture, camera move or important action near the protected ending boundary.",
         ].join("\n")
       : "";
 

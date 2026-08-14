@@ -1211,11 +1211,11 @@ function normalizeMoviePlan(
         )
       : [];
 
-  const finalStorySecond =
-    Math.max(
-      7,
-      targetDurationSeconds - 1,
-    );
+  const protectedOutputSecond = Math.min(
+    durationPlan.generatedDurationSeconds,
+    targetDurationSeconds + 2,
+  );
+  const finalStorySecond = Math.max(7, protectedOutputSecond - 1);
 
   return {
     targetDurationSeconds:
@@ -1244,7 +1244,7 @@ function normalizeMoviePlan(
 
     endingStrategy: readString(
       root.endingStrategy,
-      `Resolve the main dramatic question before approximately second ${finalStorySecond}, leaving only a short visual tail if trimming is required.`,
+      `Resolve the main dramatic question before approximately second ${finalStorySecond}, then hold a calm visual tail so no sentence, gesture or camera move is cut off.`,
     ),
 
     finalPayoff: readString(
@@ -2006,12 +2006,13 @@ function buildStoryPrompt(
       : durationPlan.generationStrategy ===
           "extension-chain"
         ? `
-- Ziel des Produkts: exakt ${targetDurationSeconds} Sekunden.
+- Gebuchte Ziellänge: ungefähr ${targetDurationSeconds} Sekunden.
 - Das erste Video dauert 8 Sekunden.
 - Danach folgen exakt ${durationPlan.extensionCount} direkte Video-Extensions.
 - Jede Extension fügt ungefähr 7 Sekunden hinzu.
 - Generierte Roh-Länge: ungefähr ${durationPlan.generatedDurationSeconds} Sekunden.
-- Falls die Roh-Länge über der Ziel-Länge liegt, wird später technisch auf exakt ${targetDurationSeconds} Sekunden getrimmt.
+- Der fertige Film darf bis zu 2 Sekunden länger sein, damit kein Satz, keine Bewegung und kein Schlussbild abgeschnitten wird.
+- Spätestens im geschützten Endfenster muss eine ruhige, vollständige Schlussposition erreicht sein.
 - moviePlan.continuations muss exakt ${durationPlan.extensionCount} Einträge enthalten.
 - moviePlan.chapters ist für diese Länge nicht erforderlich.
 
@@ -2019,7 +2020,7 @@ Zeitbereiche der Extensions:
 ${extensionWindows}
 `
         : `
-- Ziel des Produkts: exakt ${targetDurationSeconds} Sekunden.
+- Gebuchte Ziellänge: ungefähr ${targetDurationSeconds} Sekunden.
 - Diese Länge wird als mehrere Kapitel geplant.
 - Ein Kapitel ist maximal 120 Sekunden lang.
 - moviePlan.generationStrategy muss "chaptered" sein.
@@ -2036,14 +2037,14 @@ ${chapterDescription}
 
 Voraussichtliche technische Roh-Länge über alle Kapitel:
 ungefähr ${durationPlan.generatedDurationSeconds} Sekunden.
-Nach Generierung und Zusammenfügen wird auf exakt ${targetDurationSeconds} Sekunden getrimmt.
+Beim Zusammenfügen darf der Film bis zu 2 Sekunden länger bleiben, damit Sprache, Bewegung und Schlussbild natürlich auslaufen.
 `;
 
-  const finalStorySecond =
-    Math.max(
-      7,
-      targetDurationSeconds - 1,
-    );
+  const protectedOutputSecond = Math.min(
+    durationPlan.generatedDurationSeconds,
+    targetDurationSeconds + 2,
+  );
+  const finalStorySecond = Math.max(7, protectedOutputSecond - 1);
 
   const formatDirection =
     aspectRatio === "16:9"
