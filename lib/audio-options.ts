@@ -54,7 +54,7 @@ export function buildSelectedAudioDirection(
   audioStyle: VideoAudioStyle,
   voiceMode: VideoVoiceMode,
   spokenLanguage: VideoSpokenLanguage,
-  exactVoiceoverText = "",
+  _exactVoiceoverText = "",
 ): string {
   const musicDirection: Record<VideoAudioStyle, string> = {
     cinematic: "Use an original cinematic score with a clear emotional arc, restrained under speech and naturally continuous across extensions.",
@@ -65,14 +65,10 @@ export function buildSelectedAudioDirection(
     "no-music": "Do not generate music. Use only believable ambience, Foley and story-relevant sound effects.",
   };
 
-  const hasExternalVoiceover = voiceMode === "voiceover" && Boolean(exactVoiceoverText.trim());
-
   const voiceDirection: Record<VideoVoiceMode, string> = {
     auto: "Use speech only when it improves the story. Keep any dialogue or narration concise, natural and clearly mixed.",
     dialogue: "MANDATORY DIALOGUE MODE: Create a real on-screen conversation between at least two visible, named characters. Use three, four or more speakers when the customer's story calls for them. Every planned participant must speak at least once, their short turns must alternate naturally, and the active speaker's mouth must remain visible with synchronized lip movement. Do not use a monologue, narration or voice-over. Keep every speaker identity, voice and pronunciation consistent across the complete video.",
-    voiceover: hasExternalVoiceover
-      ? "Do not generate dialogue, narration or any spoken words inside the video footage. A separate studio-quality voice-over will be added in post-production; preserve clean music, ambience and sound effects beneath it."
-      : "Use a concise professional voice-over that supports the images. Avoid on-screen character dialogue unless essential to the story.",
+    voiceover: "Do not generate dialogue, narration or any spoken words inside the video footage. A separate studio-quality voice-over will be added in post-production, either from the customer's exact text or from the automatically written narration; preserve clean music, ambience and sound effects beneath it.",
     "no-voice": "Do not generate dialogue, narration or other spoken words. Tell the story through images, music, ambience and sound effects.",
   };
 

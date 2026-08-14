@@ -15,6 +15,7 @@ import {
   isReleasedVideoDuration,
 } from "@/lib/pricing";
 import { STUDIO_PATHS } from "@/lib/site";
+import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
 
 import type {
   VideoAspectRatio,
@@ -225,6 +226,9 @@ export default function HomePage({
   const [voiceoverText, setVoiceoverText] =
     useState("");
 
+  const [voiceoverLoading, setVoiceoverLoading] =
+    useState(false);
+
   const [closingText, setClosingText] =
     useState("");
 
@@ -422,6 +426,52 @@ export default function HomePage({
 
     if (error) {
       setError(null);
+    }
+  }
+
+  async function handleAutomaticVoiceover() {
+    let plannedStory: unknown;
+
+    try {
+      plannedStory = JSON.parse(story);
+    } catch {
+      setError(
+        "Schließe zuerst die Geschichte mit dem AI Director ab.",
+      );
+      return;
+    }
+
+    if (
+      typeof plannedStory !== "object" ||
+      plannedStory === null ||
+      !("moviePlan" in plannedStory)
+    ) {
+      setError(
+        "Schließe zuerst die Geschichte mit dem AI Director ab.",
+      );
+      return;
+    }
+
+    try {
+      setVoiceoverLoading(true);
+      setError(null);
+
+      const automaticVoiceover =
+        await requestAutomaticVoiceover(
+          plannedStory,
+          targetDurationSeconds,
+          spokenLanguage,
+        );
+
+      setVoiceoverText(automaticVoiceover);
+    } catch (voiceoverError) {
+      setError(
+        voiceoverError instanceof Error
+          ? voiceoverError.message
+          : "Der Sprechertext konnte nicht automatisch erstellt werden.",
+      );
+    } finally {
+      setVoiceoverLoading(false);
     }
   }
 
@@ -1049,11 +1099,23 @@ export default function HomePage({
                     maxLength={4000}
                     rows={5}
                     placeholder="Schreibe hier Wort für Wort, was die Stimme sagen soll."
-                    disabled={loading || previewLoading}
+                    disabled={loading || previewLoading || voiceoverLoading}
                     className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
                   />
+                  <button
+                    type="button"
+                    onClick={handleAutomaticVoiceover}
+                    disabled={loading || previewLoading || voiceoverLoading || !story.trim()}
+                    className="mt-3 rounded-xl border border-violet-400/40 bg-violet-500/15 px-4 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {voiceoverLoading
+                      ? "Sprechertext wird erstellt …"
+                      : voiceoverText.trim()
+                        ? "Sprechertext neu erstellen"
+                        : "Sprechertext automatisch erstellen"}
+                  </button>
                   <span className="mt-1 block text-[11px] text-zinc-600">
-                    Wird separat und deutlich gesprochen. Das Video darf für einen vollständigen Satz bis zu 2 Sekunden länger auslaufen.
+                    Wird nach dem Filmplan automatisch erstellt und bleibt vor der Zahlung vollständig bearbeitbar. Das Video darf für einen vollständigen Satz bis zu 2 Sekunden länger auslaufen.
                   </span>
                 </label>
 
@@ -1091,6 +1153,9 @@ export default function HomePage({
             error={error}
             onStoryChange={
               handleStoryChange
+            }
+            onVoiceoverTextChange={
+              setVoiceoverText
             }
             targetDurationSeconds={
               targetDurationSeconds

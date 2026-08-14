@@ -8,6 +8,7 @@ import {
 } from "@/services/aiDirectorClient";
 
 import { requestStoryArchitect } from "@/services/storyArchitectClient";
+import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
 
 import type {
   Story,
@@ -30,6 +31,7 @@ type ChatProps = {
   loading: boolean;
   error: string | null;
   onStoryChange: (story: string) => void;
+  onVoiceoverTextChange?: (text: string) => void;
 
   /*
    * Optional, damit app/page.tsx während der Umstellung
@@ -103,6 +105,7 @@ export default function Chat({
   loading,
   error,
   onStoryChange,
+  onVoiceoverTextChange,
   targetDurationSeconds = 60,
   aspectRatio = "9:16",
   editingStyle = "social",
@@ -305,6 +308,31 @@ export default function Chat({
         throw new Error(
           "Der Story Architect hat keinen gültigen MoviePlan zurückgegeben.",
         );
+      }
+
+      if (
+        voiceMode === "voiceover" &&
+        !voiceoverText.trim() &&
+        onVoiceoverTextChange
+      ) {
+        try {
+          const automaticVoiceover =
+            await requestAutomaticVoiceover(
+              generatedStory,
+              targetDurationSeconds,
+              spokenLanguage,
+            );
+
+          onVoiceoverTextChange(
+            automaticVoiceover,
+          );
+        } catch (voiceoverError) {
+          setLocalError(
+            voiceoverError instanceof Error
+              ? `${voiceoverError.message} Du kannst den Sprechertext auch selbst eintragen.`
+              : "Der automatische Sprechertext konnte nicht erstellt werden. Du kannst ihn selbst eintragen.",
+          );
+        }
       }
 
       setCompleteStory(
