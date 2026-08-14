@@ -49,6 +49,8 @@ type StoryArchitectRequest = {
   audioStyle?: unknown;
   voiceMode?: unknown;
   spokenLanguage?: unknown;
+  voiceoverText?: unknown;
+  closingText?: unknown;
 };
 
 const SUPPORTED_VIDEO_DURATIONS = [
@@ -1936,6 +1938,8 @@ function buildStoryPrompt(
   audioStyle: VideoAudioStyle,
   voiceMode: VideoVoiceMode,
   spokenLanguage: VideoSpokenLanguage,
+  voiceoverText: string,
+  closingText: string,
 ): string {
   const characterDescription =
     story.characters
@@ -2102,6 +2106,7 @@ SCHNITTSTIL: SOCIAL / REELS
     audioStyle,
     voiceMode,
     spokenLanguage,
+    voiceoverText,
   );
 
   return `
@@ -2128,6 +2133,24 @@ ${editingStyle}
 AUSGEWÄHLTE KI-AUDIO-EINSTELLUNGEN
 
 ${selectedAudioDirection}
+
+EXAKTER SPRECHERTEXT FÜR DIE TECHNISCHE NACHBEARBEITUNG
+
+${voiceoverText || "Kein separater Sprechertext angegeben."}
+
+WICHTIG:
+- Wenn ein exakter Sprechertext angegeben ist, darf Veo selbst keine gesprochenen Wörter erzeugen.
+- Plane ruhige Audioflächen, damit die spätere Stimme klar verständlich bleibt.
+- Schreibe den Sprechertext niemals als sichtbare Buchstaben in die Videobilder.
+
+SAUBERE SCHLUSS-EINBLENDUNG FÜR DIE TECHNISCHE NACHBEARBEITUNG
+
+${closingText || "Keine separate Schluss-Einblendung angegeben."}
+
+WICHTIG:
+- Diese Einblendung wird erst nach der KI-Generierung technisch korrekt gerendert.
+- Veo darf sie nicht selbst zeichnen oder buchstabieren.
+- Halte im letzten Bild ruhigen, kontrastreichen Freiraum für diese Einblendung frei.
 
 ${formatDirection}
 
@@ -2521,6 +2544,16 @@ export async function POST(request: Request) {
       body.spokenLanguage,
     );
 
+  const voiceoverText =
+    typeof body.voiceoverText === "string"
+      ? body.voiceoverText.trim().slice(0, 4_000)
+      : "";
+
+  const closingText =
+    typeof body.closingText === "string"
+      ? body.closingText.trim().slice(0, 160)
+      : "";
+
   const prompt =
     buildStoryPrompt(
       story,
@@ -2530,6 +2563,8 @@ export async function POST(request: Request) {
       audioStyle,
       voiceMode,
       spokenLanguage,
+      voiceoverText,
+      closingText,
     );
 
   try {

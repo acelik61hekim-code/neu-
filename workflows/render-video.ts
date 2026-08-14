@@ -15,6 +15,11 @@ type PreparedRender = {
   aspectRatio: VideoAspectRatio;
   segments: PlannedSegment[];
   totalExtensions: number;
+  finishing: {
+    voiceoverText?: string;
+    closingText?: string;
+    spokenLanguage?: "auto" | "de" | "en";
+  };
 };
 
 type RenderResult = {
@@ -120,8 +125,8 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
 
     await markFinalizingStep(jobId, chapterUris.length > 1);
     const output = chapterUris.length === 1
-      ? await trimFinalVideoStep(jobId, chapterUris[0], prepared.duration)
-      : await mergeFinalVideoStep(jobId, chapterUris, prepared.duration);
+      ? await trimFinalVideoStep(jobId, chapterUris[0], prepared.duration, prepared.finishing)
+      : await mergeFinalVideoStep(jobId, chapterUris, prepared.duration, prepared.finishing);
 
     await finishRenderJobStep(jobId, output.pathname);
     return {
@@ -144,7 +149,12 @@ export async function recoverVideoFinalizationWorkflow(jobId: string): Promise<R
 
   const prepared = await prepareRecoveryFinalizationStep(jobId);
   try {
-    const output = await trimFinalVideoStep(jobId, prepared.videoUri, prepared.duration);
+    const output = await trimFinalVideoStep(
+      jobId,
+      prepared.videoUri,
+      prepared.duration,
+      prepared.finishing,
+    );
     await finishRenderJobStep(jobId, output.pathname);
     return {
       jobId,
@@ -210,7 +220,11 @@ async function startExtensionWithProviderRetry(
   throw new Error("Google Veo konnte die Fortsetzung nach mehreren sicheren Versuchen nicht starten.");
 }
 
-async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUri: string; duration: VideoDurationSeconds }> {
+async function prepareRecoveryFinalizationStep(jobId: string): Promise<{
+  videoUri: string;
+  duration: VideoDurationSeconds;
+  finishing: PreparedRender["finishing"];
+}> {
   "use step";
   const { jobStore } = await import("@/lib/store");
   const job = await jobStore.get(jobId);
@@ -229,7 +243,15 @@ async function prepareRecoveryFinalizationStep(jobId: string): Promise<{ videoUr
     progressPercent: 92,
     errorMessage: undefined,
   });
-  return { videoUri: job.videoUri, duration: job.targetDurationSeconds };
+  return {
+    videoUri: job.videoUri,
+    duration: job.targetDurationSeconds,
+    finishing: {
+      voiceoverText: job.voiceoverText,
+      closingText: job.closingText,
+      spokenLanguage: job.spokenLanguage,
+    },
+  };
 }
 
 async function providerRenderEnabledStep(duration: number): Promise<{ enabled: boolean; reason?: string }> {
@@ -248,7 +270,11 @@ async function providerRenderEnabledStep(duration: number): Promise<{ enabled: b
 async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   "use step";
   const { jobStore } = await import("@/lib/store");
-  const { buildMovieContinuationPrompt, buildVideoDurationPlan } = await import("@/lib/veo");
+  const {
+    buildMovieContinuationPrompt,
+    buildVideoDurationPlan,
+    removeVisibleTextRenderingInstructions,
+  } = await import("@/lib/veo");
   const { buildSelectedAudioDirection } = await import("@/lib/audio-options");
   const job = await jobStore.get(jobId);
   if (!job) throw new Error(`Render-Job ${jobId} wurde nicht gefunden.`);
@@ -278,12 +304,19 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     job.audioStyle ?? "cinematic",
     job.voiceMode ?? "auto",
     job.spokenLanguage ?? "de",
+    job.voiceoverText ?? "",
   );
 
   if (job.targetDurationSeconds <= 120) {
     const opening = asRecord(moviePlan.opening);
+    const safeOpening = {
+      ...opening,
+      veoPrompt: removeVisibleTextRenderingInstructions(
+        readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
+      ),
+    };
     const openingPrompt = buildOpeningPrompt(
-      opening,
+      safeOpening,
       job.aspectRatio,
       job.editingStyle,
       selectedAudioDirection,
@@ -338,7 +371,18 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     startedAt: job.startedAt ?? Date.now(),
     errorMessage: undefined,
   });
-  return { jobId, duration: job.targetDurationSeconds, aspectRatio: job.aspectRatio, segments, totalExtensions };
+  return {
+    jobId,
+    duration: job.targetDurationSeconds,
+    aspectRatio: job.aspectRatio,
+    segments,
+    totalExtensions,
+    finishing: {
+      voiceoverText: job.voiceoverText,
+      closingText: job.closingText,
+      spokenLanguage: job.spokenLanguage,
+    },
+  };
 }
 
 async function markRenderDisabledStep(jobId: string): Promise<void> {
@@ -604,17 +648,27 @@ async function markFinalizingStep(jobId: string, merging: boolean): Promise<void
   });
 }
 
-async function trimFinalVideoStep(jobId: string, videoUri: string, seconds: number) {
+async function trimFinalVideoStep(
+  jobId: string,
+  videoUri: string,
+  seconds: number,
+  finishing: PreparedRender["finishing"],
+) {
   "use step";
   const { trimAndStore } = await import("@/lib/video-backend/media");
-  return trimAndStore(videoUri, seconds, `finished-videos/${jobId}.mp4`);
+  return trimAndStore(videoUri, seconds, `finished-videos/${jobId}.mp4`, finishing);
 }
 trimFinalVideoStep.maxRetries = 0;
 
-async function mergeFinalVideoStep(jobId: string, chapterUris: string[], seconds: number) {
+async function mergeFinalVideoStep(
+  jobId: string,
+  chapterUris: string[],
+  seconds: number,
+  finishing: PreparedRender["finishing"],
+) {
   "use step";
   const { mergeAndStore } = await import("@/lib/video-backend/media");
-  return mergeAndStore(chapterUris, seconds, `finished-videos/${jobId}.mp4`);
+  return mergeAndStore(chapterUris, seconds, `finished-videos/${jobId}.mp4`, finishing);
 }
 mergeFinalVideoStep.maxRetries = 0;
 
@@ -708,6 +762,7 @@ function buildOpeningPrompt(
     typeof opening.audioPrompt === "string" ? `AUDIO DIRECTION:\n${opening.audioPrompt}` : "",
     selectedAudioDirection,
     typeof opening.negativePrompt === "string" ? `NEGATIVE REQUIREMENTS:\n${opening.negativePrompt}` : "",
+    "ABSOLUTE TEXT SAFETY: Do not render readable letters, words, numbers, URLs, logos, captions, code or interface text anywhere in the footage. Computer and phone screens use abstract unlettered light patterns only. Exact titles are added later in post-production.",
   ].filter(Boolean).join("\n");
 }
 

@@ -222,6 +222,12 @@ export default function HomePage({
   const [spokenLanguage, setSpokenLanguage] =
     useState<VideoSpokenLanguage>("de");
 
+  const [voiceoverText, setVoiceoverText] =
+    useState("");
+
+  const [closingText, setClosingText] =
+    useState("");
+
   const [referenceImages, setReferenceImages] =
     useState<Array<{ dataUrl: string; name: string }>>([]);
 
@@ -482,6 +488,13 @@ export default function HomePage({
       return;
     }
 
+    if (voiceMode === "voiceover" && !voiceoverText.trim()) {
+      setError(
+        "Bitte gib unter Audio den exakten Sprechertext ein.",
+      );
+      return;
+    }
+
     try {
       setPreviewLoading(true);
 
@@ -639,6 +652,10 @@ export default function HomePage({
                 voiceMode,
 
                 spokenLanguage,
+
+                voiceoverText,
+
+                closingText,
 
                 referenceImageUri:
                   previewReferenceUri,
@@ -986,6 +1003,46 @@ export default function HomePage({
                 </p>
               </div>
             </div>
+
+            {voiceMode === "voiceover" && (
+              <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-zinc-400">
+                    Exakter Sprechertext
+                  </span>
+                  <textarea
+                    value={voiceoverText}
+                    onChange={(event) => setVoiceoverText(event.target.value)}
+                    maxLength={4000}
+                    rows={5}
+                    placeholder="Schreibe hier Wort für Wort, was die Stimme sagen soll."
+                    disabled={loading || previewLoading}
+                    className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-600">
+                    Wird separat und deutlich gesprochen – nicht von der Video-KI improvisiert.
+                  </span>
+                </label>
+
+                <label className="block">
+                  <span className="mb-2 block text-xs font-medium text-zinc-400">
+                    Saubere Schluss-Einblendung (optional)
+                  </span>
+                  <textarea
+                    value={closingText}
+                    onChange={(event) => setClosingText(event.target.value)}
+                    maxLength={160}
+                    rows={5}
+                    placeholder={"KI VIDEO STUDIO\nki-video-studio.vercel.app"}
+                    disabled={loading || previewLoading}
+                    className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
+                  />
+                  <span className="mt-1 block text-[11px] text-zinc-600">
+                    Wird technisch gerendert, damit keine Fantasieschrift entsteht.
+                  </span>
+                </label>
+              </div>
+            )}
           </div>
         </section>
 
@@ -1014,6 +1071,8 @@ export default function HomePage({
             audioStyle={audioStyle}
             voiceMode={voiceMode}
             spokenLanguage={spokenLanguage}
+            voiceoverText={voiceoverText}
+            closingText={closingText}
           />
 
           <div className="space-y-6">

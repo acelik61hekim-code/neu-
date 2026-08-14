@@ -44,6 +44,8 @@ type ChatProps = {
   audioStyle?: VideoAudioStyle;
   voiceMode?: VideoVoiceMode;
   spokenLanguage?: VideoSpokenLanguage;
+  voiceoverText?: string;
+  closingText?: string;
 };
 
 type Message = ConversationMessage & {
@@ -107,6 +109,8 @@ export default function Chat({
   audioStyle = "cinematic",
   voiceMode = "auto",
   spokenLanguage = "de",
+  voiceoverText = "",
+  closingText = "",
 }: ChatProps) {
   const [messages, setMessages] =
     useState<Message[]>([
@@ -291,6 +295,8 @@ export default function Chat({
           audioStyle,
           voiceMode,
           spokenLanguage,
+          voiceoverText,
+          closingText,
         );
 
       if (

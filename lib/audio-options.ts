@@ -54,6 +54,7 @@ export function buildSelectedAudioDirection(
   audioStyle: VideoAudioStyle,
   voiceMode: VideoVoiceMode,
   spokenLanguage: VideoSpokenLanguage,
+  exactVoiceoverText = "",
 ): string {
   const musicDirection: Record<VideoAudioStyle, string> = {
     cinematic: "Use an original cinematic score with a clear emotional arc, restrained under speech and naturally continuous across extensions.",
@@ -64,10 +65,14 @@ export function buildSelectedAudioDirection(
     "no-music": "Do not generate music. Use only believable ambience, Foley and story-relevant sound effects.",
   };
 
+  const hasExternalVoiceover = voiceMode === "voiceover" && Boolean(exactVoiceoverText.trim());
+
   const voiceDirection: Record<VideoVoiceMode, string> = {
     auto: "Use speech only when it improves the story. Keep any dialogue or narration concise, natural and clearly mixed.",
     dialogue: "Prioritize short natural on-screen character dialogue. Keep speaker identity and voice consistent; do not add an external narrator.",
-    voiceover: "Use a concise professional voice-over that supports the images. Avoid on-screen character dialogue unless essential to the story.",
+    voiceover: hasExternalVoiceover
+      ? "Do not generate dialogue, narration or any spoken words inside the video footage. A separate studio-quality voice-over will be added in post-production; preserve clean music, ambience and sound effects beneath it."
+      : "Use a concise professional voice-over that supports the images. Avoid on-screen character dialogue unless essential to the story.",
     "no-voice": "Do not generate dialogue, narration or other spoken words. Tell the story through images, music, ambience and sound effects.",
   };
 
@@ -82,6 +87,7 @@ export function buildSelectedAudioDirection(
     musicDirection[audioStyle],
     voiceDirection[voiceMode],
     languageDirection[spokenLanguage],
-    "Never add subtitles, captions, watermarks or visible lyrics.",
+    "Never add subtitles, captions, watermarks, logos, interface writing, code, URLs or any other readable letters, words or numbers inside the generated footage.",
+    "Computer and phone screens must use abstract unlettered graphics only.",
   ].join("\n");
 }

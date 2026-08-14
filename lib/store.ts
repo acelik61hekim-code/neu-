@@ -107,6 +107,15 @@ export type VideoJob = {
     VideoSpokenLanguage;
 
   /*
+   * Exakter Sprechertext und sauber gerenderte Schluss-Einblendung.
+   * Beide werden erst in der technischen Nachbearbeitung hinzugefügt,
+   * damit Veo keine Fantasieschrift oder fehlerhafte Aussprache erzeugt.
+   */
+  voiceoverText?: string;
+
+  closingText?: string;
+
+  /*
    * Freigegebenes KI-Vorschaubild. Dieses private Bild
    * wird beim ersten Veo-Abschnitt wirklich als visuelle
    * Referenz verwendet.

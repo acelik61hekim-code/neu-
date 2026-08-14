@@ -1209,6 +1209,17 @@ function editingStyleInstruction(
   }
 }
 
+export function removeVisibleTextRenderingInstructions(value: string): string {
+  const visibleTextRequest = /\b(?:on[- ]screen|onscreen|screens?|text|letters?|words?|typography|caption|subtitle|title card|logo|watermark|url|website|domain|code)\b/i;
+  return value
+    .replace(/\r/g, "")
+    .split(/\n+|(?<=[.!?])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part && !visibleTextRequest.test(part))
+    .join(" ")
+    .trim();
+}
+
 export function buildMovieContinuationPrompt(
   story: Story,
   continuation:
@@ -1260,14 +1271,25 @@ export function buildMovieContinuationPrompt(
         ].join("\n")
       : "";
 
+  const socialBoundaryDirection = plan.editingStyle === "social"
+    ? [
+        "SOCIAL TRANSITION RULE:",
+        "Match the source video's final frame for the first half-second, then advance to a clearly different, story-relevant visual beat with one motivated match cut, whip transition or object-led transition.",
+        "Do not repeat the previous composition for the whole extension. Add visibly new information while preserving the established color palette and production identity.",
+      ].join("\n")
+    : [
+        "BOUNDARY MATCH (highest priority): The first frames must match the source video's final frames exactly: subject position, scale, silhouette, pose, fold geometry, material, camera position, lens, background geometry, lighting and motion vector.",
+        "Continue the existing motion without a cut, jump, wipe, reframe, zoom reset, speed reset or time skip.",
+      ].join("\n");
+
   return [
-    continuation
-      .continuationPrompt,
+    removeVisibleTextRenderingInstructions(
+      continuation.continuationPrompt,
+    ),
     "",
     "THIS IS A DIRECT EXTENSION OF THE EXISTING VIDEO.",
     "Do not restart, reintroduce or redesign the scene.",
-    "BOUNDARY MATCH (highest priority): The first frames must match the source video's final frames exactly: subject position, scale, silhouette, pose, fold geometry, material, camera position, lens, background geometry, lighting and motion vector.",
-    "Continue the existing motion without a cut, jump, wipe, reframe, zoom reset, speed reset or time skip.",
+    socialBoundaryDirection,
     "For non-human subjects and objects, preserve the exact dimensions, silhouette, construction, folds, color and material. Never morph, enlarge, redesign or add parts.",
     "",
     `ASPECT RATIO: ${plan.aspectRatio}`,
@@ -1275,10 +1297,10 @@ export function buildMovieContinuationPrompt(
       plan.editingStyle,
     ),
     "",
-    `STORY BEAT: ${continuation.storyBeat}`,
-    `EMOTIONAL BEAT: ${continuation.emotionalBeat}`,
-    `ESCALATION PURPOSE: ${continuation.escalationPurpose}`,
-    `ACTION CONTINUATION: ${continuation.actionContinuation}`,
+    `STORY BEAT: ${removeVisibleTextRenderingInstructions(continuation.storyBeat)}`,
+    `EMOTIONAL BEAT: ${removeVisibleTextRenderingInstructions(continuation.emotionalBeat)}`,
+    `ESCALATION PURPOSE: ${removeVisibleTextRenderingInstructions(continuation.escalationPurpose)}`,
+    `ACTION CONTINUATION: ${removeVisibleTextRenderingInstructions(continuation.actionContinuation)}`,
     "",
     "CHARACTER CONTINUITY:",
     continuation
@@ -1327,7 +1349,7 @@ export function buildMovieContinuationPrompt(
     continuation
       .negativePrompt ??
       "",
-    "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no logos, no watermarks, no visible interface text.",
+    "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no logos, no watermarks, no readable letters, no words, no numbers, no URLs, no code and no visible interface text. All screens use abstract unlettered light patterns only.",
   ]
     .filter(Boolean)
     .join("\n");

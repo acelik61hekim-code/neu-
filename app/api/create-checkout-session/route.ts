@@ -70,6 +70,8 @@ type CheckoutRequest = {
   audioStyle?: unknown;
   voiceMode?: unknown;
   spokenLanguage?: unknown;
+  voiceoverText?: unknown;
+  closingText?: unknown;
   referenceImageUri?: unknown;
   referenceImageMimeType?: unknown;
 };
@@ -383,6 +385,40 @@ export async function POST(
   const voiceMode = body.voiceMode as VideoVoiceMode;
   const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
 
+  const voiceoverText =
+    typeof body.voiceoverText === "string"
+      ? body.voiceoverText.trim()
+      : "";
+
+  const closingText =
+    typeof body.closingText === "string"
+      ? body.closingText.trim()
+      : "";
+
+  const maximumVoiceoverWords = Math.max(18, Math.floor(targetDurationSeconds * 2.2));
+  const voiceoverWords = voiceoverText ? voiceoverText.split(/\s+/).filter(Boolean).length : 0;
+
+  if (voiceMode === "voiceover" && !voiceoverText) {
+    return NextResponse.json(
+      { error: "Bitte gib den exakten Sprechertext für das Voice-over ein." },
+      { status: 400 },
+    );
+  }
+
+  if (voiceoverText.length > 4_000 || voiceoverWords > maximumVoiceoverWords) {
+    return NextResponse.json(
+      { error: `Der Sprechertext ist für ${targetDurationSeconds} Sekunden zu lang. Erlaubt sind ungefähr ${maximumVoiceoverWords} Wörter.` },
+      { status: 400 },
+    );
+  }
+
+  if (closingText.length > 160) {
+    return NextResponse.json(
+      { error: "Die Schluss-Einblendung darf höchstens 160 Zeichen lang sein." },
+      { status: 400 },
+    );
+  }
+
   const referenceImageUri =
     typeof body.referenceImageUri === "string"
       ? body.referenceImageUri.trim()
@@ -468,6 +504,12 @@ export async function POST(
       voiceMode,
 
       spokenLanguage,
+
+      voiceoverText:
+        voiceoverText || undefined,
+
+      closingText:
+        closingText || undefined,
 
       referenceImageUrl:
         referenceImageUri,

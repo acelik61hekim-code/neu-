@@ -1186,6 +1186,8 @@ export async function requestStoryArchitect(
   audioStyle: VideoAudioStyle = "cinematic",
   voiceMode: VideoVoiceMode = "auto",
   spokenLanguage: VideoSpokenLanguage = "de",
+  voiceoverText = "",
+  closingText = "",
 ): Promise<Story> {
   if (
     !isVideoDurationSeconds(
@@ -1256,6 +1258,10 @@ export async function requestStoryArchitect(
             voiceMode,
 
             spokenLanguage,
+
+            voiceoverText,
+
+            closingText,
           }),
       },
     );
