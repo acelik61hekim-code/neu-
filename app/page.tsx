@@ -298,6 +298,13 @@ export default function HomePage({
       value,
     );
 
+    if (
+      value < 30 &&
+      voiceMode === "dialogue"
+    ) {
+      setVoiceMode("auto");
+    }
+
     resetPlannedProject();
   }
 
@@ -336,6 +343,16 @@ export default function HomePage({
   }
 
   function selectVoiceMode(value: VideoVoiceMode) {
+    if (
+      value === "dialogue" &&
+      targetDurationSeconds < 30
+    ) {
+      setError(
+        "Für einen zuverlässigen Dialog mit mindestens zwei Personen wähle bitte mindestens 30 Sekunden.",
+      );
+      return;
+    }
+
     if (value === voiceMode) return;
     setVoiceMode(value);
     resetPlannedProject();
@@ -969,7 +986,11 @@ export default function HomePage({
                       key={option.value}
                       type="button"
                       onClick={() => selectVoiceMode(option.value)}
-                      disabled={loading || previewLoading}
+                      disabled={
+                        loading ||
+                        previewLoading ||
+                        (option.value === "dialogue" && targetDurationSeconds < 30)
+                      }
                       className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
                         voiceMode === option.value
                           ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
@@ -980,6 +1001,15 @@ export default function HomePage({
                     </button>
                   ))}
                 </div>
+                {voiceMode === "dialogue" ? (
+                  <p className="mt-2 text-[11px] leading-5 text-emerald-300">
+                    Mindestens zwei sichtbare Personen sprechen abwechselnd; drei, vier oder mehr sind ebenfalls möglich. Der Filmplan wird vor der Zahlung automatisch geprüft.
+                  </p>
+                ) : targetDurationSeconds < 30 ? (
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                    Ein verlässlicher Dialog mit mindestens zwei Personen ist ab 30 Sekunden verfügbar.
+                  </p>
+                ) : null}
               </div>
 
               <div>

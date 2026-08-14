@@ -748,6 +748,39 @@ function readString(value: unknown, error: string): string {
   return value.trim();
 }
 
+function buildOpeningDialoguePrompt(value: unknown): string {
+  const dialogue = asRecord(value);
+  if (dialogue.enabled !== true) return "";
+
+  const speaker = readString(
+    dialogue.speaker,
+    "moviePlan.opening.dialogue.speaker fehlt.",
+  );
+  const text = readString(
+    dialogue.text,
+    "moviePlan.opening.dialogue.text fehlt.",
+  );
+  const language = readString(
+    dialogue.language,
+    "moviePlan.opening.dialogue.language fehlt.",
+  );
+  const voiceDirection = readString(
+    dialogue.voiceDirection,
+    "moviePlan.opening.dialogue.voiceDirection fehlt.",
+  );
+
+  return [
+    "MANDATORY ON-SCREEN DIALOGUE:",
+    `Visible speaker: ${speaker}`,
+    `Language: ${language}`,
+    `Exact spoken words: "${text}"`,
+    `Voice and delivery: ${voiceDirection}`,
+    "The named character must visibly say these exact words once with natural pronunciation and synchronized lip movement.",
+    "Keep the speaking face and mouth clearly visible. Dialogue must be louder than music and ambience.",
+    "Do not replace this line with narration, voice-over, a monologue by another person or subtitles.",
+  ].join("\n");
+}
+
 function buildOpeningPrompt(
   opening: Record<string, unknown>,
   aspectRatio: VideoAspectRatio,
@@ -759,6 +792,7 @@ function buildOpeningPrompt(
     "",
     `ASPECT RATIO: ${aspectRatio}`,
     `EDITING STYLE: ${editingStyle || "auto"}`,
+    buildOpeningDialoguePrompt(opening.dialogue),
     typeof opening.audioPrompt === "string" ? `AUDIO DIRECTION:\n${opening.audioPrompt}` : "",
     selectedAudioDirection,
     typeof opening.negativePrompt === "string" ? `NEGATIVE REQUIREMENTS:\n${opening.negativePrompt}` : "",

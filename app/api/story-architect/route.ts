@@ -461,6 +461,7 @@ function normalizeProductionBible(
   story: StoryDraft,
   aspectRatio: VideoAspectRatio,
   editingStyle: VideoEditingStyle,
+  voiceMode: VideoVoiceMode,
 ): ProductionBible {
   const root = asRecord(value);
 
@@ -481,13 +482,39 @@ function normalizeProductionBible(
           },
         ];
 
+  const requiredCharacterCount =
+    voiceMode === "dialogue" ? 2 : 1;
+
+  const characterCount = Math.max(
+    fallbackCharacters.length,
+    Math.min(rawCharacterBible.length, 8),
+    requiredCharacterCount,
+  );
+
   const characterBible =
-    fallbackCharacters.map(
-      (fallbackCharacter, index) => {
+    Array.from(
+      { length: characterCount },
+      (_, index) => {
         const source =
-          asRecord(
-            rawCharacterBible[index],
-          );
+          asRecord(rawCharacterBible[index]);
+
+        const fallbackCharacter =
+          fallbackCharacters[index] ?? {
+            id: readString(
+              source.id,
+              `dialogue-character-${index + 1}`,
+            ),
+            name: readString(
+              source.name,
+              index === 1
+                ? "Conversation Partner"
+                : `Character ${index + 1}`,
+            ),
+            description: readString(
+              source.fixedAppearance,
+              "A clearly visible, realistic on-screen conversation partner.",
+            ),
+          };
 
         const baseDescription =
           fallbackCharacter.description ||
@@ -1343,6 +1370,7 @@ function normalizeArchitectResponse(
   targetDurationSeconds: VideoDurationSeconds,
   aspectRatio: VideoAspectRatio,
   editingStyle: VideoEditingStyle,
+  voiceMode: VideoVoiceMode,
 ): ArchitectResponse {
   const root =
     asRecord(parsed);
@@ -1353,6 +1381,7 @@ function normalizeArchitectResponse(
       story,
       aspectRatio,
       editingStyle,
+      voiceMode,
     );
 
   const moviePlan =
@@ -1369,6 +1398,62 @@ function normalizeArchitectResponse(
     productionBible,
     moviePlan,
   };
+}
+
+function hasMandatoryDialoguePlan(
+  response: ArchitectResponse,
+): boolean {
+  if (
+    response.productionBible.characterBible.length < 2 ||
+    response.moviePlan.continuations.length < 1
+  ) {
+    return false;
+  }
+
+  const plannedDialogue = [
+    response.moviePlan.opening.dialogue,
+    ...response.moviePlan.continuations.map(
+      (continuation) => continuation.dialogue,
+    ),
+  ];
+
+  const enabledDialogue =
+    plannedDialogue.filter(
+      (dialogue) => dialogue.enabled,
+    );
+
+  if (
+    !plannedDialogue[0]?.enabled ||
+    !plannedDialogue[1]?.enabled ||
+    enabledDialogue.length < 2
+  ) {
+    return false;
+  }
+
+  const forbiddenSpeaker =
+    /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|\u00e4)hl|sprecher(?:in)?$/i;
+
+  const speakers = new Set<string>();
+
+  for (const dialogue of enabledDialogue) {
+    const speaker = dialogue.speaker.trim();
+    const wordCount =
+      dialogue.text.trim().split(/\s+/).filter(Boolean).length;
+
+    if (
+      !speaker ||
+      forbiddenSpeaker.test(speaker) ||
+      wordCount < 1 ||
+      wordCount > 18 ||
+      dialogue.text.length > 140
+    ) {
+      return false;
+    }
+
+    speakers.add(speaker.toLocaleLowerCase("de-DE"));
+  }
+
+  return speakers.size >= 2;
 }
 
 
@@ -1798,6 +1883,7 @@ function createRetryDelay(attempt: number): number {
 async function generateStoryWithFallback(
   ai: GoogleGenAI,
   prompt: string,
+  validateCandidate?: (parsed: unknown) => boolean,
 ): Promise<GeneratedStory> {
   let lastError: unknown;
 
@@ -1918,6 +2004,29 @@ async function generateStoryWithFallback(
            * Beide Versuche dieses Modells waren
            * syntaktisch ungültig -> nächstes Modell.
            */
+          break;
+        }
+
+        if (
+          validateCandidate &&
+          !validateCandidate(parsedResult.parsed)
+        ) {
+          lastError = new Error(
+            "Der Filmplan enthält keinen zuverlässig ausführbaren Dialog mit mindestens zwei sichtbaren Personen.",
+          );
+
+          console.warn(
+            `Story Architect Dialogprüfung fehlgeschlagen: ${model}, Versuch ${attempt}/${RETRIES_PER_MODEL}`,
+          );
+
+          if (attempt < RETRIES_PER_MODEL) {
+            await sleep(
+              createRetryDelay(attempt),
+            );
+
+            continue;
+          }
+
           break;
         }
 
@@ -2195,6 +2304,24 @@ SCHNITTSTIL: SOCIAL / REELS
     voiceoverText,
   );
 
+  const mandatoryDialogueSection =
+    voiceMode === "dialogue"
+      ? `
+VERBINDLICHER DIALOGMODUS – HÖCHSTE PRIORITÄT
+
+- Das fertige Video MUSS ein sichtbares Gespräch zwischen mindestens zwei eindeutig benannten Personen sein. Wenn die Geschichte drei, vier oder mehr Sprecher vorsieht, müssen alle eingeplant werden.
+- productionBible.characterBible muss alle Gesprächspartner enthalten, mindestens zwei, jeweils mit unterschiedlichem Namen und fester Stimme.
+- moviePlan.opening.dialogue.enabled muss true sein und eine kurze erste Aussage von Person A enthalten.
+- moviePlan.continuations[0].dialogue.enabled muss true sein und eine direkte Antwort von Person B enthalten.
+- Danach sollen sich die Sprecher natürlich abwechseln; jeder eingeplante Gesprächspartner muss mindestens einmal hörbar sprechen.
+- Jeder Dialogtext umfasst höchstens 18 gut sprechbare Wörter und passt vollständig in seinen 7- bis 8-Sekunden-Abschnitt.
+- speaker enthält immer exakt den Namen der sichtbar sprechenden Figur, niemals "Narrator", "Voice-over", "Off-screen voice" oder eine Sammelbezeichnung.
+- Zeige beim Sprechen Gesicht und Mund der aktiven Person deutlich. Nutze natürliche Pausen, korrekte Aussprache und synchronisierte Lippenbewegung.
+- Kein Monolog, kein Erzähler, kein Voice-over, keine Untertitel und keine sichtbare Transkription.
+- Gesprochene Sprache: ${spokenLanguage === "de" ? "Deutsch" : spokenLanguage === "en" ? "Englisch" : "die zur Geschichte passende, durchgehend einheitliche Sprache"}.
+`
+      : "";
+
   return `
 Du bist ein professioneller Viral Creative Director, Story Architect,
 Character Director, Camera Director, Lighting Director, Performance Director,
@@ -2221,6 +2348,8 @@ ${editingStyle}
 AUSGEWÄHLTE KI-AUDIO-EINSTELLUNGEN
 
 ${selectedAudioDirection}
+
+${mandatoryDialogueSection}
 
 EXAKTER SPRECHERTEXT FÜR DIE TECHNISCHE NACHBEARBEITUNG
 
@@ -2639,6 +2768,20 @@ export async function POST(request: Request) {
       ? body.closingText.trim().slice(0, 160)
       : "";
 
+  if (
+    voiceMode === "dialogue" &&
+    targetDurationSeconds < 30
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Für einen zuverlässigen Dialog mit mindestens zwei Personen wähle bitte mindestens 30 Sekunden.",
+      },
+      { status: 400 },
+    );
+  }
+
   const prompt =
     buildStoryPrompt(
       story,
@@ -2661,6 +2804,19 @@ export async function POST(request: Request) {
       await generateStoryWithFallback(
         ai,
         prompt,
+        voiceMode === "dialogue"
+          ? (candidate) =>
+              hasMandatoryDialoguePlan(
+                normalizeArchitectResponse(
+                  candidate,
+                  story,
+                  targetDurationSeconds,
+                  aspectRatio,
+                  editingStyle,
+                  voiceMode,
+                ),
+              )
+          : undefined,
       );
 
     const cleanedText = cleanJsonText(
@@ -2705,6 +2861,7 @@ export async function POST(request: Request) {
         targetDurationSeconds,
         aspectRatio,
         editingStyle,
+        voiceMode,
       );
 
     if (!validateArchitectResponse(normalized)) {

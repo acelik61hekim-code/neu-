@@ -76,6 +76,58 @@ type CheckoutRequest = {
   referenceImageMimeType?: unknown;
 };
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function hasVerifiedMultiSpeakerDialogue(prompt: string): boolean {
+  let story: Record<string, unknown>;
+
+  try {
+    story = asRecord(JSON.parse(prompt));
+  } catch {
+    return false;
+  }
+
+  const productionBible = asRecord(story.productionBible);
+  const characterBible = Array.isArray(productionBible.characterBible)
+    ? productionBible.characterBible
+    : [];
+  const moviePlan = asRecord(story.moviePlan);
+  const opening = asRecord(moviePlan.opening);
+  const continuations = Array.isArray(moviePlan.continuations)
+    ? moviePlan.continuations
+    : [];
+  const dialogueEntries = [
+    asRecord(opening.dialogue),
+    ...continuations.map((item) => asRecord(asRecord(item).dialogue)),
+  ];
+
+  if (
+    characterBible.length < 2 ||
+    dialogueEntries.length < 2 ||
+    dialogueEntries[0].enabled !== true ||
+    dialogueEntries[1].enabled !== true
+  ) {
+    return false;
+  }
+
+  const speakers = new Set(
+    dialogueEntries
+      .filter((dialogue) => dialogue.enabled === true)
+      .map((dialogue) =>
+        typeof dialogue.speaker === "string"
+          ? dialogue.speaker.trim().toLocaleLowerCase("de-DE")
+          : "",
+      )
+      .filter(Boolean),
+  );
+
+  return speakers.size >= 2;
+}
+
 function missingProductionServices(): string[] {
   if (process.env.NODE_ENV === "development") return [];
 
@@ -384,6 +436,22 @@ export async function POST(
   const audioStyle = body.audioStyle as VideoAudioStyle;
   const voiceMode = body.voiceMode as VideoVoiceMode;
   const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
+
+  if (
+    voiceMode === "dialogue" &&
+    (
+      targetDurationSeconds < 30 ||
+      !hasVerifiedMultiSpeakerDialogue(prompt)
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Der Dialogplan enthält noch kein geprüftes Gespräch mit mindestens zwei Personen. Bitte lass den AI Director den Filmplan neu erstellen. Es wurde nichts berechnet.",
+      },
+      { status: 400 },
+    );
+  }
 
   const voiceoverText =
     typeof body.voiceoverText === "string"
