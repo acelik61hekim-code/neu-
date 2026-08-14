@@ -389,7 +389,7 @@ function isSafetyBlocked(
 export async function POST(
   request: Request,
 ) {
-  const rateLimit = await checkRateLimit(request, "preview", 8, 60 * 60);
+  const rateLimit = await checkRateLimit(request, "preview-v2", 8, 60 * 60);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       {
