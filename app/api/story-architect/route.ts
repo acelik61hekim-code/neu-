@@ -8,6 +8,11 @@ import {
   normalizeVideoVoiceMode,
 } from "@/lib/audio-options";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  STUDIO_BRAND_CONTEXT,
+  buildStudioAdvertisementDirection,
+  isStudioWebsiteAdvertisement,
+} from "@/lib/studio-brand";
 
 import type {
   MovieContinuation,
@@ -821,6 +826,25 @@ function normalizeMoviePlan(
   const root =
     asRecord(value);
 
+  const studioAdvertisement =
+    isStudioWebsiteAdvertisement(
+      [
+        story.title,
+        story.genre,
+        story.mood,
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
+  const studioAdvertisementDirection =
+    studioAdvertisement
+      ? buildStudioAdvertisementDirection()
+      : "";
+
+  const studioAdvertisementNegativePrompt =
+    "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no subtitles, no captions, no watermarks, no fake websites, no invented interface, no abstract neon replacement screen and no unrelated logos. The authentic KI Video Studio interface from the supplied reference is required and allowed.";
+
   const durationPlan =
     buildDurationPlan(
       targetDurationSeconds,
@@ -907,29 +931,36 @@ function normalizeMoviePlan(
     ),
     dialogue:
       openingDialogue,
-    veoPrompt: readString(
-      rawOpening.veoPrompt,
-      [
-        `${aspectRatio} ${editingStyle === "cinematic" ? "cinematic feature-film" : editingStyle === "music-video" ? "cinematic music-video" : "social-video"} live-action shot. Compose natively for this aspect ratio.`,
-        `Story: ${story.summary}`,
-        `Setting: ${story.setting}`,
-        `Characters: ${fallbackCharacterState}`,
-        "Begin immediately with a strong hook in the first two seconds.",
-        "Maintain realistic anatomy, natural motion, stable identity, stable wardrobe and physically plausible lighting.",
-        targetDurationSeconds === 8
-          ? "Create a complete satisfying 8-second micro-story with a clear ending."
-          : "End in a movement and camera state that can continue seamlessly into the next video extension.",
-        "No subtitles, captions, logos, watermarks or visible interface text.",
-      ].join(" "),
-    ),
+    veoPrompt: [
+      readString(
+        rawOpening.veoPrompt,
+        [
+          `${aspectRatio} ${editingStyle === "cinematic" ? "cinematic feature-film" : editingStyle === "music-video" ? "cinematic music-video" : "social-video"} live-action shot. Compose natively for this aspect ratio.`,
+          `Story: ${story.summary}`,
+          `Setting: ${story.setting}`,
+          `Characters: ${fallbackCharacterState}`,
+          "Begin immediately with a strong hook in the first two seconds.",
+          "Maintain realistic anatomy, natural motion, stable identity, stable wardrobe and physically plausible lighting.",
+          targetDurationSeconds === 8
+            ? "Create a complete satisfying 8-second micro-story with a clear ending."
+            : "End in a movement and camera state that can continue seamlessly into the next video extension.",
+          studioAdvertisement
+            ? studioAdvertisementDirection
+            : "No subtitles, captions, logos, watermarks or visible interface text.",
+        ].join(" "),
+      ),
+      studioAdvertisementDirection,
+    ].filter(Boolean).join(" "),
     audioPrompt: readString(
       rawOpening.audioPrompt,
       "Natural continuous ambience matching the scene, subtle cinematic sound design, stable voices, no narration unless required.",
     ),
-    negativePrompt: readString(
-      rawOpening.negativePrompt,
-      "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no subtitles, no captions, no logos, no watermarks, no visible UI text.",
-    ),
+    negativePrompt: studioAdvertisement
+      ? studioAdvertisementNegativePrompt
+      : readString(
+          rawOpening.negativePrompt,
+          "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no subtitles, no captions, no logos, no watermarks, no visible UI text.",
+        ),
   };
 
   const rawContinuations =
@@ -1062,17 +1093,22 @@ function normalizeMoviePlan(
 
           dialogue,
 
-          continuationPrompt: readString(
-            source.continuationPrompt,
-            [
-              "Continue seamlessly from the exact current motion and final video state.",
-              fallbackBeat,
-              "Do not restart or reintroduce the scene.",
-              "Keep character identity, face, body, clothing, props, environment, lighting, camera direction and audio continuous.",
-              "Use natural physically plausible motion.",
-              "No subtitles, captions, logos, watermarks or visible interface text.",
-            ].join(" "),
-          ),
+          continuationPrompt: [
+            readString(
+              source.continuationPrompt,
+              [
+                "Continue seamlessly from the exact current motion and final video state.",
+                fallbackBeat,
+                "Do not restart or reintroduce the scene.",
+                "Keep character identity, face, body, clothing, props, environment, lighting, camera direction and audio continuous.",
+                "Use natural physically plausible motion.",
+                studioAdvertisement
+                  ? studioAdvertisementDirection
+                  : "No subtitles, captions, logos, watermarks or visible interface text.",
+              ].join(" "),
+            ),
+            studioAdvertisementDirection,
+          ].filter(Boolean).join(" "),
 
           audioPrompt:
             readLooseString(
@@ -1080,11 +1116,12 @@ function normalizeMoviePlan(
             ) ||
             "Continue the established ambience and sound design naturally.",
 
-          negativePrompt:
-            readLooseString(
-              source.negativePrompt,
-            ) ||
-            "No identity drift, face changes, wardrobe changes, duplicated characters, teleportation, malformed anatomy, spatial discontinuity, camera reset, lighting reset, subtitles, captions, logos or watermarks.",
+          negativePrompt: studioAdvertisement
+            ? studioAdvertisementNegativePrompt
+            : readLooseString(
+                source.negativePrompt,
+              ) ||
+              "No identity drift, face changes, wardrobe changes, duplicated characters, teleportation, malformed anatomy, spatial discontinuity, camera reset, lighting reset, subtitles, captions, logos or watermarks.",
         };
       },
     );
@@ -1165,19 +1202,24 @@ function normalizeMoviePlan(
               openingPrompt:
                 index === 0
                   ? opening.veoPrompt
-                  : readString(
-                      source.openingPrompt,
-                      [
-                        `Begin chapter ${chapterNumber} as a natural continuation of the same film.`,
-                        "Preserve established character identity, wardrobe, visual style, world rules and emotional continuity.",
-                        `Story goal: ${readString(
-                          source.storyGoal,
-                          "Continue and escalate the same story.",
-                        )}`,
-                        "Start with a visually strong, immediately readable action.",
-                        "No subtitles, captions, logos, watermarks or visible interface text.",
-                      ].join(" "),
-                    ),
+                  : [
+                      readString(
+                        source.openingPrompt,
+                        [
+                          `Begin chapter ${chapterNumber} as a natural continuation of the same film.`,
+                          "Preserve established character identity, wardrobe, visual style, world rules and emotional continuity.",
+                          `Story goal: ${readString(
+                            source.storyGoal,
+                            "Continue and escalate the same story.",
+                          )}`,
+                          "Start with a visually strong, immediately readable action.",
+                          studioAdvertisement
+                            ? studioAdvertisementDirection
+                            : "No subtitles, captions, logos, watermarks or visible interface text.",
+                        ].join(" "),
+                      ),
+                      studioAdvertisementDirection,
+                    ].filter(Boolean).join(" "),
 
               /*
                * Absichtlich leer:
@@ -1941,6 +1983,49 @@ function buildStoryPrompt(
   voiceoverText: string,
   closingText: string,
 ): string {
+  const studioAdvertisement =
+    isStudioWebsiteAdvertisement(
+      [
+        story.title,
+        story.genre,
+        story.mood,
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
+  const studioAdvertisementSection =
+    studioAdvertisement
+      ? `
+${STUDIO_BRAND_CONTEXT}
+
+VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
+
+- Dies ist Werbung für die echte, bereits veröffentlichte Webseite KI Video Studio.
+- Das beworbene Produkt ist die Webseite selbst, nicht irgendein erfundenes KI-Produkt.
+- Zeige die echte dunkle Benutzeroberfläche mit violetten Akzenten und den Bereichen Video, Songs und Bilder auf dem Gerätedisplay.
+- Ein hochgeladenes oder automatisch beigefügtes Bild der echten Webseite ist eine verbindliche Produktreferenz.
+- Ersetze diese Referenz niemals durch abstrakte Neonwellen, Fantasieschrift, eine erfundene App oder eine andere Marke.
+- Das KI-Video darf die echte KI-Video-Studio-Oberfläche und das echte Logo aus der Referenz zeigen. Allgemeine Verbote für Logos, UI und sichtbare Schrift gelten nicht für diese geschützte Produktreferenz.
+- Untertitel, Wasserzeichen, zusätzliche erfundene Logos und zusätzliche Fantasieschrift bleiben verboten.
+`
+      : "";
+
+  const visibleInterfaceRestriction =
+    studioAdvertisement
+      ? [
+          "- Untertitel",
+          "- Wasserzeichen",
+          "- erfundene oder fremde Logos",
+          "- erfundene Interface-Texte außerhalb der echten KI-Video-Studio-Referenz",
+        ].join("\n")
+      : [
+          "- Untertitel",
+          "- Logos",
+          "- Wasserzeichen",
+          "- sichtbaren Interface-Texte",
+        ].join("\n");
+
   const characterDescription =
     story.characters
       .map(
@@ -2118,6 +2203,8 @@ Audio Director, Continuity Director und Video Prompt Director.
 Du planst EIN zusammenhängendes professionelles Video-Projekt.
 Der Plan darf NICHT fest auf 60 Sekunden, TikTok/Vertical oder einen
 einzelnen Video-Provider zugeschnitten sein.
+
+${studioAdvertisementSection}
 
 AUSGEWÄHLTE VIDEO-LÄNGE
 
@@ -2346,10 +2433,7 @@ KEINE:
 - neue Personen ohne Storygrund
 - unmotivierte Kamerarezets
 - unmotivierte Lichtresets
-- Untertitel
-- Logos
-- Wasserzeichen
-- sichtbaren Interface-Texte
+${visibleInterfaceRestriction}
 
 QUALITÄTSKONTROLLE
 

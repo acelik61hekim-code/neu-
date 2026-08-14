@@ -5,6 +5,12 @@ import {
 } from "@google/genai";
 import { NextResponse } from "next/server";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  STUDIO_BRAND_CONTEXT,
+  STUDIO_NAME,
+  STUDIO_URL,
+  isStudioWebsiteAdvertisement,
+} from "@/lib/studio-brand";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -50,6 +56,8 @@ const MAX_ATTEMPTS = 4;
 
 const SYSTEM_INSTRUCTION = `
 Du bist der AI Director einer professionellen KI-Video-Plattform.
+
+${STUDIO_BRAND_CONTEXT}
 
 Deine Aufgabe ist NICHT nur zu chatten.
 
@@ -119,6 +127,48 @@ dass die Handlung klar aufgebaut ist:
 Wenn diese Struktur bereits vorhanden ist,
 setze sofort ready=true.
 `;
+
+function enforceStudioAdvertisement(
+  result: AiDirectorResult,
+): AiDirectorResult {
+  const story = result.story;
+  const existingSummary = story.summary.trim();
+  const existingSetting = story.setting.trim();
+
+  return {
+    ...result,
+    reply:
+      `Verstanden: Ich plane ausdrücklich eine Werbung für deine bestehende Webseite ${STUDIO_NAME} (${STUDIO_URL}) – keine erfundene KI-Plattform. ${result.ready ? "Der Filmplan kann jetzt erstellt werden." : result.reply.trim()}`,
+    story: {
+      ...story,
+      title: story.title.toLowerCase().includes("ki video studio")
+        ? story.title
+        : `${STUDIO_NAME} – ${story.title || "Deine Idee wird sichtbar"}`,
+      genre: `Marken- und Produktwerbung für ${STUDIO_NAME}`,
+      mood:
+        `${story.mood || "Modern und hochwertig"}; vertrauenswürdig, klar und professionell`,
+      setting: [
+        existingSetting,
+        `Eine reale Person benutzt die bestehende Webseite ${STUDIO_NAME} unter ${STUDIO_URL} auf ihrem Smartphone oder Computer.`,
+      ].filter(Boolean).join(" "),
+      characters:
+        story.characters.length > 0
+          ? story.characters
+          : [
+              {
+                name: "Nutzerin oder Nutzer",
+                description:
+                  `Eine sympathische erwachsene Person, die ${STUDIO_NAME} auf einem echten Smartphone verwendet und natürlich auf das Ergebnis reagiert.`,
+              },
+            ],
+      summary: [
+        `Dies ist ausdrücklich eine Werbung für die bereits bestehende Marke und Webseite ${STUDIO_NAME} (${STUDIO_URL}), nicht für eine erfundene Plattform.`,
+        existingSummary,
+        "Die echte Webseite mit den Bereichen Video, Songs und Bilder ist das beworbene Produkt und muss auf dem Gerätedisplay erkennbar sein.",
+      ].filter(Boolean).join(" "),
+    },
+  };
+}
 
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
@@ -624,11 +674,20 @@ export async function POST(
       );
     }
 
+    const userConversation = messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content)
+      .join("\n");
+
+    const finalResult = isStudioWebsiteAdvertisement(userConversation)
+      ? enforceStudioAdvertisement(result)
+      : result;
+
     return NextResponse.json({
       success: true,
-      reply: result.reply.trim(),
-      finished: result.ready,
-      story: result.story,
+      reply: finalResult.reply.trim(),
+      finished: finalResult.ready,
+      story: finalResult.story,
     });
   } catch (error) {
     console.error(

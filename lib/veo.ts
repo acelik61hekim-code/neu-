@@ -6,6 +6,10 @@ import type {
   VideoEditingStyle,
   VideoGenerationStrategy,
 } from "@/types/story";
+import {
+  buildStudioAdvertisementDirection,
+  isStudioWebsiteAdvertisement,
+} from "@/lib/studio-brand";
 
 const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY;
@@ -1233,6 +1237,23 @@ export function buildMovieContinuationPrompt(
       .continuationPrompt;
   }
 
+  const studioAdvertisement =
+    isStudioWebsiteAdvertisement(
+      [
+        story.title,
+        story.genre,
+        story.mood,
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
+  const preserveRequiredVisualInstructions =
+    (value: string) =>
+      studioAdvertisement
+        ? value.trim()
+        : removeVisibleTextRenderingInstructions(value);
+
   const characterIdentity =
     story.productionBible
       .characterBible
@@ -1288,7 +1309,7 @@ export function buildMovieContinuationPrompt(
       ].join("\n");
 
   return [
-    removeVisibleTextRenderingInstructions(
+    preserveRequiredVisualInstructions(
       continuation.continuationPrompt,
     ),
     "",
@@ -1302,10 +1323,10 @@ export function buildMovieContinuationPrompt(
       plan.editingStyle,
     ),
     "",
-    `STORY BEAT: ${removeVisibleTextRenderingInstructions(continuation.storyBeat)}`,
-    `EMOTIONAL BEAT: ${removeVisibleTextRenderingInstructions(continuation.emotionalBeat)}`,
-    `ESCALATION PURPOSE: ${removeVisibleTextRenderingInstructions(continuation.escalationPurpose)}`,
-    `ACTION CONTINUATION: ${removeVisibleTextRenderingInstructions(continuation.actionContinuation)}`,
+    `STORY BEAT: ${preserveRequiredVisualInstructions(continuation.storyBeat)}`,
+    `EMOTIONAL BEAT: ${preserveRequiredVisualInstructions(continuation.emotionalBeat)}`,
+    `ESCALATION PURPOSE: ${preserveRequiredVisualInstructions(continuation.escalationPurpose)}`,
+    `ACTION CONTINUATION: ${preserveRequiredVisualInstructions(continuation.actionContinuation)}`,
     "",
     "CHARACTER CONTINUITY:",
     continuation
@@ -1354,7 +1375,14 @@ export function buildMovieContinuationPrompt(
     continuation
       .negativePrompt ??
       "",
-    "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no logos, no watermarks, no readable letters, no words, no numbers, no URLs, no code and no visible interface text. All screens use abstract unlettered light patterns only.",
+    studioAdvertisement
+      ? [
+          "BRANDED PRODUCT-SCREEN EXCEPTION (highest priority):",
+          buildStudioAdvertisementDirection(),
+          "Preserve the authentic website already visible in the source video. Do not blur, remove, redesign or replace it during the extension.",
+          "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no watermarks, no invented UI text, no fake websites and no unrelated logos.",
+        ].join("\n")
+      : "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no logos, no watermarks, no readable letters, no words, no numbers, no URLs, no code and no visible interface text. All screens use abstract unlettered light patterns only.",
   ]
     .filter(Boolean)
     .join("\n");

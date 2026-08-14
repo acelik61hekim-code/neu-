@@ -1,8 +1,16 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import { storeGeneratedPreview } from "@/lib/video-backend/images";
 import { checkRateLimit } from "@/lib/rate-limit";
+import {
+  STUDIO_NAME,
+  STUDIO_URL,
+  buildStudioAdvertisementDirection,
+  isStudioWebsiteAdvertisement,
+} from "@/lib/studio-brand";
 
 import type {
   VideoAspectRatio,
@@ -207,12 +215,36 @@ function buildPreviewPrompt(
   userPrompt: string,
   aspectRatio: VideoAspectRatio,
   editingStyle: VideoEditingStyle,
+  studioAdvertisement: boolean,
 ): string {
+  const visibleContentRules = studioAdvertisement
+    ? [
+        `- this is a commercial advertisement for the real, existing ${STUDIO_NAME} website at ${STUDIO_URL}`,
+        "- the real KI Video Studio website interface and its logo from the official attached reference image are required on the device display",
+        "- preserve the reference website's recognizable dark layout, violet accents, brand header and Video / Songs / Bilder navigation",
+        "- do not redraw, redesign or replace the referenced website with an abstract neon screen, fake app, fictional interface or unrelated logo",
+        "- do not invent any additional interface copy; visible product text may come only from the supplied official website reference",
+        "- no subtitles, no captions and no watermarks",
+      ]
+    : [
+        "- no subtitles",
+        "- no captions",
+        "- no logos",
+        "- no watermarks",
+        "- no UI elements",
+        "- no unnecessary visible text",
+      ];
+
   return [
     "Create one premium cinematic preview frame for the planned AI video.",
     "",
-    "This is a visual preview of the planned video, not a poster, thumbnail or advertisement.",
+    studioAdvertisement
+      ? `This is an advertisement for the existing ${STUDIO_NAME} website, not a generic or fictional AI product.`
+      : "This is a visual preview of the planned video, not a poster, thumbnail or advertisement.",
     "The result should look like a real frame captured from the final film.",
+    studioAdvertisement
+      ? buildStudioAdvertisementDirection()
+      : "",
     "",
     ...buildFormatDirection(
       aspectRatio,
@@ -233,12 +265,7 @@ function buildPreviewPrompt(
     "- cinematic composition",
     "- premium commercial / film production quality",
     "- strong visual hierarchy",
-    "- no subtitles",
-    "- no captions",
-    "- no logos",
-    "- no watermarks",
-    "- no UI elements",
-    "- no unnecessary visible text",
+    ...visibleContentRules,
     "",
     "CONTINUITY REQUIREMENTS:",
     "The preview must represent the opening look of the planned video:",
@@ -477,6 +504,39 @@ export async function POST(
         )
       : prompt;
 
+  const studioAdvertisement =
+    isStudioWebsiteAdvertisement(
+      limitedPrompt,
+    );
+
+  if (studioAdvertisement) {
+    try {
+      const officialWebsiteReference =
+        await readFile(
+          resolve(
+            process.cwd(),
+            "public",
+            "ki-video-studio-reference.png",
+          ),
+        );
+
+      const officialReferenceImage: InputReferenceImage = {
+        data: officialWebsiteReference.toString("base64"),
+        mimeType: "image/png",
+      };
+
+      referenceImages = [
+        officialReferenceImage,
+        ...referenceImages,
+      ].slice(0, 3);
+    } catch (error) {
+      console.error(
+        "Die offizielle KI-Video-Studio-Referenz konnte nicht geladen werden:",
+        error,
+      );
+    }
+  }
+
   try {
     const ai =
       new GoogleGenAI({
@@ -488,14 +548,19 @@ export async function POST(
         limitedPrompt,
         aspectRatio,
         editingStyle,
+        studioAdvertisement,
       ),
       referenceImages.length > 0
         ? [
             "",
-            "CUSTOMER REFERENCE IMAGE:",
+            studioAdvertisement
+              ? "OFFICIAL KI VIDEO STUDIO WEBSITE REFERENCE:"
+              : "CUSTOMER REFERENCE IMAGE:",
             "Use the attached image or images as authoritative visual references.",
             "Preserve the recognizable identity, face, hair, body proportions, clothing, product design or other defining subject details that are visible in it.",
-            "Recompose it as a premium cinematic opening frame in the selected aspect ratio; do not merely copy the background or add text.",
+            studioAdvertisement
+              ? "The first attached image is the official, authentic KI Video Studio website. Place this recognizable interface on the phone or computer display and preserve its brand design instead of inventing a replacement. This product-reference requirement overrides any conflicting generic instruction against UI, logos or visible product text."
+              : "Recompose it as a premium cinematic opening frame in the selected aspect ratio; do not merely copy the background or add text.",
           ].join("\n")
         : "",
     ].filter(Boolean).join("\n");
