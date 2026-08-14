@@ -29,6 +29,11 @@ type GeneratedNarration = {
 const MAX_FINISHING_GRACE_SECONDS = 2;
 const NARRATION_START_DELAY_SECONDS = 0.65;
 const NARRATION_TAIL_SECONDS = 0.35;
+// Gemini narration is 24 kHz PCM. Some clips contain a narrow-band whistle at
+// its 12 kHz Nyquist edge, so notch that tone and keep the cutoff safely below it.
+const NARRATION_WHISTLE_HZ = 12_000;
+const NARRATION_WHISTLE_WIDTH_HZ = 300;
+const NARRATION_LOWPASS_HZ = 10_500;
 const localOutputRoot = resolve(
   process.cwd(),
   ".video-backend-backups",
@@ -307,7 +312,8 @@ async function finishVideo(
       ...buildAtempoFilters(narrationTempo),
       "volume=1.30",
       "highpass=f=80",
-      "lowpass=f=12000",
+      `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+      `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
     ];
     filters.push(
       `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
