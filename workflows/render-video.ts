@@ -305,6 +305,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     job.voiceMode ?? "auto",
     job.spokenLanguage ?? "de",
     job.voiceoverText ?? "",
+    job.targetDurationSeconds,
   );
 
   if (job.targetDurationSeconds <= 120) {

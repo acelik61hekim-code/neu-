@@ -55,6 +55,7 @@ export function buildSelectedAudioDirection(
   voiceMode: VideoVoiceMode,
   spokenLanguage: VideoSpokenLanguage,
   _exactVoiceoverText = "",
+  targetDurationSeconds = 8,
 ): string {
   const musicDirection: Record<VideoAudioStyle, string> = {
     cinematic: "Use an original cinematic score with a clear emotional arc, restrained under speech and naturally continuous across extensions.",
@@ -66,7 +67,9 @@ export function buildSelectedAudioDirection(
   };
 
   const voiceDirection: Record<VideoVoiceMode, string> = {
-    auto: "Use speech only when it improves the story. Keep any dialogue or narration concise, natural and clearly mixed.",
+    auto: targetDurationSeconds > 8
+      ? "MULTI-PART VOICE SAFETY: Do not generate dialogue, narration or other spoken words inside the video footage. Use only music, ambience and sound effects. This prevents speaker identity and pronunciation from changing between generated extensions."
+      : "Use speech only when it improves the story. Keep any dialogue or narration concise, natural and clearly mixed.",
     dialogue: "MANDATORY DIALOGUE MODE: Create a real on-screen conversation between at least two visible, named characters. Use three, four or more speakers when the customer's story calls for them. Every planned participant must speak at least once, their short turns must alternate naturally, and the active speaker's mouth must remain visible with synchronized lip movement. Do not use a monologue, narration or voice-over. Keep every speaker identity, voice and pronunciation consistent across the complete video.",
     voiceover: "Do not generate dialogue, narration or any spoken words inside the video footage. A separate studio-quality voice-over will be added in post-production, either from the customer's exact text or from the automatically written narration; preserve clean music, ambience and sound effects beneath it.",
     "no-voice": "Do not generate dialogue, narration or other spoken words. Tell the story through images, music, ambience and sound effects.",

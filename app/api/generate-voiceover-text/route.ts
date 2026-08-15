@@ -159,8 +159,8 @@ export async function POST(request: Request) {
     Math.min(220, Math.floor((targetDurationSeconds + 1) * 1.65)),
   );
   const maximumAcceptedWords = Math.max(
-    18,
-    Math.floor((targetDurationSeconds + 2) * 2),
+    16,
+    Math.floor((targetDurationSeconds + 2) * 1.75),
   );
   const languageDirection: Record<VideoSpokenLanguage, string> = {
     de: "Write natural, polished German.",

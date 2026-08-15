@@ -104,7 +104,7 @@ const VOICE_MODE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "auto", label: "Automatisch" },
-  { value: "dialogue", label: "Dialog" },
+  { value: "dialogue", label: "Dialog (in Arbeit)" },
   { value: "voiceover", label: "Voice-over" },
   { value: "no-voice", label: "Ohne Sprache" },
 ];
@@ -302,10 +302,7 @@ export default function HomePage({
       value,
     );
 
-    if (
-      value < 30 &&
-      voiceMode === "dialogue"
-    ) {
+    if (voiceMode === "dialogue") {
       setVoiceMode("auto");
     }
 
@@ -347,12 +344,9 @@ export default function HomePage({
   }
 
   function selectVoiceMode(value: VideoVoiceMode) {
-    if (
-      value === "dialogue" &&
-      targetDurationSeconds < 30
-    ) {
+    if (value === "dialogue") {
       setError(
-        "Für einen zuverlässigen Dialog mit mindestens zwei Personen wähle bitte mindestens 30 Sekunden.",
+        "Der Dialogmodus wird gerade qualitativ überarbeitet. Nutze Voice-over für eine durchgehend stabile Stimme.",
       );
       return;
     }
@@ -1039,7 +1033,7 @@ export default function HomePage({
                       disabled={
                         loading ||
                         previewLoading ||
-                        (option.value === "dialogue" && targetDurationSeconds < 30)
+                        option.value === "dialogue"
                       }
                       className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
                         voiceMode === option.value
@@ -1051,15 +1045,9 @@ export default function HomePage({
                     </button>
                   ))}
                 </div>
-                {voiceMode === "dialogue" ? (
-                  <p className="mt-2 text-[11px] leading-5 text-emerald-300">
-                    Mindestens zwei sichtbare Personen sprechen abwechselnd; drei, vier oder mehr sind ebenfalls möglich. Der Filmplan wird vor der Zahlung automatisch geprüft.
-                  </p>
-                ) : targetDurationSeconds < 30 ? (
-                  <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                    Ein verlässlicher Dialog mit mindestens zwei Personen ist ab 30 Sekunden verfügbar.
-                  </p>
-                ) : null}
+                <p className="mt-2 text-[11px] leading-5 text-amber-300/90">
+                  Dialog wird gerade qualitativ überarbeitet. Für eine durchgehend identische Stimme nutze Voice-over.
+                </p>
               </div>
 
               <div>
@@ -1082,8 +1070,13 @@ export default function HomePage({
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                  Musik, Dialoge, Voice-over, Umgebung und Soundeffekte werden von der Video-KI gemeinsam erzeugt.
+                  Bei Voice-over wird die durchgehend identische Studiostimme separat erzeugt und sauber mit Musik und Umgebung gemischt.
                 </p>
+                {voiceMode === "auto" && targetDurationSeconds > 8 ? (
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-500">
+                    Automatisch verwendet bei längeren Videos vorerst keine gesprochene Stimme, damit es zwischen den Abschnitten keinen Stimmenwechsel gibt.
+                  </p>
+                ) : null}
               </div>
             </div>
 

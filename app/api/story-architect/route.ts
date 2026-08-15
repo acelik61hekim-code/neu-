@@ -420,10 +420,11 @@ function readLooseString(
 
 function normalizeDialogue(
   value: unknown,
+  allowSpeech = true,
 ): SceneDialogue {
   const record = asRecord(value);
   const enabled =
-    record.enabled === true;
+    allowSpeech && record.enabled === true;
 
   if (!enabled) {
     return {
@@ -849,6 +850,7 @@ function normalizeMoviePlan(
   targetDurationSeconds: VideoDurationSeconds,
   aspectRatio: VideoAspectRatio,
   editingStyle: VideoEditingStyle,
+  voiceMode: VideoVoiceMode,
 ): MoviePlan {
   const root =
     asRecord(value);
@@ -891,6 +893,7 @@ function normalizeMoviePlan(
   const openingDialogue =
     normalizeDialogue(
       rawOpening.dialogue,
+      voiceMode === "dialogue",
     );
 
   const opening: MovieOpening = {
@@ -1049,6 +1052,7 @@ function normalizeMoviePlan(
         const dialogue =
           normalizeDialogue(
             source.dialogue,
+            voiceMode === "dialogue",
           );
 
         return {
@@ -1392,6 +1396,7 @@ function normalizeArchitectResponse(
       targetDurationSeconds,
       aspectRatio,
       editingStyle,
+      voiceMode,
     );
 
   return {
@@ -2302,6 +2307,7 @@ SCHNITTSTIL: SOCIAL / REELS
     voiceMode,
     spokenLanguage,
     voiceoverText,
+    targetDurationSeconds,
   );
 
   const mandatoryDialogueSection =
@@ -2768,17 +2774,14 @@ export async function POST(request: Request) {
       ? body.closingText.trim().slice(0, 160)
       : "";
 
-  if (
-    voiceMode === "dialogue" &&
-    targetDurationSeconds < 30
-  ) {
+  if (voiceMode === "dialogue") {
     return NextResponse.json(
       {
         success: false,
         error:
-          "Für einen zuverlässigen Dialog mit mindestens zwei Personen wähle bitte mindestens 30 Sekunden.",
+          "Der Dialogmodus wird gerade qualitativ überarbeitet und ist vorübergehend nicht buchbar. Wähle Voice-over für eine durchgehend stabile Stimme.",
       },
-      { status: 400 },
+      { status: 503 },
     );
   }
 
@@ -2804,19 +2807,6 @@ export async function POST(request: Request) {
       await generateStoryWithFallback(
         ai,
         prompt,
-        voiceMode === "dialogue"
-          ? (candidate) =>
-              hasMandatoryDialoguePlan(
-                normalizeArchitectResponse(
-                  candidate,
-                  story,
-                  targetDurationSeconds,
-                  aspectRatio,
-                  editingStyle,
-                  voiceMode,
-                ),
-              )
-          : undefined,
       );
 
     const cleanedText = cleanJsonText(

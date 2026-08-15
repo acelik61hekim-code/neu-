@@ -76,58 +76,6 @@ type CheckoutRequest = {
   referenceImageMimeType?: unknown;
 };
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function hasVerifiedMultiSpeakerDialogue(prompt: string): boolean {
-  let story: Record<string, unknown>;
-
-  try {
-    story = asRecord(JSON.parse(prompt));
-  } catch {
-    return false;
-  }
-
-  const productionBible = asRecord(story.productionBible);
-  const characterBible = Array.isArray(productionBible.characterBible)
-    ? productionBible.characterBible
-    : [];
-  const moviePlan = asRecord(story.moviePlan);
-  const opening = asRecord(moviePlan.opening);
-  const continuations = Array.isArray(moviePlan.continuations)
-    ? moviePlan.continuations
-    : [];
-  const dialogueEntries = [
-    asRecord(opening.dialogue),
-    ...continuations.map((item) => asRecord(asRecord(item).dialogue)),
-  ];
-
-  if (
-    characterBible.length < 2 ||
-    dialogueEntries.length < 2 ||
-    dialogueEntries[0].enabled !== true ||
-    dialogueEntries[1].enabled !== true
-  ) {
-    return false;
-  }
-
-  const speakers = new Set(
-    dialogueEntries
-      .filter((dialogue) => dialogue.enabled === true)
-      .map((dialogue) =>
-        typeof dialogue.speaker === "string"
-          ? dialogue.speaker.trim().toLocaleLowerCase("de-DE")
-          : "",
-      )
-      .filter(Boolean),
-  );
-
-  return speakers.size >= 2;
-}
-
 function missingProductionServices(): string[] {
   if (process.env.NODE_ENV === "development") return [];
 
@@ -437,19 +385,13 @@ export async function POST(
   const voiceMode = body.voiceMode as VideoVoiceMode;
   const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
 
-  if (
-    voiceMode === "dialogue" &&
-    (
-      targetDurationSeconds < 30 ||
-      !hasVerifiedMultiSpeakerDialogue(prompt)
-    )
-  ) {
+  if (voiceMode === "dialogue") {
     return NextResponse.json(
       {
         error:
-          "Der Dialogplan enthält noch kein geprüftes Gespräch mit mindestens zwei Personen. Bitte lass den AI Director den Filmplan neu erstellen. Es wurde nichts berechnet.",
+          "Der Dialogmodus wird gerade qualitativ überarbeitet und ist vorübergehend nicht buchbar. Wähle Voice-over für eine durchgehend stabile Stimme. Es wurde nichts berechnet.",
       },
-      { status: 400 },
+      { status: 503 },
     );
   }
 
@@ -463,7 +405,9 @@ export async function POST(
       ? body.closingText.trim()
       : "";
 
-  const maximumVoiceoverWords = Math.max(18, Math.floor((targetDurationSeconds + 2) * 2));
+  // Leave enough room for natural pauses and a complete final sentence. A
+  // higher limit forces the finishing step to accelerate otherwise good TTS.
+  const maximumVoiceoverWords = Math.max(16, Math.floor((targetDurationSeconds + 2) * 1.75));
   const voiceoverWords = voiceoverText ? voiceoverText.split(/\s+/).filter(Boolean).length : 0;
 
   if (voiceMode === "voiceover" && !voiceoverText) {
