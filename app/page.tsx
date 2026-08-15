@@ -16,6 +16,7 @@ import {
 } from "@/lib/pricing";
 import { STUDIO_PATHS } from "@/lib/site";
 import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
+import type { ViralCharacter } from "@/lib/viral-characters";
 
 import type {
   VideoAspectRatio,
@@ -169,7 +170,25 @@ async function optimizeReferenceImage(file: File): Promise<string> {
   }
 }
 
-export default function HomePage({
+async function loadPublicImageAsDataUrl(path: string): Promise<string> {
+  const response = await fetch(path, { cache: "force-cache" });
+  if (!response.ok) {
+    throw new Error("Eine ausgewählte Figurenreferenz konnte nicht geladen werden.");
+  }
+
+  const blob = await response.blob();
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      typeof reader.result === "string"
+        ? resolve(reader.result)
+        : reject(new Error("Die Figurenreferenz konnte nicht gelesen werden."));
+    reader.onerror = () => reject(new Error("Die Figurenreferenz konnte nicht gelesen werden."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+export function StudioHome({
   initialStudio = "video",
 }: {
   initialStudio?: StudioMode;
@@ -401,6 +420,34 @@ export default function HomePage({
     setPreviewApproved(false);
     setPreviewReferenceUri(null);
     setPreviewReferenceMimeType(null);
+  }
+
+  async function handleViralStoryStart(characters: ViralCharacter[]) {
+    if (characters.length < 2 || characters.length > 3) {
+      throw new Error("Wähle für die TikTok-Story zwei oder drei Hauptfiguren aus.");
+    }
+
+    setAspectRatio("9:16");
+    setEditingStyle("social");
+    setAudioStyle("emotional");
+    setVoiceMode("voiceover");
+    setSpokenLanguage("de");
+    setVoiceoverText("");
+    setClosingText("");
+    setPreviewImage(null);
+    setPreviewApproved(false);
+    setPreviewReferenceUri(null);
+    setPreviewReferenceMimeType(null);
+    setError(null);
+
+    const preparedReferences = await Promise.all(
+      characters.map(async (character) => ({
+        dataUrl: await loadPublicImageAsDataUrl(character.imagePath),
+        name: `${character.shortName} – feste TikTok-Figur`,
+      })),
+    );
+
+    setReferenceImages(preparedReferences);
   }
 
   function handleStoryChange(
@@ -1164,6 +1211,7 @@ export default function HomePage({
             spokenLanguage={spokenLanguage}
             voiceoverText={voiceoverText}
             closingText={closingText}
+            onViralStoryStart={handleViralStoryStart}
           />
 
           <div className="space-y-6">
@@ -1484,4 +1532,8 @@ export default function HomePage({
       </div>
     </main>
   );
+}
+
+export default function HomePage() {
+  return <StudioHome initialStudio="video" />;
 }

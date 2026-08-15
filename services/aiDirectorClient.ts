@@ -75,6 +75,7 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
 
 export async function requestAiDirector(
   messages: ConversationMessage[],
+  viralCharacterIds: string[] = [],
 ): Promise<AiDirectorResponse> {
   const response = await fetch("/api/ai-director", {
     method: "POST",
@@ -83,6 +84,7 @@ export async function requestAiDirector(
     },
     body: JSON.stringify({
       messages,
+      viralCharacterIds,
     }),
   });
 

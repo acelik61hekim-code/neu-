@@ -2,6 +2,7 @@ import { get, put } from "@vercel/blob";
 import { nanoid } from "nanoid";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
+import { VIRAL_CHARACTERS } from "@/lib/viral-characters";
 
 const localImageRoot = resolve(
   process.cwd(),
@@ -123,4 +124,44 @@ export async function loadStoredPreview(
   }
 
   return { data: bytes.toString("base64"), mimeType };
+}
+
+export async function loadViralCharacterReferences(
+  characterNames: readonly string[],
+): Promise<StoredImage[]> {
+  const selected = VIRAL_CHARACTERS.filter((character) =>
+    characterNames.includes(character.name),
+  ).slice(0, 3);
+
+  if (selected.length < 2) {
+    throw new Error(
+      "Die festen TikTok-Figuren konnten für die Videogenerierung nicht geladen werden.",
+    );
+  }
+
+  const publicRoot = resolve(process.cwd(), "public", "viral-characters");
+
+  return await Promise.all(
+    selected.map(async (character) => {
+      const filename = character.imagePath.split("/").pop();
+      if (!filename || !/^[a-z0-9-]+\.webp$/.test(filename)) {
+        throw new Error("Eine TikTok-Figurenreferenz besitzt einen ungültigen Dateinamen.");
+      }
+
+      const pathname = resolve(publicRoot, filename);
+      if (!pathname.startsWith(`${publicRoot}${sep}`)) {
+        throw new Error("Eine TikTok-Figurenreferenz besitzt einen ungültigen Pfad.");
+      }
+
+      const bytes = await readFile(pathname);
+      if (bytes.length < 256 || bytes.length > MAX_STORED_IMAGE_BYTES) {
+        throw new Error("Eine TikTok-Figurenreferenz besitzt eine ungültige Dateigröße.");
+      }
+
+      return {
+        data: bytes.toString("base64"),
+        mimeType: "image/webp" as const,
+      };
+    }),
+  );
 }

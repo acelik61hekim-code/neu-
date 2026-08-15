@@ -1,4 +1,4 @@
-import HomePage from "@/app/page";
+import { StudioHome } from "@/app/page";
 import SeoContent, { type SeoFaq } from "@/components/SeoContent";
 import { productJsonLd, productMetadata } from "@/lib/seo";
 import { STUDIO_PATHS } from "@/lib/site";
@@ -45,7 +45,7 @@ export default function VideoStudioPage() {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <HomePage initialStudio="video" />
+      <StudioHome initialStudio="video" />
       <SeoContent
         active="video"
         eyebrow="KI-Video online erstellen"

@@ -308,7 +308,62 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     job.targetDurationSeconds,
   );
 
-  if (job.targetDurationSeconds <= 120) {
+  const viralStoryMode = story.creationMode === "viral-story";
+
+  if (viralStoryMode) {
+    if (job.aspectRatio !== "9:16") {
+      throw new Error("Der TikTok-Story-Modus benötigt das vertikale Format 9:16.");
+    }
+
+    if (!job.voiceoverText?.trim()) {
+      throw new Error("Für die TikTok-Story fehlt der automatisch erzeugte Sprechertext.");
+    }
+
+    const opening = asRecord(moviePlan.opening);
+    const safeOpening = {
+      ...opening,
+      veoPrompt: removeVisibleTextRenderingInstructions(
+        readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
+      ),
+    };
+    const openingPrompt = [
+      buildOpeningPrompt(
+        safeOpening,
+        "9:16",
+        "social",
+        selectedAudioDirection,
+      ),
+      buildViralReferenceDirection(story),
+      "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
+    ].join("\n\n");
+
+    const rawContinuations = Array.isArray(moviePlan.continuations)
+      ? moviePlan.continuations
+      : [];
+    const candidatePrompts = [
+      openingPrompt,
+      ...rawContinuations.map((item, index) =>
+        buildViralIndependentShotPrompt(
+          story,
+          asRecord(item),
+          index + 2,
+          rawContinuations.length + 1,
+          selectedAudioDirection,
+        ),
+      ),
+    ];
+    const shotCount = Math.max(1, Math.ceil(job.targetDurationSeconds / 8));
+    const selectedPrompts = selectEvenlyIncludingFinal(candidatePrompts, shotCount);
+
+    selectedPrompts.forEach((shotPrompt, index) => {
+      segments.push({
+        chapterNumber: index + 1,
+        targetSeconds: 8,
+        openingPrompt: shotPrompt,
+        continuationPrompts: [],
+      });
+    });
+  } else if (job.targetDurationSeconds <= 120) {
     const opening = asRecord(moviePlan.opening);
     const safeOpening = {
       ...opening,
@@ -421,8 +476,24 @@ async function startOpeningVideoStep(
     (operationType !== "chapter-opening" || job.currentChapter === chapterNumber)
   ) return { started: true, operationName: job.currentOperationName };
 
+  let storedStory: Record<string, unknown> = {};
+  try {
+    storedStory = JSON.parse(job.prompt) as Record<string, unknown>;
+  } catch {
+    // prepareRenderJobStep liefert bei ungültigem JSON bereits eine klare Fehlermeldung.
+  }
+  const viralStoryMode = storedStory.creationMode === "viral-story";
+  const referenceImages = viralStoryMode
+    ? await (await import("@/lib/video-backend/images")).loadViralCharacterReferences(
+        Array.isArray(storedStory.characters)
+          ? storedStory.characters
+              .map((value) => asRecord(value).name)
+              .filter((value): value is string => typeof value === "string")
+          : [],
+      )
+    : undefined;
   const referenceImage =
-    chapterNumber === 1 && job.referenceImageUrl
+    !viralStoryMode && chapterNumber === 1 && job.referenceImageUrl
       ? await (await import("@/lib/video-backend/images")).loadStoredPreview(
           job.referenceImageUrl,
           job.referenceImageMimeType,
@@ -434,6 +505,7 @@ async function startOpeningVideoStep(
     operationName = await startVideoGeneration(prompt, {
       aspectRatio,
       referenceImage,
+      referenceImages,
       maxAttempts: 1,
     });
   } catch (error) {
@@ -586,7 +658,10 @@ async function pollVideoStep(
   const status = await checkVideoStatus(operationName);
   const job = await jobStore.get(jobId);
   if (!job) throw new Error("Render-Job wurde beim Statusabruf nicht gefunden.");
-  const progress = Math.min(88, 5 + Math.round((completedExtensions / Math.max(1, totalExtensions)) * 80));
+  const completedFraction = totalExtensions > 0
+    ? completedExtensions / Math.max(1, totalExtensions)
+    : chapterNumber / Math.max(1, job.totalChapters ?? 1);
+  const progress = Math.min(88, 5 + Math.round(completedFraction * 80));
   await jobStore.set(jobId, {
     ...job,
     progressPercent: Math.max(job.progressPercent ?? 0, progress),
@@ -630,7 +705,14 @@ async function recordChapterStep(
     chapterVideoUris: chapterUris,
     currentChapter: chapterNumber,
     currentExtension: completedExtensions,
-    progressPercent: Math.min(90, 10 + Math.round((completedExtensions / Math.max(1, totalExtensions)) * 80)),
+    progressPercent: Math.min(
+      90,
+      10 + Math.round(
+        (totalExtensions > 0
+          ? completedExtensions / Math.max(1, totalExtensions)
+          : chapterNumber / Math.max(1, job.totalChapters ?? 1)) * 80,
+      ),
+    ),
   });
 }
 
@@ -747,6 +829,77 @@ function asRecord(value: unknown): Record<string, unknown> {
 function readString(value: unknown, error: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(error);
   return value.trim();
+}
+
+function selectEvenlyIncludingFinal<T>(items: readonly T[], requestedCount: number): T[] {
+  if (requestedCount >= items.length) return [...items];
+  if (requestedCount <= 1) return items.length > 0 ? [items[items.length - 1]] : [];
+
+  const selectedIndexes = new Set<number>();
+  for (let index = 0; index < requestedCount; index += 1) {
+    selectedIndexes.add(
+      Math.round((index * (items.length - 1)) / (requestedCount - 1)),
+    );
+  }
+
+  return [...selectedIndexes]
+    .sort((first, second) => first - second)
+    .map((index) => items[index]);
+}
+
+function buildViralReferenceDirection(story: Record<string, unknown>): string {
+  const productionBible = asRecord(story.productionBible);
+  const characters = Array.isArray(productionBible.characterBible)
+    ? productionBible.characterBible.map(asRecord)
+    : [];
+  const identityList = characters
+    .map((character) => [
+      typeof character.name === "string" ? character.name : "Character",
+      typeof character.fixedAppearance === "string" ? character.fixedAppearance : "",
+      typeof character.clothing === "string" ? `clothing=${character.clothing}` : "",
+    ].filter(Boolean).join(": "))
+    .filter(Boolean)
+    .join("\n");
+
+  return [
+    "VIRAL CHARACTER REFERENCE MODE:",
+    "The supplied asset reference images define the exact immutable identity of the selected adult fruit characters. They are identity references, not a required first frame.",
+    "Recompose the characters naturally for this shot while preserving fruit species, head geometry, facial features, body proportions, outfit, colors, shoes and accessories exactly.",
+    "Never merge two characters, swap their outfits, change their fruit type, create a human head, duplicate a character or introduce an unreferenced main character.",
+    identityList ? `LOCKED IDENTITIES:\n${identityList}` : "",
+  ].filter(Boolean).join("\n");
+}
+
+function buildViralIndependentShotPrompt(
+  story: Record<string, unknown>,
+  continuation: Record<string, unknown>,
+  shotNumber: number,
+  totalShots: number,
+  selectedAudioDirection: string,
+): string {
+  const title = typeof story.title === "string" ? story.title : "TikTok story";
+  const summary = typeof story.summary === "string" ? story.summary : "";
+  const isFinalShot = shotNumber === totalShots;
+
+  return [
+    `INDEPENDENT 8-SECOND TIKTOK STORY SHOT ${shotNumber} OF ${totalShots}.`,
+    `STORY TITLE: ${title}`,
+    summary ? `COMPLETE STORY CONTEXT: ${summary}` : "",
+    buildViralReferenceDirection(story),
+    typeof continuation.storyBeat === "string" ? `STORY BEAT: ${continuation.storyBeat}` : "",
+    typeof continuation.emotionalBeat === "string" ? `EMOTION: ${continuation.emotionalBeat}` : "",
+    typeof continuation.actionContinuation === "string" ? `VISIBLE ACTION: ${continuation.actionContinuation}` : "",
+    typeof continuation.environmentContinuity === "string" ? `LOCATION: ${continuation.environmentContinuity}` : "",
+    typeof continuation.cameraContinuation === "string" ? `CAMERA: ${continuation.cameraContinuation}` : "",
+    typeof continuation.performanceContinuation === "string" ? `PERFORMANCE: ${continuation.performanceContinuation}` : "",
+    "Create a fresh, story-appropriate composition. Do not repeat the neutral reference-card pose or studio backdrop.",
+    "The action must be instantly readable on a phone screen and advance the story without a visual reset or repeated beat.",
+    isFinalShot
+      ? "Deliver the complete visual payoff early in this shot and end on a stable, emotionally clear resting frame."
+      : "End on a strong reaction, reveal or motivated action that cuts cleanly to the next shot.",
+    selectedAudioDirection,
+    "No spoken words, no lip-synced dialogue, no subtitles, no captions, no readable text, no logos and no watermark.",
+  ].filter(Boolean).join("\n\n");
 }
 
 function buildOpeningDialoguePrompt(value: unknown): string {

@@ -16,6 +16,7 @@ import type {
   ViralBible,
   VideoAspectRatio,
   VideoAudioStyle,
+  VideoCreationMode,
   VideoChapter,
   VideoDurationSeconds,
   VideoEditingStyle,
@@ -1188,6 +1189,7 @@ export async function requestStoryArchitect(
   spokenLanguage: VideoSpokenLanguage = "de",
   voiceoverText = "",
   closingText = "",
+  creationMode: VideoCreationMode = "standard",
 ): Promise<Story> {
   if (
     !isVideoDurationSeconds(
@@ -1262,6 +1264,8 @@ export async function requestStoryArchitect(
             voiceoverText,
 
             closingText,
+
+            creationMode,
           }),
       },
     );
@@ -1367,5 +1371,7 @@ export async function requestStoryArchitect(
       )
         ? data.generationModel
         : undefined,
+
+    creationMode,
   };
 }

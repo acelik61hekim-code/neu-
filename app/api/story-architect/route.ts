@@ -25,6 +25,7 @@ import type {
   StoryDraft,
   VideoAspectRatio,
   VideoAudioStyle,
+  VideoCreationMode,
   VideoChapter,
   VideoDurationSeconds,
   VideoEditingStyle,
@@ -56,6 +57,7 @@ type StoryArchitectRequest = {
   spokenLanguage?: unknown;
   voiceoverText?: unknown;
   closingText?: unknown;
+  creationMode?: unknown;
 };
 
 const SUPPORTED_VIDEO_DURATIONS = [
@@ -2096,6 +2098,7 @@ function buildStoryPrompt(
   spokenLanguage: VideoSpokenLanguage,
   voiceoverText: string,
   closingText: string,
+  creationMode: VideoCreationMode,
 ): string {
   const studioAdvertisement =
     isStudioWebsiteAdvertisement(
@@ -2147,6 +2150,25 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
           `${index + 1}. ${character.name}: ${character.description}`,
       )
       .join("\n");
+
+  const viralStorySection =
+    creationMode === "viral-story"
+      ? `
+VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
+
+- Dies ist ausdrücklich eine vertikale Social-Story für TikTok, Reels und Shorts.
+- Die oben angegebenen Figuren sind eine geschlossene Besetzung. Erfinde keine weiteren Hauptfiguren.
+- Kopiere jede vollständige Figurenbeschreibung unverändert in productionBible.characterBible.fixedAppearance.
+- Fruchtart, Kopfform, Gesicht, Augen, Körperbau, Outfit, Farben, Schuhe und Accessoires sind unveränderliche Identitätsmerkmale.
+- Nutze maximal drei sichtbare Hauptfiguren pro Einstellung. Zeige nur Figuren, die für den jeweiligen Story-Beat nötig sind.
+- Die ersten zwei Sekunden müssen den Konflikt ohne Erklärung visuell verständlich machen.
+- Alle 6 bis 10 Sekunden braucht die Handlung eine neue Information, Konsequenz oder glaubwürdige Wendung.
+- Der letzte Story-Beat liefert eine klare Auflösung und ein visuell ruhiges Schlussbild.
+- Alle moviePlan.opening.dialogue- und continuation.dialogue-Felder bleiben deaktiviert. Die Videoclips erzeugen keine gesprochenen Wörter.
+- Die komplette Erzählung wird später als eine einzige, separat erzeugte deutsche Voice-over-Spur hinzugefügt. So darf sich die Stimme zwischen Szenen nicht ändern.
+- Keine Untertitel, keine sichtbaren Sprechblasen, keine Fantasieschrift und keine Lippenbewegungen zu erfundenem Dialog.
+`
+      : "";
 
   const durationPlan =
     buildDurationPlan(
@@ -2334,10 +2356,13 @@ Character Director, Camera Director, Lighting Director, Performance Director,
 Audio Director, Continuity Director und Video Prompt Director.
 
 Du planst EIN zusammenhängendes professionelles Video-Projekt.
-Der Plan darf NICHT fest auf 60 Sekunden, TikTok/Vertical oder einen
-einzelnen Video-Provider zugeschnitten sein.
+  ${creationMode === "viral-story"
+    ? "Dieser Plan ist ausdrücklich für eine vertikale TikTok-/Reels-Story mit festen Figuren bestimmt."
+    : "Der Plan darf NICHT fest auf 60 Sekunden, TikTok/Vertical oder einen einzelnen Video-Provider zugeschnitten sein."}
 
 ${studioAdvertisementSection}
+
+${viralStorySection}
 
 AUSGEWÄHLTE VIDEO-LÄNGE
 
@@ -2734,20 +2759,29 @@ export async function POST(request: Request) {
 
   const story = body.story;
 
+  const creationMode: VideoCreationMode =
+    body.creationMode === "viral-story"
+      ? "viral-story"
+      : "standard";
+
   const targetDurationSeconds =
     normalizeTargetDuration(
       body.targetDurationSeconds,
     );
 
   const aspectRatio =
-    normalizeAspectRatio(
-      body.aspectRatio,
-    );
+    creationMode === "viral-story"
+      ? "9:16"
+      : normalizeAspectRatio(
+          body.aspectRatio,
+        );
 
   const editingStyle =
-    normalizeEditingStyle(
-      body.editingStyle,
-    );
+    creationMode === "viral-story"
+      ? "social"
+      : normalizeEditingStyle(
+          body.editingStyle,
+        );
 
   const audioStyle =
     normalizeVideoAudioStyle(
@@ -2755,9 +2789,11 @@ export async function POST(request: Request) {
     );
 
   const voiceMode =
-    normalizeVideoVoiceMode(
-      body.voiceMode,
-    );
+    creationMode === "viral-story"
+      ? "voiceover"
+      : normalizeVideoVoiceMode(
+          body.voiceMode,
+        );
 
   const spokenLanguage =
     normalizeVideoSpokenLanguage(
@@ -2796,6 +2832,7 @@ export async function POST(request: Request) {
       spokenLanguage,
       voiceoverText,
       closingText,
+      creationMode,
     );
 
   try {
@@ -2893,6 +2930,7 @@ export async function POST(request: Request) {
 
       generationModel:
         generationResult.model,
+      creationMode,
     } as CompleteStoryResponse;
 
     return NextResponse.json(

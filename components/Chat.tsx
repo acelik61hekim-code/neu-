@@ -11,6 +11,11 @@ import {
 
 import { requestStoryArchitect } from "@/services/storyArchitectClient";
 import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
+import ViralStoryStarter from "@/components/ViralStoryStarter";
+import {
+  createViralStoryPrompt,
+  type ViralCharacter,
+} from "@/lib/viral-characters";
 
 import type {
   Story,
@@ -50,6 +55,7 @@ type ChatProps = {
   spokenLanguage?: VideoSpokenLanguage;
   voiceoverText?: string;
   closingText?: string;
+  onViralStoryStart?: (characters: ViralCharacter[]) => Promise<void> | void;
 };
 
 type Message = ConversationMessage & {
@@ -116,6 +122,7 @@ export default function Chat({
   spokenLanguage = "de",
   voiceoverText = "",
   closingText = "",
+  onViralStoryStart,
 }: ChatProps) {
   const [messages, setMessages] =
     useState<Message[]>([
@@ -135,6 +142,9 @@ export default function Chat({
 
   const [finished, setFinished] =
     useState(false);
+
+  const [activeViralCharacterIds, setActiveViralCharacterIds] =
+    useState<string[]>([]);
 
   const [
     completeStory,
@@ -175,9 +185,17 @@ export default function Chat({
     ].join("\n\n");
   }
 
-  async function handleSubmit() {
+  async function handleSubmit(
+    preparedInput?: string,
+    preparedViralCharacterIds?: string[],
+  ) {
     const cleanedInput =
-      input.trim();
+      (preparedInput ?? input).trim();
+
+    const viralCharacterIds =
+      preparedViralCharacterIds ?? activeViralCharacterIds;
+
+    const isViralStory = viralCharacterIds.length >= 2;
 
     if (!cleanedInput) {
       setLocalError(
@@ -248,6 +266,7 @@ export default function Chat({
       const directorResult =
         await requestAiDirector(
           conversation,
+          viralCharacterIds,
         );
 
       const assistantMessage:
@@ -295,13 +314,14 @@ export default function Chat({
         await requestStoryArchitect(
           directorResult.story,
           targetDurationSeconds,
-          aspectRatio,
-          editingStyle,
+          isViralStory ? "9:16" : aspectRatio,
+          isViralStory ? "social" : editingStyle,
           audioStyle,
-          voiceMode,
+          isViralStory ? "voiceover" : voiceMode,
           spokenLanguage,
           voiceoverText,
           closingText,
+          isViralStory ? "viral-story" : "standard",
         );
 
       if (
@@ -313,7 +333,7 @@ export default function Chat({
       }
 
       if (
-        voiceMode === "voiceover" &&
+        (voiceMode === "voiceover" || isViralStory) &&
         !voiceoverText.trim() &&
         onVoiceoverTextChange
       ) {
@@ -373,6 +393,28 @@ export default function Chat({
     }
   }
 
+  async function handleViralStoryCreate(
+    characters: ViralCharacter[],
+    topic: string,
+  ) {
+    if (thinking || creatingMoviePlan || finished || loading) return;
+
+    const ids = characters.map((character) => character.id);
+    setActiveViralCharacterIds(ids);
+    setLocalError(null);
+
+    try {
+      await onViralStoryStart?.(characters);
+      await handleSubmit(createViralStoryPrompt(ids, topic), ids);
+    } catch (viralError) {
+      setLocalError(
+        viralError instanceof Error
+          ? viralError.message
+          : "Der TikTok-Story-Modus konnte nicht gestartet werden.",
+      );
+    }
+  }
+
   function handleKeyDown(
     event:
       React.KeyboardEvent<HTMLTextAreaElement>,
@@ -403,6 +445,8 @@ export default function Chat({
     );
 
     setFinished(false);
+
+    setActiveViralCharacterIds([]);
 
     setCompleteStory(
       null,
@@ -477,6 +521,13 @@ export default function Chat({
 
       <div className="flex flex-1 flex-col">
         <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
+          {!finished ? (
+            <ViralStoryStarter
+              disabled={isProcessing || loading}
+              onCreate={handleViralStoryCreate}
+            />
+          ) : null}
+
           {messages.map(
             (message) => (
               <div

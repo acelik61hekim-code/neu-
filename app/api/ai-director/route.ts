@@ -12,6 +12,7 @@ import {
   STUDIO_URL,
   isStudioWebsiteAdvertisement,
 } from "@/lib/studio-brand";
+import { getViralCharacters } from "@/lib/viral-characters";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ type ConversationMessage = {
 
 type RequestBody = {
   messages?: ConversationMessage[];
+  viralCharacterIds?: unknown;
 };
 
 type StoryCharacter = {
@@ -167,6 +169,54 @@ function enforceStudioAdvertisement(
         existingSummary,
         "Die echte Webseite mit den Bereichen Video, Songs und Bilder ist das beworbene Produkt und muss auf dem Gerätedisplay erkennbar sein.",
       ].filter(Boolean).join(" "),
+    },
+  };
+}
+
+function enforceViralStory(
+  result: AiDirectorResult,
+  selectedCharacterIds: string[],
+): AiDirectorResult {
+  const selectedCharacters = getViralCharacters(selectedCharacterIds).slice(0, 3);
+
+  if (selectedCharacters.length < 2) return result;
+
+  const fixedCharacterSummary = selectedCharacters
+    .map(
+      (character) =>
+        `${character.name}: ${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
+    )
+    .join(" ");
+
+  return {
+    ...result,
+    ready: true,
+    reply:
+      "Die Figuren sind festgelegt. Ich habe daraus automatisch eine vertikale TikTok-Story mit starkem Hook, Wendung und stabilem Voice-over geplant.",
+    story: {
+      ...result.story,
+      title: result.story.title.trim() || "Die Frucht, die zu viel wusste",
+      genre: "Virale vertikale TikTok-Story mit anthropomorphen Früchten",
+      mood: [
+        result.story.mood,
+        "emotional, überraschend, hochwertiger filmischer 3D-Look, schnell verständlich",
+      ]
+        .filter(Boolean)
+        .join("; "),
+      setting:
+        result.story.setting.trim() ||
+        "Eine moderne, glaubwürdige Menschenwelt, in der erwachsene anthropomorphe Früchte leben.",
+      characters: selectedCharacters.map((character) => ({
+        name: character.name,
+        description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}. Diese Identität und dieses Outfit dürfen in keiner Szene verändert werden.`,
+      })),
+      summary: [
+        result.story.summary,
+        `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
+        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einer verständlichen überraschenden Auflösung. Die Figuren sprechen nicht mit wechselnden nativen Clip-Stimmen; die Geschichte wird später von einer einzigen stabilen Voice-over-Stimme erzählt.",
+      ]
+        .filter(Boolean)
+        .join(" "),
     },
   };
 }
@@ -701,9 +751,17 @@ export async function POST(
       .map((message) => message.content)
       .join("\n");
 
-    const finalResult = isStudioWebsiteAdvertisement(userConversation)
+    const brandedResult = isStudioWebsiteAdvertisement(userConversation)
       ? enforceStudioAdvertisement(result)
       : result;
+
+    const viralCharacterIds = Array.isArray(body.viralCharacterIds)
+      ? body.viralCharacterIds.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+
+    const finalResult = enforceViralStory(brandedResult, viralCharacterIds);
 
     return NextResponse.json({
       success: true,

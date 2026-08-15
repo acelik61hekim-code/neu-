@@ -139,6 +139,11 @@ export type VeoGenerationOptions = {
     mimeType: "image/jpeg" | "image/png" | "image/webp";
   };
 
+  referenceImages?: Array<{
+    data: string;
+    mimeType: "image/jpeg" | "image/png" | "image/webp";
+  }>;
+
   /*
    * Standard bleibt 4 Versuche, damit bestehende Aufrufe
    * unverändert funktionieren.
@@ -177,12 +182,15 @@ export type WaitForVideoOptions = {
 
 export function buildOpeningVideoRequestBody(
   prompt: string,
-  options: Pick<VeoGenerationOptions, "aspectRatio" | "referenceImage"> = {},
+  options: Pick<VeoGenerationOptions, "aspectRatio" | "referenceImage" | "referenceImages"> = {},
 ): Record<string, unknown> {
   const cleanedPrompt = prompt.trim();
   if (!cleanedPrompt) throw new Error("Für die Videogenerierung fehlt der Prompt.");
 
   const instance: Record<string, unknown> = { prompt: cleanedPrompt };
+  if (options.referenceImage && options.referenceImages?.length) {
+    throw new Error("Veo kann nicht gleichzeitig ein Startbild und Asset-Referenzbilder verwenden.");
+  }
   if (options.referenceImage) {
     const { data, mimeType } = options.referenceImage;
     if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
@@ -196,6 +204,26 @@ export function buildOpeningVideoRequestBody(
       bytesBase64Encoded: data,
       mimeType,
     };
+  }
+
+  if (options.referenceImages?.length) {
+    if (options.referenceImages.length > 3) {
+      throw new Error("Veo erlaubt höchstens drei Asset-Referenzbilder.");
+    }
+
+    instance.referenceImages = options.referenceImages.map(({ data, mimeType }) => {
+      if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        throw new Error("Eine Veo-Asset-Referenz ist ungültig.");
+      }
+
+      return {
+        referenceType: "asset",
+        image: {
+          bytesBase64Encoded: data,
+          mimeType,
+        },
+      };
+    });
   }
 
   const requestBody: Record<string, unknown> = { instances: [instance] };

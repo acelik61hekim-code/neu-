@@ -52,6 +52,10 @@ export type VideoSpokenLanguage =
   | "de"
   | "en";
 
+export type VideoCreationMode =
+  | "standard"
+  | "viral-story";
+
 export type VideoProvider =
   | "auto"
   | "veo"
@@ -645,6 +649,8 @@ export type Story = {
   moviePlan?: MoviePlan;
 
   generationModel?: string;
+
+  creationMode?: VideoCreationMode;
 };
 
 export type StoryDraft = {
