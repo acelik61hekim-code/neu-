@@ -67,13 +67,13 @@ export default function ViralStoryStarter({
             <span className="rounded-full bg-fuchsia-400/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-fuchsia-200">
               TikTok Story
             </span>
-            <span className="text-[11px] text-emerald-300">Stabile Figuren + Voice-over</span>
+            <span className="text-[11px] text-emerald-300">Feste Figuren + eigene Stimmen</span>
           </div>
           <p className="mt-2 text-sm font-semibold text-white">
             Virale Story mit festen Charakteren erstellen
           </p>
           <p className="mt-1 text-xs leading-5 text-zinc-400">
-            Figuren auswählen – Hook, Konflikt, Wendung und Sprechertext entstehen automatisch.
+            Figuren auswählen – Story, Dialoge, Stimmen und Wendung entstehen automatisch.
           </p>
         </div>
 
@@ -171,7 +171,7 @@ export default function ViralStoryStarter({
           </button>
 
           <p className="mt-3 text-[10px] leading-4 text-zinc-500">
-            Die gewählten Originalfiguren werden als Bildreferenzen übernommen. So bleiben Fruchtart, Gesicht, Farben und Outfit über die Szenen hinweg möglichst konstant.
+            Die Originalfiguren werden als Bildreferenzen übernommen. Jede ausgewählte Figur erhält zusätzlich eine feste eigene Studiostimme.
           </p>
         </div>
       ) : null}

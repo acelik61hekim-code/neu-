@@ -5,6 +5,7 @@ export type ViralCharacter = {
   imagePath: string;
   personality: string;
   fixedAppearance: string;
+  voiceName: string;
 };
 
 export const VIRAL_CHARACTERS = [
@@ -14,6 +15,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Ruby",
     imagePath: "/viral-characters/ruby-strawberry.webp",
     personality: "selbstbewusst, emotional und schlagfertig",
+    voiceName: "Kore",
     fixedAppearance:
       "Erwachsene anthropomorphe Erdbeerfrau mit reifem rotem Erdbeerkopf, ausdrucksstarken braunen Augen, kleinem grünen Blätterkranz, athletischem menschlichem Körper, cremefarbener Collegejacke, rotem Oberteil, roter Hose und roten Sneakern.",
   },
@@ -23,6 +25,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Bano",
     imagePath: "/viral-characters/bano-banana.webp",
     personality: "charmant, spontan und etwas naiv",
+    voiceName: "Puck",
     fixedAppearance:
       "Erwachsener anthropomorpher Bananenmann mit gebogenem gelbem Bananenkopf, großen braunen Augen, schlankem menschlichem Körper, kobaltblauem Hoodie, dunkler Jeans und weißen Sneakern.",
   },
@@ -32,6 +35,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Pina",
     imagePath: "/viral-characters/pina-pineapple.webp",
     personality: "ehrgeizig, elegant und kontrolliert",
+    voiceName: "Aoede",
     fixedAppearance:
       "Erwachsene anthropomorphe Ananasfrau mit golden strukturiertem Ananaskopf, hohen grünen Blattspitzen, braunen Augen, erwachsenem menschlichem Körper, dunkelgrünem Blazer, schwarzem Oberteil, schwarzer Hose und schwarzen Schuhen.",
   },
@@ -41,6 +45,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Limo",
     imagePath: "/viral-characters/limo-lemon.webp",
     personality: "witzig, neugierig und loyal",
+    voiceName: "Charon",
     fixedAppearance:
       "Erwachsener anthropomorpher Zitronenmann mit leuchtend gelbem Zitronenkopf, einem grünen Blatt, braunen Augen, erwachsenem menschlichem Körper, violetter Bomberjacke, weißem Shirt, anthrazitfarbener Hose und weißen Sneakern.",
   },
@@ -50,6 +55,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Melo",
     imagePath: "/viral-characters/melo-watermelon.webp",
     personality: "beschützend, ruhig und überraschend sensibel",
+    voiceName: "Orus",
     fixedAppearance:
       "Erwachsener anthropomorpher Wassermelonenmann mit rundem dunkelgrün gestreiftem Wassermelonenkopf, kleinem roten Melonenstück oben rechts, grün-braunen Augen, kräftigem menschlichem Körper, burgunderroter Collegejacke, schwarzem Shirt, schwarzer Jeans und weißen Sneakern.",
   },
@@ -59,6 +65,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Ora",
     imagePath: "/viral-characters/ora-orange.webp",
     personality: "lebhaft, direkt und optimistisch",
+    voiceName: "Leda",
     fixedAppearance:
       "Erwachsene anthropomorphe Orangenfrau mit leuchtend strukturiertem Orangenkopf, zwei grünen Blättern, braunen Augen, sportlichem menschlichem Körper, türkiser kurzer Jacke, weißem Oberteil, dunkler Jeans und orangefarbenen Sneakern.",
   },
@@ -68,6 +75,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Gino",
     imagePath: "/viral-characters/gino-grape.webp",
     personality: "clever, skeptisch und trocken-humorvoll",
+    voiceName: "Fenrir",
     fixedAppearance:
       "Erwachsener anthropomorpher Traubenmann mit kompaktem Kopf aus glänzenden violetten Trauben, kleinem Stiel und grünem Weinblatt, braunen Augen, schlankem menschlichem Körper, senfgelbem Overshirt, schwarzem T-Shirt, schwarzer Hose und schwarzen Schuhen.",
   },
@@ -77,6 +85,7 @@ export const VIRAL_CHARACTERS = [
     shortName: "Ava",
     imagePath: "/viral-characters/ava-avocado.webp",
     personality: "besonnen, stilvoll und geheimnisvoll",
+    voiceName: "Zephyr",
     fixedAppearance:
       "Erwachsene anthropomorphe Avocadofrau mit birnenförmigem hellgrünem Avocadokopf und dunkelgrünem Rand, braunen Augen, elegantem menschlichem Körper, korallfarbenem Blazer, cremefarbenem Outfit, rundem braunem Gürtelornament und grünen Schuhen.",
   },
@@ -115,7 +124,8 @@ export function createViralStoryPrompt(
     characterList,
     "Die Handlung braucht in den ersten zwei Sekunden einen sofort verständlichen visuellen Hook, danach klare Eskalationen, eine starke Enthüllung und ein abgeschlossenes überraschendes Ende.",
     "Die Figuren handeln wie erwachsene Menschen. Keine Kindergeschichte, keine Gewalt, keine Sexualisierung und keine Ähnlichkeit zu bekannten geschützten Figuren.",
-    "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte und keine native Sprache aus einzelnen Videoclips. Die vollständige Geschichte wird später von genau einer stabilen deutschen Voice-over-Stimme erzählt.",
+    "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte. Schreibe kurze, natürliche Dialoge, in denen alle ausgewählten Figuren mindestens einmal sprechen. Jede Figur erhält später eine eigene feste deutsche Studiostimme, die separat erzeugt und passend in die Szenen gemischt wird.",
+    "Beginne den Dialog bereits im ersten Story-Beat. Die Sätze müssen einfach aussprechbar, höchstens zwölf Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.",
     "Erfinde alle fehlenden Details selbst und schließe die Planung ohne Rückfrage ab.",
   ].join("\n\n");
 }

@@ -14,8 +14,18 @@ const exec = promisify(execFile);
 
 export type VideoFinishingOptions = {
   voiceoverText?: string;
+  dialogueCues?: DialogueCue[];
   closingText?: string;
   spokenLanguage?: "auto" | "de" | "en";
+};
+
+export type DialogueCue = {
+  startSeconds: number;
+  maximumDurationSeconds: number;
+  speaker: string;
+  text: string;
+  voiceName: string;
+  voiceDirection: string;
 };
 
 type GeneratedNarration = {
@@ -179,6 +189,11 @@ async function generateNarration(
   text: string,
   seconds: number,
   language: VideoFinishingOptions["spokenLanguage"],
+  options: {
+    filename?: string;
+    voiceName?: string;
+    deliveryDirection?: string;
+  } = {},
 ): Promise<GeneratedNarration> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Für das exakte Voice-over fehlt der Google-AI-Schlüssel.");
@@ -188,37 +203,60 @@ async function generateNarration(
     : language === "auto"
       ? "Use the language of the supplied script."
       : "Sprich natürliches, klares Hochdeutsch. Sprich KI als K-I aus.";
-  const maximumSeconds = Math.max(2, seconds - 2);
+  const maximumSeconds = Math.max(1.8, seconds - 0.5);
+  const voiceName = options.voiceName?.trim() || "Kore";
+  const deliveryDirection = options.deliveryDirection?.trim() ||
+    "Use a professional, warm and confident studio voice.";
   const client = new GoogleGenAI({ apiKey });
-  const stream = await client.interactions.create({
-    model: "gemini-3.1-flash-tts-preview",
-    input: [
-      languageDirection,
-      "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
-      `Use a professional, warm and confident studio voice. Finish naturally within ${maximumSeconds} seconds.`,
-      "SCRIPT:",
-      text,
-    ].join("\n"),
-    response_format: { type: "audio" },
-    generation_config: { speech_config: [{ voice: "Kore" }] },
-    stream: true,
-  });
-
-  const chunks: Buffer[] = [];
+  let chunks: Buffer[] = [];
   let mimeType = "audio/l16";
   let sampleRate = 24_000;
   let channels = 1;
-  for await (const event of stream) {
-    if (event.event_type !== "step.delta" || event.delta.type !== "audio") continue;
-    if (event.delta.mime_type) mimeType = event.delta.mime_type;
-    if (event.delta.sample_rate) sampleRate = event.delta.sample_rate;
-    if (event.delta.channels) channels = event.delta.channels;
-    if (event.delta.data) chunks.push(Buffer.from(event.delta.data, "base64"));
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      chunks = [];
+      mimeType = "audio/l16";
+      sampleRate = 24_000;
+      channels = 1;
+      const stream = await client.interactions.create({
+        model: "gemini-3.1-flash-tts-preview",
+        input: [
+          "Synthesize the following exact spoken line as studio-quality speech.",
+          languageDirection,
+          "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
+          `${deliveryDirection} Finish naturally within ${maximumSeconds.toFixed(1)} seconds.`,
+          "SPOKEN SCRIPT:",
+          text,
+        ].join("\n"),
+        response_format: { type: "audio" },
+        generation_config: { speech_config: [{ voice: voiceName }] },
+        stream: true,
+      });
+
+      for await (const event of stream) {
+        if (event.event_type !== "step.delta" || event.delta.type !== "audio") continue;
+        if (event.delta.mime_type) mimeType = event.delta.mime_type;
+        if (event.delta.sample_rate) sampleRate = event.delta.sample_rate;
+        if (event.delta.channels) channels = event.delta.channels;
+        if (event.delta.data) chunks.push(Buffer.from(event.delta.data, "base64"));
+      }
+      if (chunks.length === 0) throw new Error("Die Sprach-KI hat keine Tonspur zurückgegeben.");
+      lastError = undefined;
+      break;
+    } catch (error) {
+      lastError = error;
+    }
   }
-  if (chunks.length === 0) throw new Error("Die Sprach-KI hat keine Tonspur zurückgegeben.");
+  if (lastError || chunks.length === 0) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Die Sprach-KI hat keine Tonspur zurückgegeben.");
+  }
 
   const extension = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "pcm";
-  const pathname = join(dir, `voiceover.${extension}`);
+  const filename = (options.filename || "voiceover").replace(/[^a-z0-9-]/gi, "-");
+  const pathname = join(dir, `${filename}.${extension}`);
   const audio = Buffer.concat(chunks);
   await writeFile(pathname, audio);
   const isRawPcm = mimeType.includes("l16") || extension === "pcm";
@@ -242,10 +280,45 @@ async function finishVideo(
   if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
 
   const voiceoverText = options.voiceoverText?.trim() ?? "";
+  const dialogueCues = (options.dialogueCues ?? [])
+    .filter((cue) =>
+      Number.isFinite(cue.startSeconds) &&
+      Number.isFinite(cue.maximumDurationSeconds) &&
+      cue.startSeconds >= 0 &&
+      cue.maximumDurationSeconds >= 1 &&
+      Boolean(cue.speaker.trim()) &&
+      Boolean(cue.text.trim()) &&
+      Boolean(cue.voiceName.trim()),
+    )
+    .slice(0, 24);
   const closingText = options.closingText?.trim() ?? "";
   const args: string[] = ["-y", "-i", input];
   const sourceDuration = await inspectContainerDuration(binary, input);
   let narration: GeneratedNarration | undefined;
+  let narrationInputIndex: number | undefined;
+  const generatedDialogue: Array<{
+    cue: DialogueCue;
+    audio: GeneratedNarration;
+    inputIndex: number;
+  }> = [];
+  let nextInputIndex = 1;
+
+  function appendAudioInput(audio: GeneratedNarration): number {
+    const inputIndex = nextInputIndex;
+    nextInputIndex += 1;
+    if (audio.mimeType.includes("l16") || audio.pathname.endsWith(".pcm")) {
+      args.push(
+        "-f", "s16le",
+        "-ar", String(audio.sampleRate),
+        "-ac", String(audio.channels),
+        "-i", audio.pathname,
+      );
+    } else {
+      args.push("-i", audio.pathname);
+    }
+    return inputIndex;
+  }
+
   if (voiceoverText) {
     narration = await generateNarration(
       dir,
@@ -253,16 +326,31 @@ async function finishVideo(
       seconds,
       options.spokenLanguage,
     );
-    if (narration.mimeType.includes("l16") || narration.pathname.endsWith(".pcm")) {
-      args.push(
-        "-f", "s16le",
-        "-ar", String(narration.sampleRate),
-        "-ac", String(narration.channels),
-        "-i", narration.pathname,
-      );
-    } else {
-      args.push("-i", narration.pathname);
-    }
+    narrationInputIndex = appendAudioInput(narration);
+  }
+
+  for (let index = 0; index < dialogueCues.length; index += 1) {
+    const cue = dialogueCues[index];
+    const audio = await generateNarration(
+      dir,
+      cue.text,
+      cue.maximumDurationSeconds,
+      options.spokenLanguage,
+      {
+        filename: `dialogue-${index + 1}`,
+        voiceName: cue.voiceName,
+        deliveryDirection: [
+          `The visible character ${cue.speaker} is speaking.`,
+          cue.voiceDirection,
+          "Keep this character's vocal identity consistent with every other line assigned to the same voice.",
+        ].join(" "),
+      },
+    );
+    generatedDialogue.push({
+      cue,
+      audio,
+      inputIndex: appendAudioInput(audio),
+    });
   }
 
   const maximumOutputSeconds = seconds + MAX_FINISHING_GRACE_SECONDS;
@@ -270,9 +358,19 @@ async function finishVideo(
   const naturalNarrationEnd = narration
     ? NARRATION_START_DELAY_SECONDS + narration.durationSeconds + NARRATION_TAIL_SECONDS
     : seconds;
+  const naturalDialogueEnd = generatedDialogue.reduce(
+    (latest, item) => Math.max(
+      latest,
+      item.cue.startSeconds + Math.min(
+        item.audio.durationSeconds,
+        item.cue.maximumDurationSeconds,
+      ) + NARRATION_TAIL_SECONDS,
+    ),
+    seconds,
+  );
   const outputSeconds = Math.min(
     maximumOutputSeconds,
-    Math.max(naturalVideoEnd, naturalNarrationEnd),
+    Math.max(naturalVideoEnd, naturalNarrationEnd, naturalDialogueEnd),
   );
   const availableNarrationSeconds = Math.max(
     1,
@@ -306,19 +404,49 @@ async function finishVideo(
     filters.push(`[0:v]${videoFilters.join(",")}[v]`);
     videoMap = "[v]";
   }
-  if (narration) {
+  if (narration || generatedDialogue.length > 0) {
+    const mixInputs = ["[background]"];
+    filters.push(
+      `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
+    );
+
+    if (narration && narrationInputIndex !== undefined) {
     const voiceFilters = [
-      `adelay=${Math.round(NARRATION_START_DELAY_SECONDS * 1000)}:all=1`,
       ...buildAtempoFilters(narrationTempo),
       "volume=1.30",
       "highpass=f=80",
       `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
       `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+        `adelay=${Math.round(NARRATION_START_DELAY_SECONDS * 1000)}:all=1`,
     ];
     filters.push(
-      `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
-      `[1:a]${voiceFilters.join(",")}[voice]`,
-      `[background][voice]amix=inputs=2:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
+        `[${narrationInputIndex}:a]${voiceFilters.join(",")}[voiceover]`,
+    );
+      mixInputs.push("[voiceover]");
+    }
+
+    generatedDialogue.forEach((item, index) => {
+      const dialogueTempo = Math.max(
+        1,
+        item.audio.durationSeconds / item.cue.maximumDurationSeconds,
+      );
+      const label = `dialogue${index}`;
+      const dialogueFilters = [
+        ...buildAtempoFilters(dialogueTempo),
+        "volume=1.36",
+        "highpass=f=80",
+        `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+        `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+        `adelay=${Math.round(item.cue.startSeconds * 1000)}:all=1`,
+      ];
+      filters.push(
+        `[${item.inputIndex}:a]${dialogueFilters.join(",")}[${label}]`,
+      );
+      mixInputs.push(`[${label}]`);
+    });
+
+    filters.push(
+      `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
     );
     audioMap = "[a]";
   }
@@ -351,7 +479,12 @@ export async function trimAndStore(
 ) {
   // Veo opening videos are already exactly 8 seconds. Avoid an unnecessary
   // native FFmpeg process and persist the provider file directly in Blob.
-  if (seconds === 8 && !finishing.voiceoverText && !finishing.closingText) {
+  if (
+    seconds === 8 &&
+    !finishing.voiceoverText &&
+    !finishing.dialogueCues?.length &&
+    !finishing.closingText
+  ) {
     return copyAndStore(source, pathname);
   }
 

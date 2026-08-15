@@ -192,7 +192,7 @@ function enforceViralStory(
     ...result,
     ready: true,
     reply:
-      "Die Figuren sind festgelegt. Ich habe daraus automatisch eine vertikale TikTok-Story mit starkem Hook, Wendung und stabilem Voice-over geplant.",
+      "Die Figuren sind festgelegt. Ich habe daraus automatisch eine vertikale TikTok-Story mit starkem Hook, Wendung und eigenen festen Figurenstimmen geplant.",
     story: {
       ...result.story,
       title: result.story.title.trim() || "Die Frucht, die zu viel wusste",
@@ -213,7 +213,7 @@ function enforceViralStory(
       summary: [
         result.story.summary,
         `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
-        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einer verständlichen überraschenden Auflösung. Die Figuren sprechen nicht mit wechselnden nativen Clip-Stimmen; die Geschichte wird später von einer einzigen stabilen Voice-over-Stimme erzählt.",
+        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einer verständlichen überraschenden Auflösung. Alle ausgewählten Figuren erhalten kurze natürliche Dialoge. Ihre festen Stimmen werden separat erzeugt und anschließend szenengenau gemischt, damit sie nicht zwischen Clips wechseln.",
       ]
         .filter(Boolean)
         .join(" "),

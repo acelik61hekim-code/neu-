@@ -208,6 +208,46 @@ function editingStyleLabel(
   }
 }
 
+function hasValidViralDialoguePlan(
+  prompt: string,
+  targetDurationSeconds: VideoDurationSeconds,
+): boolean {
+  try {
+    const story = JSON.parse(prompt) as {
+      creationMode?: unknown;
+      moviePlan?: {
+        opening?: { dialogue?: unknown };
+        continuations?: Array<{ dialogue?: unknown }>;
+      };
+    };
+    if (story.creationMode !== "viral-story") return false;
+
+    const dialogueValues = [
+      story.moviePlan?.opening?.dialogue,
+      ...(story.moviePlan?.continuations ?? []).map((item) => item.dialogue),
+    ];
+    const speakers = new Set<string>();
+    let validLineCount = 0;
+    for (const value of dialogueValues) {
+      if (!value || typeof value !== "object") continue;
+      const dialogue = value as Record<string, unknown>;
+      if (dialogue.enabled !== true) continue;
+      const speaker = typeof dialogue.speaker === "string" ? dialogue.speaker.trim() : "";
+      const text = typeof dialogue.text === "string" ? dialogue.text.trim() : "";
+      const wordCount = text.split(/\s+/).filter(Boolean).length;
+      if (!speaker || !text || wordCount > 12 || text.length > 140) continue;
+      speakers.add(speaker.toLocaleLowerCase("de-DE"));
+      validLineCount += 1;
+    }
+
+    return targetDurationSeconds <= 8
+      ? validLineCount >= 1
+      : validLineCount >= 2 && speakers.size >= 2;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(
   req: NextRequest,
 ) {
@@ -385,11 +425,14 @@ export async function POST(
   const voiceMode = body.voiceMode as VideoVoiceMode;
   const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
 
-  if (voiceMode === "dialogue") {
+  if (
+    voiceMode === "dialogue" &&
+    !hasValidViralDialoguePlan(prompt, targetDurationSeconds)
+  ) {
     return NextResponse.json(
       {
         error:
-          "Der Dialogmodus wird gerade qualitativ überarbeitet und ist vorübergehend nicht buchbar. Wähle Voice-over für eine durchgehend stabile Stimme. Es wurde nichts berechnet.",
+          "Der allgemeine Dialogmodus wird noch geprüft. Automatische Dialoge sind derzeit über den TikTok-Story-Modus verfügbar. Es wurde nichts berechnet.",
       },
       { status: 503 },
     );

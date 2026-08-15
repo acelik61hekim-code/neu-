@@ -105,7 +105,7 @@ const VOICE_MODE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "auto", label: "Automatisch" },
-  { value: "dialogue", label: "Dialog (in Arbeit)" },
+  { value: "dialogue", label: "Dialog" },
   { value: "voiceover", label: "Voice-over" },
   { value: "no-voice", label: "Ohne Sprache" },
 ];
@@ -430,7 +430,7 @@ export function StudioHome({
     setAspectRatio("9:16");
     setEditingStyle("social");
     setAudioStyle("emotional");
-    setVoiceMode("voiceover");
+    setVoiceMode("dialogue");
     setSpokenLanguage("de");
     setVoiceoverText("");
     setClosingText("");
@@ -1093,7 +1093,7 @@ export function StudioHome({
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] leading-5 text-amber-300/90">
-                  Dialog wird gerade qualitativ überarbeitet. Für eine durchgehend identische Stimme nutze Voice-over.
+                  Automatische Dialoge mit festen Figurenstimmen sind im TikTok-Story-Modus verfügbar.
                 </p>
               </div>
 

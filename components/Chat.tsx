@@ -317,7 +317,7 @@ export default function Chat({
           isViralStory ? "9:16" : aspectRatio,
           isViralStory ? "social" : editingStyle,
           audioStyle,
-          isViralStory ? "voiceover" : voiceMode,
+          isViralStory ? "dialogue" : voiceMode,
           spokenLanguage,
           voiceoverText,
           closingText,
@@ -333,7 +333,7 @@ export default function Chat({
       }
 
       if (
-        (voiceMode === "voiceover" || isViralStory) &&
+        voiceMode === "voiceover" &&
         !voiceoverText.trim() &&
         onVoiceoverTextChange
       ) {

@@ -69,6 +69,7 @@ export default function StoryPreview(
   let storySummary = "";
   let storyGenre = "";
   let storyMood = "";
+  let storyDialogues: Array<{ speaker: string; text: string }> = [];
   let hasMoviePlan = false;
   let hasStructuredStory = false;
 
@@ -85,6 +86,7 @@ export default function StoryPreview(
         generatedDurationSeconds?: number;
         aspectRatio?: string;
         continuations?: unknown[];
+        opening?: { dialogue?: unknown };
       };
     };
 
@@ -107,6 +109,23 @@ export default function StoryPreview(
       typeof parsed.mood === "string"
         ? parsed.mood
         : "";
+
+    const dialogueValues = [
+      parsed.moviePlan?.opening?.dialogue,
+      ...(parsed.moviePlan?.continuations ?? []).map((continuation) =>
+        typeof continuation === "object" && continuation !== null
+          ? (continuation as { dialogue?: unknown }).dialogue
+          : undefined,
+      ),
+    ];
+    storyDialogues = dialogueValues.flatMap((value) => {
+      if (!value || typeof value !== "object") return [];
+      const dialogue = value as Record<string, unknown>;
+      if (dialogue.enabled !== true) return [];
+      const speaker = typeof dialogue.speaker === "string" ? dialogue.speaker.trim() : "";
+      const text = typeof dialogue.text === "string" ? dialogue.text.trim() : "";
+      return speaker && text ? [{ speaker, text }] : [];
+    });
 
     hasStructuredStory = true;
     hasMoviePlan = Boolean(
@@ -226,6 +245,22 @@ export default function StoryPreview(
                           {storyMood}
                         </span>
                       )}
+                    </div>
+                  )}
+
+                  {storyDialogues.length > 0 && (
+                    <div className="mt-4 rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-200">
+                        Automatische Figurendialoge
+                      </p>
+                      <div className="mt-2 space-y-2">
+                        {storyDialogues.map((dialogue, index) => (
+                          <div key={`${dialogue.speaker}-${index}`} className="text-xs leading-5">
+                            <span className="font-semibold text-white">{dialogue.speaker}:</span>{" "}
+                            <span className="text-zinc-300">„{dialogue.text}“</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
 

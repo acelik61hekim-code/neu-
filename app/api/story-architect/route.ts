@@ -1409,10 +1409,12 @@ function normalizeArchitectResponse(
 
 function hasMandatoryDialoguePlan(
   response: ArchitectResponse,
+  expectedSpeakers: readonly string[] = [],
+  targetDurationSeconds = 30,
 ): boolean {
   if (
     response.productionBible.characterBible.length < 2 ||
-    response.moviePlan.continuations.length < 1
+    (targetDurationSeconds > 8 && response.moviePlan.continuations.length < 1)
   ) {
     return false;
   }
@@ -1429,10 +1431,14 @@ function hasMandatoryDialoguePlan(
       (dialogue) => dialogue.enabled,
     );
 
+  const minimumSpeakerCount = targetDurationSeconds <= 8
+    ? 1
+    : Math.min(3, Math.max(2, expectedSpeakers.length));
+
   if (
     !plannedDialogue[0]?.enabled ||
-    !plannedDialogue[1]?.enabled ||
-    enabledDialogue.length < 2
+    (targetDurationSeconds > 8 && !plannedDialogue[1]?.enabled) ||
+    enabledDialogue.length < minimumSpeakerCount
   ) {
     return false;
   }
@@ -1451,7 +1457,7 @@ function hasMandatoryDialoguePlan(
       !speaker ||
       forbiddenSpeaker.test(speaker) ||
       wordCount < 1 ||
-      wordCount > 18 ||
+      wordCount > 12 ||
       dialogue.text.length > 140
     ) {
       return false;
@@ -1460,7 +1466,22 @@ function hasMandatoryDialoguePlan(
     speakers.add(speaker.toLocaleLowerCase("de-DE"));
   }
 
-  return speakers.size >= 2;
+  if (speakers.size < minimumSpeakerCount) return false;
+
+  if (targetDurationSeconds > 8 && expectedSpeakers.length > 0) {
+    const expected = expectedSpeakers.slice(0, 3).map((speaker) => {
+      const fullName = speaker.trim().toLocaleLowerCase("de-DE");
+      const shortName = fullName.split(",")[0].trim();
+      return { fullName, shortName };
+    });
+    if (
+      !expected.every(({ fullName, shortName }) =>
+        speakers.has(fullName) || speakers.has(shortName),
+      )
+    ) return false;
+  }
+
+  return true;
 }
 
 
@@ -2164,9 +2185,12 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - Die ersten zwei Sekunden müssen den Konflikt ohne Erklärung visuell verständlich machen.
 - Alle 6 bis 10 Sekunden braucht die Handlung eine neue Information, Konsequenz oder glaubwürdige Wendung.
 - Der letzte Story-Beat liefert eine klare Auflösung und ein visuell ruhiges Schlussbild.
-- Alle moviePlan.opening.dialogue- und continuation.dialogue-Felder bleiben deaktiviert. Die Videoclips erzeugen keine gesprochenen Wörter.
-- Die komplette Erzählung wird später als eine einzige, separat erzeugte deutsche Voice-over-Spur hinzugefügt. So darf sich die Stimme zwischen Szenen nicht ändern.
-- Keine Untertitel, keine sichtbaren Sprechblasen, keine Fantasieschrift und keine Lippenbewegungen zu erfundenem Dialog.
+- moviePlan.opening.dialogue.enabled ist true. Die erste ausgewählte Figur spricht sofort einen kurzen Hook-Satz.
+- Danach wechseln sich die ausgewählten Figuren natürlich ab. Jede ausgewählte Figur muss mindestens einmal mit ihrem exakten Namen als speaker sprechen.
+- Jeder Dialogsatz umfasst höchstens zwölf einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
+- Die Videoclips selbst erzeugen keine hörbare Sprache. Plane aber die sichtbare Performance der aktiven Figur mit natürlicher Mund-, Gesichts- und Körperbewegung passend zum exakten Satz.
+- Alle festen Figurenstimmen werden später separat erzeugt und szenengenau hinzugefügt. Kein Erzähler und kein Voice-over.
+- Keine Untertitel, keine sichtbaren Sprechblasen und keine Fantasieschrift.
 `
       : "";
 
@@ -2324,13 +2348,15 @@ SCHNITTSTIL: SOCIAL / REELS
 - Trotz Tempo müssen Identität, Raum, Blickachsen und Bewegung verständlich bleiben.
 `;
 
-  const selectedAudioDirection = buildSelectedAudioDirection(
-    audioStyle,
-    voiceMode,
-    spokenLanguage,
-    voiceoverText,
-    targetDurationSeconds,
-  );
+  const selectedAudioDirection = creationMode === "viral-story"
+    ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short dialogue lines and visible speaking performances, but generate only clean music, ambience and sound effects inside the Veo clips. Every character voice is synthesized separately and mixed in later. No native narration, no native dialogue and no subtitles."
+    : buildSelectedAudioDirection(
+        audioStyle,
+        voiceMode,
+        spokenLanguage,
+        voiceoverText,
+        targetDurationSeconds,
+      );
 
   const mandatoryDialogueSection =
     voiceMode === "dialogue"
@@ -2790,7 +2816,7 @@ export async function POST(request: Request) {
 
   const voiceMode =
     creationMode === "viral-story"
-      ? "voiceover"
+      ? "dialogue"
       : normalizeVideoVoiceMode(
           body.voiceMode,
         );
@@ -2810,7 +2836,7 @@ export async function POST(request: Request) {
       ? body.closingText.trim().slice(0, 160)
       : "";
 
-  if (voiceMode === "dialogue") {
+  if (voiceMode === "dialogue" && creationMode !== "viral-story") {
     return NextResponse.json(
       {
         success: false,
@@ -2840,10 +2866,32 @@ export async function POST(request: Request) {
       apiKey,
     });
 
+    const expectedViralSpeakers = creationMode === "viral-story"
+      ? story.characters.slice(0, 3).map((character) => character.name)
+      : [];
+
     const generationResult =
       await generateStoryWithFallback(
         ai,
         prompt,
+        creationMode === "viral-story"
+          ? (candidate) => {
+              const normalizedCandidate = normalizeArchitectResponse(
+                candidate,
+                story,
+                targetDurationSeconds,
+                aspectRatio,
+                editingStyle,
+                voiceMode,
+              );
+              return validateArchitectResponse(normalizedCandidate) &&
+                hasMandatoryDialoguePlan(
+                  normalizedCandidate,
+                  expectedViralSpeakers,
+                  targetDurationSeconds,
+                );
+            }
+          : undefined,
       );
 
     const cleanedText = cleanJsonText(
@@ -2906,6 +2954,24 @@ export async function POST(request: Request) {
           success: false,
           error:
             "Der Story Architect konnte den Filmplan nicht zuverlässig normalisieren.",
+        },
+        { status: 502 },
+      );
+    }
+
+    if (
+      creationMode === "viral-story" &&
+      !hasMandatoryDialoguePlan(
+        normalized,
+        expectedViralSpeakers,
+        targetDurationSeconds,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Die automatischen Figurendialoge waren noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
         },
         { status: 502 },
       );
