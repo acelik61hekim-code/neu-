@@ -4,6 +4,7 @@ import {
   Type,
 } from "@google/genai";
 import { NextResponse } from "next/server";
+import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   STUDIO_BRAND_CONTEXT,
@@ -263,7 +264,8 @@ function isConversationMessage(
     (message.role === "user" ||
       message.role === "assistant") &&
     typeof message.content === "string" &&
-    message.content.trim().length > 0
+    message.content.trim().length > 0 &&
+    message.content.length <= AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
   );
 }
 
@@ -589,6 +591,26 @@ export async function POST(
         {
           status: 400,
         },
+      );
+    }
+
+    if (
+      body.messages.some(
+        (message) =>
+          typeof message === "object" &&
+          message !== null &&
+          "content" in message &&
+          typeof message.content === "string" &&
+          message.content.length > AI_DIRECTOR_MESSAGE_MAX_CHARACTERS,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            `Eine Nachricht darf höchstens ${AI_DIRECTOR_MESSAGE_MAX_CHARACTERS} Zeichen enthalten.`,
+        },
+        { status: 400 },
       );
     }
 

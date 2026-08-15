@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
+
 import {
   requestAiDirector,
   type ConversationMessage,
@@ -856,7 +858,7 @@ export default function Chat({
                     loading
                   }
                   maxLength={
-                    800
+                    AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
                   }
                   placeholder="Beschreibe deine Idee oder beantworte die Frage des AI Directors ..."
                   className="min-h-28 w-full resize-none border-0 bg-transparent px-4 py-4 text-sm leading-6 text-white outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
@@ -867,7 +869,7 @@ export default function Chat({
                     {
                       input.length
                     }
-                    /800 Zeichen
+                    /{AI_DIRECTOR_MESSAGE_MAX_CHARACTERS} Zeichen
                   </span>
 
                   <button
