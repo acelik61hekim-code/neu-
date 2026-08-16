@@ -875,9 +875,14 @@ export function StudioHome({
 
           <div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-3">
             <div>
-              <p className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                Videolänge
-              </p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                  Videolänge
+                </p>
+                <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
+                  Neuer günstiger Preis
+                </span>
+              </div>
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {VIDEO_DURATION_OPTIONS.map(

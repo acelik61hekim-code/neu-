@@ -1,5 +1,6 @@
 import { StudioHome } from "@/app/page";
 import SeoContent, { type SeoFaq } from "@/components/SeoContent";
+import { VIDEO_PRICE_CENTS } from "@/lib/pricing";
 import { productJsonLd, productMetadata } from "@/lib/seo";
 import { STUDIO_PATHS } from "@/lib/site";
 
@@ -34,8 +35,8 @@ const jsonLd = productJsonLd({
   description,
   path: STUDIO_PATHS.video,
   category: "MultimediaApplication",
-  lowPrice: "5.99",
-  highPrice: "59.99",
+  lowPrice: String(VIDEO_PRICE_CENTS[8] / 100),
+  highPrice: String(VIDEO_PRICE_CENTS[120] / 100),
   offerCount: 4,
   features: ["Text zu Video", "Story- und Szenenplanung", "Formate 9:16 und 16:9", "Videos bis zu zwei Minuten"],
   faqs,

@@ -1,13 +1,13 @@
 import type { VideoDurationSeconds } from "@/types/story";
 
 export const VIDEO_PRICE_CENTS = {
-  8: 599,
-  30: 1799,
-  60: 3299,
-  120: 5999,
-  180: 8999,
-  240: 10999,
-  300: 12999,
+  8: 299,
+  30: 899,
+  60: 1599,
+  120: 2999,
+  180: 4299,
+  240: 5499,
+  300: 6499,
 } as const satisfies Record<VideoDurationSeconds, number>;
 
 export const CURRENTLY_RELEASED_MAX_DURATION_SECONDS: VideoDurationSeconds = 120;
