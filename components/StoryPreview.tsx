@@ -86,7 +86,7 @@ export default function StoryPreview(
         generatedDurationSeconds?: number;
         aspectRatio?: string;
         continuations?: unknown[];
-        opening?: { dialogue?: unknown };
+        opening?: { dialogue?: unknown; dialogueTurns?: unknown[] };
       };
     };
 
@@ -112,11 +112,15 @@ export default function StoryPreview(
 
     const dialogueValues = [
       parsed.moviePlan?.opening?.dialogue,
-      ...(parsed.moviePlan?.continuations ?? []).map((continuation) =>
-        typeof continuation === "object" && continuation !== null
-          ? (continuation as { dialogue?: unknown }).dialogue
-          : undefined,
-      ),
+      ...(parsed.moviePlan?.opening?.dialogueTurns ?? []),
+      ...(parsed.moviePlan?.continuations ?? []).flatMap((continuation) => {
+        if (typeof continuation !== "object" || continuation === null) return [];
+        const section = continuation as {
+          dialogue?: unknown;
+          dialogueTurns?: unknown[];
+        };
+        return [section.dialogue, ...(section.dialogueTurns ?? [])];
+      }),
     ];
     storyDialogues = dialogueValues.flatMap((value) => {
       if (!value || typeof value !== "object") return [];

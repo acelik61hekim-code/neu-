@@ -229,6 +229,12 @@ export type Scene = {
 
   dialogue: SceneDialogue;
 
+  /*
+   * Zusätzliche Sprecherwechsel innerhalb desselben 8-Sekunden-Clips.
+   * Das Hauptfeld `dialogue` bleibt für bestehende Pläne der erste Turn.
+   */
+  dialogueTurns?: SceneDialogue[];
+
   durationSeconds: number;
 
   /*
@@ -307,6 +313,8 @@ export type MovieOpening = {
 
   dialogue: SceneDialogue;
 
+  dialogueTurns?: SceneDialogue[];
+
   /*
    * Produktionsfertige Anweisungen.
    */
@@ -352,6 +360,7 @@ export type MovieContinuation = {
   audioContinuation: string;
 
   dialogue: SceneDialogue;
+  dialogueTurns?: SceneDialogue[];
 
   /*
    * Dieser Prompt wird an /api/extend-video gesendet.

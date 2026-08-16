@@ -215,19 +215,26 @@ function hasValidViralDialoguePlan(
   try {
     const story = JSON.parse(prompt) as {
       creationMode?: unknown;
+      characters?: Array<{ name?: unknown }>;
       moviePlan?: {
-        opening?: { dialogue?: unknown };
-        continuations?: Array<{ dialogue?: unknown }>;
+        opening?: { dialogue?: unknown; dialogueTurns?: unknown[] };
+        continuations?: Array<{ dialogue?: unknown; dialogueTurns?: unknown[] }>;
       };
     };
     if (story.creationMode !== "viral-story") return false;
 
     const dialogueValues = [
       story.moviePlan?.opening?.dialogue,
-      ...(story.moviePlan?.continuations ?? []).map((item) => item.dialogue),
+      ...(story.moviePlan?.opening?.dialogueTurns ?? []),
+      ...(story.moviePlan?.continuations ?? []).flatMap((item) => [
+        item.dialogue,
+        ...(item.dialogueTurns ?? []),
+      ]),
     ];
     const speakers = new Set<string>();
     let validLineCount = 0;
+    let totalWordCount = 0;
+    const maximumWordsPerLine = targetDurationSeconds <= 8 ? 6 : 12;
     for (const value of dialogueValues) {
       if (!value || typeof value !== "object") continue;
       const dialogue = value as Record<string, unknown>;
@@ -235,14 +242,30 @@ function hasValidViralDialoguePlan(
       const speaker = typeof dialogue.speaker === "string" ? dialogue.speaker.trim() : "";
       const text = typeof dialogue.text === "string" ? dialogue.text.trim() : "";
       const wordCount = text.split(/\s+/).filter(Boolean).length;
-      if (!speaker || !text || wordCount > 12 || text.length > 140) continue;
+      if (!speaker || !text || wordCount > maximumWordsPerLine || text.length > 140) continue;
       speakers.add(speaker.toLocaleLowerCase("de-DE"));
       validLineCount += 1;
+      totalWordCount += wordCount;
     }
 
-    return targetDurationSeconds <= 8
-      ? validLineCount >= 1
-      : validLineCount >= 2 && speakers.size >= 2;
+    const expectedSpeakers = (story.characters ?? [])
+      .map((character) => typeof character.name === "string" ? character.name.trim() : "")
+      .filter(Boolean)
+      .slice(0, 3);
+    const requiredSpeakerCount = Math.min(3, Math.max(2, expectedSpeakers.length));
+    if (
+      validLineCount < requiredSpeakerCount ||
+      speakers.size < requiredSpeakerCount ||
+      (targetDurationSeconds <= 8 && totalWordCount > 12)
+    ) {
+      return false;
+    }
+
+    return expectedSpeakers.every((expectedSpeaker) => {
+      const fullName = expectedSpeaker.toLocaleLowerCase("de-DE");
+      const shortName = fullName.split(",")[0].trim();
+      return speakers.has(fullName) || speakers.has(shortName);
+    });
   } catch {
     return false;
   }

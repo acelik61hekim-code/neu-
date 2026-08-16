@@ -459,6 +459,34 @@ function normalizeDialogue(
   };
 }
 
+function normalizeDialogueTurns(
+  value: unknown,
+  allowSpeech = true,
+): SceneDialogue[] {
+  if (!allowSpeech || !Array.isArray(value)) return [];
+
+  return value
+    .map((turn) => {
+      const record = asRecord(turn);
+      const hasSpokenLine =
+        readLooseString(record.speaker).length > 0 &&
+        readLooseString(record.text).length > 0;
+      return normalizeDialogue(
+        {
+          ...record,
+          enabled: record.enabled !== false && hasSpokenLine,
+          voiceDirection:
+            record.voiceDirection ??
+            record.emotion ??
+            "Natural, believable, concise delivery.",
+        },
+        true,
+      );
+    })
+    .filter((turn) => turn.enabled)
+    .slice(0, 3);
+}
+
 function normalizeProductionBible(
   value: unknown,
   story: StoryDraft,
@@ -963,6 +991,10 @@ function normalizeMoviePlan(
     ),
     dialogue:
       openingDialogue,
+    dialogueTurns: normalizeDialogueTurns(
+      rawOpening.dialogueTurns,
+      voiceMode === "dialogue",
+    ),
     veoPrompt: [
       readString(
         rawOpening.veoPrompt,
@@ -1125,6 +1157,10 @@ function normalizeMoviePlan(
           ),
 
           dialogue,
+          dialogueTurns: normalizeDialogueTurns(
+            source.dialogueTurns,
+            voiceMode === "dialogue",
+          ),
 
           continuationPrompt: [
             readString(
@@ -1421,8 +1457,12 @@ function hasMandatoryDialoguePlan(
 
   const plannedDialogue = [
     response.moviePlan.opening.dialogue,
-    ...response.moviePlan.continuations.map(
-      (continuation) => continuation.dialogue,
+    ...(response.moviePlan.opening.dialogueTurns ?? []),
+    ...response.moviePlan.continuations.flatMap(
+      (continuation) => [
+        continuation.dialogue,
+        ...(continuation.dialogueTurns ?? []),
+      ],
     ),
   ];
 
@@ -1431,13 +1471,13 @@ function hasMandatoryDialoguePlan(
       (dialogue) => dialogue.enabled,
     );
 
-  const minimumSpeakerCount = targetDurationSeconds <= 8
-    ? 1
-    : Math.min(3, Math.max(2, expectedSpeakers.length));
+  const minimumSpeakerCount = Math.min(
+    3,
+    Math.max(2, expectedSpeakers.length),
+  );
 
   if (
     !plannedDialogue[0]?.enabled ||
-    (targetDurationSeconds > 8 && !plannedDialogue[1]?.enabled) ||
     enabledDialogue.length < minimumSpeakerCount
   ) {
     return false;
@@ -1447,6 +1487,8 @@ function hasMandatoryDialoguePlan(
     /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|\u00e4)hl|sprecher(?:in)?$/i;
 
   const speakers = new Set<string>();
+  let totalWordCount = 0;
+  const maximumWordsPerLine = targetDurationSeconds <= 8 ? 6 : 12;
 
   for (const dialogue of enabledDialogue) {
     const speaker = dialogue.speaker.trim();
@@ -1457,18 +1499,20 @@ function hasMandatoryDialoguePlan(
       !speaker ||
       forbiddenSpeaker.test(speaker) ||
       wordCount < 1 ||
-      wordCount > 12 ||
+      wordCount > maximumWordsPerLine ||
       dialogue.text.length > 140
     ) {
       return false;
     }
 
     speakers.add(speaker.toLocaleLowerCase("de-DE"));
+    totalWordCount += wordCount;
   }
 
   if (speakers.size < minimumSpeakerCount) return false;
+  if (targetDurationSeconds <= 8 && totalWordCount > 12) return false;
 
-  if (targetDurationSeconds > 8 && expectedSpeakers.length > 0) {
+  if (expectedSpeakers.length > 0) {
     const expected = expectedSpeakers.slice(0, 3).map((speaker) => {
       const fullName = speaker.trim().toLocaleLowerCase("de-DE");
       const shortName = fullName.split(",")[0].trim();
@@ -1511,6 +1555,14 @@ function validateDialogue(value: unknown): value is SceneDialogue {
     isNonEmptyString(dialogue.text) &&
     isNonEmptyString(dialogue.language) &&
     isNonEmptyString(dialogue.voiceDirection)
+  );
+}
+
+function validateDialogueTurns(value: unknown): boolean {
+  return value === undefined || (
+    Array.isArray(value) &&
+    value.length <= 3 &&
+    value.every(validateDialogue)
   );
 }
 
@@ -1581,6 +1633,7 @@ function validateOpening(value: unknown): value is MovieOpening {
     isNonEmptyString(opening.performancePlan) &&
     isNonEmptyString(opening.audioPlan) &&
     validateDialogue(opening.dialogue) &&
+    validateDialogueTurns(opening.dialogueTurns) &&
     isNonEmptyString(opening.veoPrompt) &&
     isNonEmptyString(opening.audioPrompt) &&
     isNonEmptyString(opening.negativePrompt)
@@ -1618,6 +1671,7 @@ function validateContinuation(
     isNonEmptyString(continuation.performanceContinuation) &&
     isNonEmptyString(continuation.audioContinuation) &&
     validateDialogue(continuation.dialogue) &&
+    validateDialogueTurns(continuation.dialogueTurns) &&
     isNonEmptyString(continuation.continuationPrompt) &&
     isString(continuation.audioPrompt) &&
     isString(continuation.negativePrompt)
@@ -2186,6 +2240,10 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - Alle 6 bis 10 Sekunden braucht die Handlung eine neue Information, Konsequenz oder glaubwürdige Wendung.
 - Der letzte Story-Beat liefert eine klare Auflösung und ein visuell ruhiges Schlussbild.
 - moviePlan.opening.dialogue.enabled ist true. Die erste ausgewählte Figur spricht sofort einen kurzen Hook-Satz.
+- moviePlan.opening.dialogueTurns ist ein Array für zusätzliche Sprecherwechsel innerhalb desselben 8-Sekunden-Clips.
+${targetDurationSeconds <= 8
+    ? "- Bei genau 8 Sekunden enthält opening.dialogue die erste Zeile und opening.dialogueTurns genau eine weitere aktivierte Zeile pro verbleibender ausgewählter Figur. Keine Zeile wiederholen. Jede Zeile hat höchstens sechs Wörter; alle Zeilen zusammen höchstens zwölf Wörter."
+    : "- Bei längeren Videos bleibt opening.dialogueTurns leer; plane die weiteren Sprecher in den dialogue-Feldern der folgenden Abschnitte ein."}
 - Danach wechseln sich die ausgewählten Figuren natürlich ab. Jede ausgewählte Figur muss mindestens einmal mit ihrem exakten Namen als speaker sprechen.
 - Jeder Dialogsatz umfasst höchstens zwölf einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
 - Die Videoclips selbst erzeugen keine hörbare Sprache. Plane aber die sichtbare Performance der aktiven Figur mit natürlicher Mund-, Gesichts- und Körperbewegung passend zum exakten Satz.
@@ -2244,6 +2302,7 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
       ? `
 - Ziel des Produkts: exakt 8 Sekunden.
 - Erzeuge moviePlan.opening für genau diese 8 Sekunden.
+- moviePlan.opening.dialogueTurns enthält die zusätzlichen Sprecherwechsel innerhalb dieses einen Clips.
 - moviePlan.continuations muss ein leeres Array sein.
 - moviePlan.chapters soll nicht benötigt werden.
 - Das Opening muss bereits eine vollständige Mini-Geschichte mit einem sauberen Ende liefern.
@@ -2366,9 +2425,12 @@ VERBINDLICHER DIALOGMODUS – HÖCHSTE PRIORITÄT
 - Das fertige Video MUSS ein sichtbares Gespräch zwischen mindestens zwei eindeutig benannten Personen sein. Wenn die Geschichte drei, vier oder mehr Sprecher vorsieht, müssen alle eingeplant werden.
 - productionBible.characterBible muss alle Gesprächspartner enthalten, mindestens zwei, jeweils mit unterschiedlichem Namen und fester Stimme.
 - moviePlan.opening.dialogue.enabled muss true sein und eine kurze erste Aussage von Person A enthalten.
-- moviePlan.continuations[0].dialogue.enabled muss true sein und eine direkte Antwort von Person B enthalten.
+${targetDurationSeconds <= 8
+    ? "- moviePlan.opening.dialogueTurns muss die direkten Antworten der übrigen Gesprächspartner in natürlicher Reihenfolge enthalten."
+    : "- moviePlan.continuations[0].dialogue.enabled muss true sein und eine direkte Antwort von Person B enthalten."}
 - Danach sollen sich die Sprecher natürlich abwechseln; jeder eingeplante Gesprächspartner muss mindestens einmal hörbar sprechen.
-- Jeder Dialogtext umfasst höchstens 18 gut sprechbare Wörter und passt vollständig in seinen 7- bis 8-Sekunden-Abschnitt.
+- Jeder Dialogtext umfasst höchstens ${targetDurationSeconds <= 8 ? "sechs" : "zwölf"} gut sprechbare Wörter und passt vollständig in seinen 7- bis 8-Sekunden-Abschnitt.
+${targetDurationSeconds <= 8 ? "- Alle Dialogzeilen zusammen umfassen höchstens zwölf Wörter." : ""}
 - speaker enthält immer exakt den Namen der sichtbar sprechenden Figur, niemals "Narrator", "Voice-over", "Off-screen voice" oder eine Sammelbezeichnung.
 - Zeige beim Sprechen Gesicht und Mund der aktiven Person deutlich. Nutze natürliche Pausen, korrekte Aussprache und synchronisierte Lippenbewegung.
 - Kein Monolog, kein Erzähler, kein Voice-over, keine Untertitel und keine sichtbare Transkription.
@@ -2540,6 +2602,7 @@ Wenn gesprochen wird:
 - exakter Charaktername als speaker
 - konkrete Sprache
 - konkrete Stimme und Emotion
+- dialogueTurns ist ein Array zusätzlicher Dialogobjekte im selben Clip; wenn es keine weiteren Sprecherwechsel gibt, nutze [].
 - keine Untertitel
 - keine sichtbare Transkription
 

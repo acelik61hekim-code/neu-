@@ -335,6 +335,10 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
 
     const opening = asRecord(moviePlan.opening);
     const openingDialogue = asRecord(opening.dialogue);
+    const openingDialogueTurns = Array.isArray(opening.dialogueTurns)
+      ? opening.dialogueTurns.map(asRecord)
+      : [];
+    const openingDialogues = [openingDialogue, ...openingDialogueTurns];
     const safeOpening = {
       ...opening,
       dialogue: {
@@ -344,6 +348,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         language: "",
         voiceDirection: "",
       },
+      dialogueTurns: [],
       veoPrompt: removeVisibleTextRenderingInstructions(
         readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
       ),
@@ -356,7 +361,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         selectedAudioDirection,
       ),
       buildViralReferenceDirection(story),
-      buildViralVisualDialogueDirection(openingDialogue),
+      buildViralVisualDialogueDirection(openingDialogues),
       "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
     ].join("\n\n");
 
@@ -364,19 +369,23 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
       ? moviePlan.continuations
       : [];
     const candidateShots = [
-      { prompt: openingPrompt, dialogue: openingDialogue },
-      ...rawContinuations.map((item, index) =>
-        ({
+      { prompt: openingPrompt, dialogues: openingDialogues },
+      ...rawContinuations.map((item, index) => {
+        const continuation = asRecord(item);
+        const dialogueTurns = Array.isArray(continuation.dialogueTurns)
+          ? continuation.dialogueTurns.map(asRecord)
+          : [];
+        return {
           prompt: buildViralIndependentShotPrompt(
             story,
-            asRecord(item),
+            continuation,
             index + 2,
             rawContinuations.length + 1,
             selectedAudioDirection,
           ),
-          dialogue: asRecord(asRecord(item).dialogue),
-        }),
-      ),
+          dialogues: [asRecord(continuation.dialogue), ...dialogueTurns],
+        };
+      }),
     ];
     const shotCount = Math.max(1, Math.ceil(job.targetDurationSeconds / 8));
     const selectedShots = selectEvenlyIncludingFinal(candidateShots, shotCount);
@@ -390,13 +399,28 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
       });
     });
     viralDialogueCues = buildViralDialogueCues(
-      selectedShots.map((shot) => shot.dialogue),
+      selectedShots.map((shot) => shot.dialogues),
       job.targetDurationSeconds,
     );
-    const requiredSpeakers = job.targetDurationSeconds <= 8 ? 1 : 2;
+    const selectedCharacterNames = Array.isArray(story.characters)
+      ? story.characters
+          .map(asRecord)
+          .map((character) => typeof character.name === "string" ? character.name.trim() : "")
+          .filter(Boolean)
+          .slice(0, 3)
+      : [];
+    const requiredSpeakers = Math.min(3, Math.max(2, selectedCharacterNames.length));
+    const cueSpeakers = new Set(
+      viralDialogueCues.map((cue) => cue.speaker.toLocaleLowerCase("de-DE")),
+    );
     if (
       viralDialogueCues.length < requiredSpeakers ||
-      new Set(viralDialogueCues.map((cue) => cue.speaker)).size < requiredSpeakers
+      cueSpeakers.size < requiredSpeakers ||
+      !selectedCharacterNames.every((name) => {
+        const fullName = name.toLocaleLowerCase("de-DE");
+        const shortName = fullName.split(",")[0].trim();
+        return cueSpeakers.has(fullName) || cueSpeakers.has(shortName);
+      })
     ) {
       throw new Error("Der TikTok-Story-Modus enthält keine vollständigen Figurendialoge.");
     }
@@ -909,25 +933,35 @@ function getFixedVoiceName(speaker: string): string {
 }
 
 function buildViralDialogueCues(
-  dialogueValues: readonly Record<string, unknown>[],
+  dialogueShots: readonly (readonly Record<string, unknown>[])[],
   targetDurationSeconds: number,
 ): DialogueCue[] {
   const cues: DialogueCue[] = [];
-  dialogueValues.forEach((value, index) => {
-    const dialogue = readViralDialogue(value);
-    if (!dialogue) return;
-    const startSeconds = index * 8 + 0.55;
-    const maximumDurationSeconds = Math.min(
-      6.6,
-      Math.max(2, targetDurationSeconds + 1.2 - startSeconds),
+  dialogueShots.forEach((values, shotIndex) => {
+    const dialogues = values
+      .map(readViralDialogue)
+      .filter((dialogue): dialogue is NonNullable<ReturnType<typeof readViralDialogue>> =>
+        dialogue !== null,
+      );
+    if (dialogues.length === 0) return;
+
+    const shotStartSeconds = shotIndex * 8;
+    const firstCueStartSeconds = shotStartSeconds + 0.45;
+    const dialogueWindowSeconds = Math.min(
+      7.1,
+      Math.max(2, targetDurationSeconds + 1.2 - firstCueStartSeconds),
     );
-    cues.push({
-      startSeconds,
-      maximumDurationSeconds,
-      speaker: dialogue.speaker,
-      text: dialogue.text,
-      voiceName: getFixedVoiceName(dialogue.speaker),
-      voiceDirection: dialogue.voiceDirection,
+    const turnWindowSeconds = dialogueWindowSeconds / dialogues.length;
+
+    dialogues.forEach((dialogue, turnIndex) => {
+      cues.push({
+        startSeconds: firstCueStartSeconds + turnIndex * turnWindowSeconds,
+        maximumDurationSeconds: Math.min(6.6, Math.max(1.2, turnWindowSeconds - 0.15)),
+        speaker: dialogue.speaker,
+        text: dialogue.text,
+        voiceName: getFixedVoiceName(dialogue.speaker),
+        voiceDirection: dialogue.voiceDirection,
+      });
     });
   });
   return cues;
@@ -945,13 +979,21 @@ function buildViralDialogueCuesFromStoredPrompt(
     const continuations = Array.isArray(moviePlan.continuations)
       ? moviePlan.continuations.map(asRecord)
       : [];
-    const dialogueValues = [
-      asRecord(opening.dialogue),
-      ...continuations.map((continuation) => asRecord(continuation.dialogue)),
+    const dialogueShots = [
+      [
+        asRecord(opening.dialogue),
+        ...(Array.isArray(opening.dialogueTurns) ? opening.dialogueTurns.map(asRecord) : []),
+      ],
+      ...continuations.map((continuation) => [
+        asRecord(continuation.dialogue),
+        ...(Array.isArray(continuation.dialogueTurns)
+          ? continuation.dialogueTurns.map(asRecord)
+          : []),
+      ]),
     ];
     const shotCount = Math.max(1, Math.ceil(targetDurationSeconds / 8));
     return buildViralDialogueCues(
-      selectEvenlyIncludingFinal(dialogueValues, shotCount),
+      selectEvenlyIncludingFinal(dialogueShots, shotCount),
       targetDurationSeconds,
     );
   } catch {
@@ -959,16 +1001,23 @@ function buildViralDialogueCuesFromStoredPrompt(
   }
 }
 
-function buildViralVisualDialogueDirection(value: Record<string, unknown>): string {
-  const dialogue = readViralDialogue(value);
-  if (!dialogue) {
+function buildViralVisualDialogueDirection(
+  values: readonly Record<string, unknown>[],
+): string {
+  const dialogues = values
+    .map(readViralDialogue)
+    .filter((dialogue): dialogue is NonNullable<ReturnType<typeof readViralDialogue>> =>
+      dialogue !== null,
+    );
+  if (dialogues.length === 0) {
     return "No character speaks in this shot. Use reaction acting and clean background audio only.";
   }
   return [
-    `VISIBLE ACTIVE SPEAKER: ${dialogue.speaker}`,
-    `POST-PRODUCTION DIALOGUE LINE: \"${dialogue.text}\"`,
-    `PERFORMANCE: ${dialogue.voiceDirection}`,
-    "Keep the active character's face and mouth clearly visible. Create natural mouth, jaw and facial movement paced to this short sentence, but do not synthesize audible words inside the Veo clip. The fixed studio voice is added later.",
+    "VISIBLE SPEAKING SEQUENCE:",
+    ...dialogues.map((dialogue, index) =>
+      `${index + 1}. ${dialogue.speaker}: \"${dialogue.text}\" — ${dialogue.voiceDirection}`,
+    ),
+    "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the Veo clip. The fixed studio voices are added later.",
   ].join("\n");
 }
 
@@ -1005,6 +1054,9 @@ function buildViralIndependentShotPrompt(
   const title = typeof story.title === "string" ? story.title : "TikTok story";
   const summary = typeof story.summary === "string" ? story.summary : "";
   const isFinalShot = shotNumber === totalShots;
+  const dialogueTurns = Array.isArray(continuation.dialogueTurns)
+    ? continuation.dialogueTurns.map(asRecord)
+    : [];
 
   return [
     `INDEPENDENT 8-SECOND TIKTOK STORY SHOT ${shotNumber} OF ${totalShots}.`,
@@ -1017,7 +1069,10 @@ function buildViralIndependentShotPrompt(
     typeof continuation.environmentContinuity === "string" ? `LOCATION: ${continuation.environmentContinuity}` : "",
     typeof continuation.cameraContinuation === "string" ? `CAMERA: ${continuation.cameraContinuation}` : "",
     typeof continuation.performanceContinuation === "string" ? `PERFORMANCE: ${continuation.performanceContinuation}` : "",
-    buildViralVisualDialogueDirection(asRecord(continuation.dialogue)),
+    buildViralVisualDialogueDirection([
+      asRecord(continuation.dialogue),
+      ...dialogueTurns,
+    ]),
     "Create a fresh, story-appropriate composition. Do not repeat the neutral reference-card pose or studio backdrop.",
     "The action must be instantly readable on a phone screen and advance the story without a visual reset or repeated beat.",
     isFinalShot
