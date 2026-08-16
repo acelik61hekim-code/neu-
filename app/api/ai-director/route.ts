@@ -25,6 +25,7 @@ type ConversationMessage = {
 type RequestBody = {
   messages?: ConversationMessage[];
   viralCharacterIds?: unknown;
+  dialogueMode?: unknown;
 };
 
 type StoryCharacter = {
@@ -129,6 +130,16 @@ dass die Handlung klar aufgebaut ist:
 
 Wenn diese Struktur bereits vorhanden ist,
 setze sofort ready=true.
+`;
+
+const DIALOGUE_SYSTEM_INSTRUCTION = `
+ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
+
+- Die Story benötigt mindestens zwei deutlich unterscheidbare, benannte und sichtbare Gesprächsfiguren.
+- Ergänze selbst eine passende zweite Gesprächsfigur, falls der Nutzer nur eine Figur genannt hat; frage dafür nicht unnötig nach.
+- Beschreibe für jede Figur Aussehen, Persönlichkeit, Rolle und Beziehung zur anderen Figur so konkret, dass ihre Identität über alle Szenen stabil bleiben kann.
+- Die Zusammenfassung muss ein echtes abwechselndes Gespräch ermöglichen. Kein Monolog, kein Erzähler, kein Voice-over und keine Offscreen-Stimme.
+- Wenn die übrigen Story-Angaben ausreichen, darf ready erst dann true sein, wenn mindestens zwei Gesprächsfiguren im Story-Objekt stehen.
 `;
 
 function enforceStudioAdvertisement(
@@ -499,6 +510,7 @@ async function generateWithRetry(
       text: string;
     }>;
   }>,
+  dialogueMode = false,
 ) {
   let lastError: unknown;
 
@@ -517,7 +529,10 @@ async function generateWithRetry(
         contents: conversation,
         config: {
           systemInstruction:
-            SYSTEM_INSTRUCTION,
+            [
+              SYSTEM_INSTRUCTION,
+              dialogueMode ? DIALOGUE_SYSTEM_INSTRUCTION : "",
+            ].filter(Boolean).join("\n\n"),
 
           responseMimeType:
             "application/json",
@@ -705,6 +720,7 @@ export async function POST(
       await generateWithRetry(
         ai,
         conversation,
+        body.dialogueMode === true,
       );
 
     const responseText =

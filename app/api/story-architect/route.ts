@@ -2415,6 +2415,8 @@ SCHNITTSTIL: SOCIAL / REELS
 
   const selectedAudioDirection = creationMode === "viral-story"
     ? "NATIVE ON-SCREEN CHARACTER DIALOGUE: Plan exact short dialogue lines that the assigned visible characters themselves speak audibly and lip-synchronously inside each Veo clip. Voice consistency between separate shots is less important than clear in-scene speech. No narrator, no voice-over, no off-screen speech, no separately mixed dialogue and no subtitles."
+    : voiceMode === "dialogue"
+      ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE: Plan exact short lines and clearly visible sentence-paced speaking performances, but keep the generated video footage free of audible speech. Assign every named character a distinct stable voice identity. The fixed voices are synthesized separately and mixed scene-synchronously during final finishing. No narrator, no voice-over, no off-screen speech and no subtitles."
     : buildSelectedAudioDirection(
         audioStyle,
         voiceMode,
@@ -2438,7 +2440,8 @@ ${targetDurationSeconds <= 8
 - Jeder Dialogtext umfasst höchstens ${targetDurationSeconds <= 8 ? "sechs" : "zwölf"} gut sprechbare Wörter und passt vollständig in seinen 7- bis 8-Sekunden-Abschnitt.
 ${targetDurationSeconds <= 8 ? "- Alle Dialogzeilen zusammen umfassen höchstens zwölf Wörter." : ""}
 - speaker enthält immer exakt den Namen der sichtbar sprechenden Figur, niemals "Narrator", "Voice-over", "Off-screen voice" oder eine Sammelbezeichnung.
-- Zeige beim Sprechen Gesicht und Mund der aktiven Person deutlich. Nutze natürliche Pausen, korrekte Aussprache und synchronisierte Lippenbewegung.
+- Zeige beim Sprechen Gesicht und Mund der aktiven Person deutlich. Plane natürliche, zum exakten Satz passende Mund-, Kiefer-, Gesichts- und Körperbewegungen.
+- Jede Figur erhält über alle Abschnitte eine eigene, unveränderte voiceIdentity. Die Videoclips erzeugen nur leise nicht-vokale Umgebung, Foley und zurückhaltende Musik; die festen Stimmen werden später szenengenau hinzugefügt.
 - Kein Monolog, kein Erzähler, kein Voice-over, keine Untertitel und keine sichtbare Transkription.
 - Gesprochene Sprache: ${spokenLanguage === "de" ? "Deutsch" : spokenLanguage === "en" ? "Englisch" : "die zur Geschichte passende, durchgehend einheitliche Sprache"}.
 `
@@ -2905,17 +2908,6 @@ export async function POST(request: Request) {
       ? body.closingText.trim().slice(0, 160)
       : "";
 
-  if (voiceMode === "dialogue" && creationMode !== "viral-story") {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Der Dialogmodus wird gerade qualitativ überarbeitet und ist vorübergehend nicht buchbar. Wähle Voice-over für eine durchgehend stabile Stimme.",
-      },
-      { status: 503 },
-    );
-  }
-
   const prompt =
     buildStoryPrompt(
       story,
@@ -2935,7 +2927,7 @@ export async function POST(request: Request) {
       apiKey,
     });
 
-    const expectedViralSpeakers = creationMode === "viral-story"
+    const expectedDialogueSpeakers = voiceMode === "dialogue"
       ? story.characters.slice(0, 3).map((character) => character.name)
       : [];
 
@@ -2943,7 +2935,7 @@ export async function POST(request: Request) {
       await generateStoryWithFallback(
         ai,
         prompt,
-        creationMode === "viral-story"
+        voiceMode === "dialogue"
           ? (candidate) => {
               const normalizedCandidate = normalizeArchitectResponse(
                 candidate,
@@ -2956,7 +2948,7 @@ export async function POST(request: Request) {
               return validateArchitectResponse(normalizedCandidate) &&
                 hasMandatoryDialoguePlan(
                   normalizedCandidate,
-                  expectedViralSpeakers,
+                  expectedDialogueSpeakers,
                   targetDurationSeconds,
                 );
             }
@@ -3029,10 +3021,10 @@ export async function POST(request: Request) {
     }
 
     if (
-      creationMode === "viral-story" &&
+      voiceMode === "dialogue" &&
       !hasMandatoryDialoguePlan(
         normalized,
-        expectedViralSpeakers,
+        expectedDialogueSpeakers,
         targetDurationSeconds,
       )
     ) {
@@ -3040,7 +3032,7 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "Die automatischen Figurendialoge waren noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
+            "Der automatische Dialogplan war noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
         },
         { status: 502 },
       );

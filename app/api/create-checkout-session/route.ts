@@ -208,33 +208,40 @@ function editingStyleLabel(
   }
 }
 
-function hasValidViralDialoguePlan(
+function hasValidDialoguePlan(
   prompt: string,
   targetDurationSeconds: VideoDurationSeconds,
+  requireViralStory = false,
 ): boolean {
   try {
     const story = JSON.parse(prompt) as {
       creationMode?: unknown;
       characters?: Array<{ name?: unknown }>;
+      productionBible?: {
+        characterBible?: Array<{ name?: unknown }>;
+      };
       moviePlan?: {
         opening?: { dialogue?: unknown; dialogueTurns?: unknown[] };
         continuations?: Array<{ dialogue?: unknown; dialogueTurns?: unknown[] }>;
       };
     };
-    if (story.creationMode !== "viral-story") return false;
+    if (requireViralStory && story.creationMode !== "viral-story") return false;
 
-    const dialogueValues = [
+    const openingDialogueValues = [
       story.moviePlan?.opening?.dialogue,
       ...(story.moviePlan?.opening?.dialogueTurns ?? []),
-      ...(story.moviePlan?.continuations ?? []).flatMap((item) => [
+    ];
+    const continuationDialogueValues = (story.moviePlan?.continuations ?? []).flatMap((item) => [
         item.dialogue,
         ...(item.dialogueTurns ?? []),
-      ]),
-    ];
+      ]);
+    const dialogueValues = [...openingDialogueValues, ...continuationDialogueValues];
     const speakers = new Set<string>();
     let validLineCount = 0;
     let totalWordCount = 0;
     const maximumWordsPerLine = targetDurationSeconds <= 8 ? 6 : 12;
+    const forbiddenSpeaker =
+      /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|ä)hl|sprecher(?:in)?$/i;
     for (const value of dialogueValues) {
       if (!value || typeof value !== "object") continue;
       const dialogue = value as Record<string, unknown>;
@@ -242,18 +249,35 @@ function hasValidViralDialoguePlan(
       const speaker = typeof dialogue.speaker === "string" ? dialogue.speaker.trim() : "";
       const text = typeof dialogue.text === "string" ? dialogue.text.trim() : "";
       const wordCount = text.split(/\s+/).filter(Boolean).length;
-      if (!speaker || !text || wordCount > maximumWordsPerLine || text.length > 140) continue;
+      if (
+        !speaker ||
+        forbiddenSpeaker.test(speaker) ||
+        !text ||
+        wordCount > maximumWordsPerLine ||
+        text.length > 140
+      ) continue;
       speakers.add(speaker.toLocaleLowerCase("de-DE"));
       validLineCount += 1;
       totalWordCount += wordCount;
     }
 
-    const expectedSpeakers = (story.characters ?? [])
+    const bibleSpeakers = (story.productionBible?.characterBible ?? [])
       .map((character) => typeof character.name === "string" ? character.name.trim() : "")
-      .filter(Boolean)
-      .slice(0, 3);
+      .filter(Boolean);
+    const storySpeakers = (story.characters ?? [])
+      .map((character) => typeof character.name === "string" ? character.name.trim() : "")
+      .filter(Boolean);
+    const expectedSpeakers = (bibleSpeakers.length >= 2 ? bibleSpeakers : storySpeakers).slice(0, 3);
     const requiredSpeakerCount = Math.min(3, Math.max(2, expectedSpeakers.length));
     if (
+      openingDialogueValues[0] === undefined ||
+      typeof openingDialogueValues[0] !== "object" ||
+      openingDialogueValues[0] === null ||
+      (openingDialogueValues[0] as Record<string, unknown>).enabled !== true ||
+      (targetDurationSeconds > 8 && !continuationDialogueValues.some((value) =>
+        typeof value === "object" && value !== null &&
+        (value as Record<string, unknown>).enabled === true
+      )) ||
       validLineCount < requiredSpeakerCount ||
       speakers.size < requiredSpeakerCount ||
       (targetDurationSeconds <= 8 && totalWordCount > 12)
@@ -269,6 +293,13 @@ function hasValidViralDialoguePlan(
   } catch {
     return false;
   }
+}
+
+function hasValidViralDialoguePlan(
+  prompt: string,
+  targetDurationSeconds: VideoDurationSeconds,
+): boolean {
+  return hasValidDialoguePlan(prompt, targetDurationSeconds, true);
 }
 
 export async function POST(
@@ -450,14 +481,14 @@ export async function POST(
 
   if (
     voiceMode === "dialogue" &&
-    !hasValidViralDialoguePlan(prompt, targetDurationSeconds)
+    !hasValidDialoguePlan(prompt, targetDurationSeconds)
   ) {
     return NextResponse.json(
       {
         error:
-          "Der allgemeine Dialogmodus wird noch geprüft. Automatische Dialoge sind derzeit über den TikTok-Story-Modus verfügbar. Es wurde nichts berechnet.",
+          "Der Dialogplan enthält noch kein vollständiges Gespräch mit mindestens zwei sichtbaren Figuren. Bitte lass den Filmplan neu erstellen. Es wurde nichts berechnet.",
       },
-      { status: 503 },
+      { status: 400 },
     );
   }
 

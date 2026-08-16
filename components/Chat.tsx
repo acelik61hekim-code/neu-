@@ -267,6 +267,7 @@ export default function Chat({
         await requestAiDirector(
           conversation,
           viralCharacterIds,
+          !isViralStory && voiceMode === "dialogue",
         );
 
       const assistantMessage:

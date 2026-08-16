@@ -321,10 +321,6 @@ export function StudioHome({
       value,
     );
 
-    if (voiceMode === "dialogue") {
-      setVoiceMode("auto");
-    }
-
     resetPlannedProject();
   }
 
@@ -363,15 +359,9 @@ export function StudioHome({
   }
 
   function selectVoiceMode(value: VideoVoiceMode) {
-    if (value === "dialogue") {
-      setError(
-        "Der Dialogmodus wird gerade qualitativ überarbeitet. Nutze Voice-over für eine durchgehend stabile Stimme.",
-      );
-      return;
-    }
-
     if (value === voiceMode) return;
     setVoiceMode(value);
+    if (value !== "voiceover") setVoiceoverText("");
     resetPlannedProject();
   }
 
@@ -1077,11 +1067,7 @@ export function StudioHome({
                       key={option.value}
                       type="button"
                       onClick={() => selectVoiceMode(option.value)}
-                      disabled={
-                        loading ||
-                        previewLoading ||
-                        option.value === "dialogue"
-                      }
+                      disabled={loading || previewLoading}
                       className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
                         voiceMode === option.value
                           ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
@@ -1092,9 +1078,15 @@ export function StudioHome({
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] leading-5 text-amber-300/90">
-                  Automatische Dialoge mit festen Figurenstimmen sind im TikTok-Story-Modus verfügbar.
-                </p>
+                {voiceMode === "dialogue" ? (
+                  <p className="mt-2 text-[11px] leading-5 text-emerald-300">
+                    Mindestens zwei sichtbare Figuren sprechen abwechselnd. Jede Figur erhält eine feste Stimme; der Filmplan wird vor der Zahlung automatisch geprüft.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                    Dialog erzeugt ein echtes Gespräch ohne Erzähler oder Voice-over.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -1117,7 +1109,7 @@ export function StudioHome({
                   ))}
                 </div>
                 <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                  Bei Voice-over wird die durchgehend identische Studiostimme separat erzeugt und sauber mit Musik und Umgebung gemischt.
+                  Bei Dialog und Voice-over werden stabile Stimmen separat erzeugt und sauber mit Musik und Umgebung gemischt.
                 </p>
                 {voiceMode === "auto" && targetDurationSeconds > 8 ? (
                   <p className="mt-2 text-[11px] leading-5 text-zinc-500">

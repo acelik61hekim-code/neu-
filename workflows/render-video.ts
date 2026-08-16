@@ -255,10 +255,13 @@ async function prepareRecoveryFinalizationStep(jobId: string): Promise<{
     progressPercent: 92,
     errorMessage: undefined,
   });
-  const recoveryDialogueCues = buildViralDialogueCuesFromStoredPrompt(
-    job.prompt,
-    job.targetDurationSeconds,
-  );
+  const recoveryDialogueCues =
+    job.voiceMode === "dialogue" && job.nativeCharacterDialogue !== true
+      ? buildDialogueCuesFromStoredPrompt(
+          job.prompt,
+          job.targetDurationSeconds,
+        )
+      : [];
   return {
     videoUri: job.videoUri,
     duration: job.targetDurationSeconds,
@@ -321,6 +324,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   const nativeCharacterDialogue = viralStoryMode && job.nativeCharacterDialogue === true;
   const nativeDialogueAudioRetry = nativeCharacterDialogue && job.nativeDialogueAudioRetry === true;
   const trashTvReactionBoost = viralStoryMode && job.trashTvReactionBoost === true;
+  const postProducedDialogue = !viralStoryMode && job.voiceMode === "dialogue";
   const audioRecoveryFallback = !nativeCharacterDialogue && (job.manualRecoveryAttempts ?? 0) >= 2;
   const selectedAudioDirection = nativeDialogueAudioRetry
     ? "AUDIO-FILTER-SAFE NATIVE CHARACTER DIALOGUE (highest priority): Use clear, emotionally tense but controlled German conversational speech from the visible assigned character with synchronized lips. The physical acting may be extremely dramatic even while the spoken delivery remains controlled. Use quiet neutral room ambience and simple Foley only. No music, narrator, voice-over, off-screen voice, shouting, screaming, crying, whispering, breathy vocalizations, singing, profanity or threats."
@@ -330,6 +334,8 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     ? "RECOVERY AUDIO FALLBACK (highest priority): Generate only clean visual footage with quiet, neutral, non-vocal ambience and simple Foley. Do not generate dialogue, narration, singing, humming, vocalizations or music. Ignore every earlier audio or speech instruction. Exact voices are added during final post-production."
     : viralStoryMode
     ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the Veo clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
+    : postProducedDialogue
+    ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE (highest priority): Generate quiet non-vocal ambience, Foley and restrained music only. Do not synthesize audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. The visible active character performs the exact planned line with natural sentence-paced mouth, jaw, facial and body movement. A distinct fixed studio voice for each character is mixed scene-synchronously during final finishing."
     : buildSelectedAudioDirection(
         job.audioStyle ?? "cinematic",
         job.voiceMode ?? "auto",
@@ -337,7 +343,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         job.voiceoverText ?? "",
         job.targetDurationSeconds,
       );
-  let viralDialogueCues: DialogueCue[] = [];
+  let dialogueCues: DialogueCue[] = [];
 
   if (viralStoryMode) {
     if (job.aspectRatio !== "9:16") {
@@ -418,7 +424,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         continuationPrompts: [],
       });
     });
-    viralDialogueCues = buildViralDialogueCues(
+    dialogueCues = buildViralDialogueCues(
       selectedShots.map((shot) => shot.dialogues),
       job.targetDurationSeconds,
     );
@@ -431,10 +437,10 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
       : [];
     const requiredSpeakers = Math.min(3, Math.max(2, selectedCharacterNames.length));
     const cueSpeakers = new Set(
-      viralDialogueCues.map((cue) => cue.speaker.toLocaleLowerCase("de-DE")),
+      dialogueCues.map((cue) => cue.speaker.toLocaleLowerCase("de-DE")),
     );
     if (
-      viralDialogueCues.length < requiredSpeakers ||
+      dialogueCues.length < requiredSpeakers ||
       cueSpeakers.size < requiredSpeakers ||
       !selectedCharacterNames.every((name) => {
         const fullName = name.toLocaleLowerCase("de-DE");
@@ -446,29 +452,85 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     }
   } else if (job.targetDurationSeconds <= 120) {
     const opening = asRecord(moviePlan.opening);
+    const openingDialogueTurns = Array.isArray(opening.dialogueTurns)
+      ? opening.dialogueTurns.map(asRecord)
+      : [];
+    const openingDialogues = [asRecord(opening.dialogue), ...openingDialogueTurns];
     const safeOpening = {
       ...opening,
+      dialogue: postProducedDialogue
+        ? {
+            enabled: false,
+            speaker: "",
+            text: "",
+            language: "",
+            voiceDirection: "",
+          }
+        : opening.dialogue,
+      dialogueTurns: postProducedDialogue ? [] : opening.dialogueTurns,
       veoPrompt: removeVisibleTextRenderingInstructions(
         readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
       ),
     };
-    const openingPrompt = buildOpeningPrompt(
-      safeOpening,
-      job.aspectRatio,
-      job.editingStyle,
-      selectedAudioDirection,
-    );
-    const rawContinuations = Array.isArray(moviePlan.continuations) ? moviePlan.continuations : [];
-    const continuationPrompts = rawContinuations.map((item) => [
-      buildMovieContinuationPrompt(
-        story as unknown as import("@/types/story").Story,
-        item as import("@/types/story").MovieContinuation,
+    const openingPrompt = [
+      buildOpeningPrompt(
+        safeOpening,
+        job.aspectRatio,
+        job.editingStyle,
+        selectedAudioDirection,
       ),
-      selectedAudioDirection,
-    ].join("\n\n"));
+      postProducedDialogue
+        ? buildViralVisualDialogueDirection(openingDialogues)
+        : "",
+    ].filter(Boolean).join("\n\n");
+    const rawContinuations = Array.isArray(moviePlan.continuations) ? moviePlan.continuations : [];
+    const continuationDialogueShots: Record<string, unknown>[][] = [];
+    const continuationPrompts = rawContinuations.map((item) => {
+      const continuation = asRecord(item);
+      const turns = Array.isArray(continuation.dialogueTurns)
+        ? continuation.dialogueTurns.map(asRecord)
+        : [];
+      const dialogues = [asRecord(continuation.dialogue), ...turns];
+      continuationDialogueShots.push(dialogues);
+      const safeContinuation = postProducedDialogue
+        ? {
+            ...continuation,
+            dialogue: {
+              enabled: false,
+              speaker: "",
+              text: "",
+              language: "",
+              voiceDirection: "",
+            },
+            dialogueTurns: [],
+          }
+        : continuation;
+      return [
+        buildMovieContinuationPrompt(
+          story as unknown as import("@/types/story").Story,
+          safeContinuation as unknown as import("@/types/story").MovieContinuation,
+        ),
+        postProducedDialogue
+          ? buildViralVisualDialogueDirection(dialogues)
+          : "",
+        selectedAudioDirection,
+      ].filter(Boolean).join("\n\n");
+    });
     const expected = extensionCountFor(job.targetDurationSeconds);
     if (continuationPrompts.length !== expected) {
       throw new Error(`MoviePlan enthält ${continuationPrompts.length} Extensions; erwartet werden ${expected}.`);
+    }
+    if (postProducedDialogue) {
+      dialogueCues = buildExtensionDialogueCues(
+        [openingDialogues, ...continuationDialogueShots],
+        job.targetDurationSeconds,
+      );
+      const dialogueSpeakers = new Set(
+        dialogueCues.map((cue) => cue.speaker.toLocaleLowerCase("de-DE")),
+      );
+      if (dialogueCues.length < 2 || dialogueSpeakers.size < 2) {
+        throw new Error("Der Dialogmodus enthält kein vollständiges Gespräch zwischen mindestens zwei Figuren.");
+      }
     }
     segments.push({ chapterNumber: 1, targetSeconds: job.targetDurationSeconds, openingPrompt, continuationPrompts });
   } else {
@@ -519,7 +581,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     totalExtensions,
     finishing: {
       voiceoverText: viralStoryMode ? undefined : job.voiceoverText,
-      dialogueCues: nativeCharacterDialogue ? undefined : viralDialogueCues,
+      dialogueCues: nativeCharacterDialogue ? undefined : dialogueCues,
       closingText: job.closingText,
       spokenLanguage: job.spokenLanguage,
     },
@@ -942,17 +1004,40 @@ function readViralDialogue(value: Record<string, unknown>): {
   return { speaker, text, voiceDirection };
 }
 
-function getFixedVoiceName(speaker: string): string {
+const DIALOGUE_VOICES = [
+  "Kore",
+  "Puck",
+  "Aoede",
+  "Charon",
+  "Orus",
+  "Leda",
+  "Fenrir",
+  "Zephyr",
+] as const;
+
+function getFixedVoiceName(
+  speaker: string,
+  assignments: Map<string, string>,
+): string {
   const normalized = speaker.toLocaleLowerCase("de-DE");
+  const existing = assignments.get(normalized);
+  if (existing) return existing;
+
   const character = VIRAL_CHARACTERS.find((candidate) =>
     candidate.name.toLocaleLowerCase("de-DE") === normalized ||
     candidate.shortName.toLocaleLowerCase("de-DE") === normalized,
   );
-  if (character) return character.voiceName;
+  if (character) {
+    assignments.set(normalized, character.voiceName);
+    return character.voiceName;
+  }
 
-  const fallbackVoices = ["Kore", "Puck", "Aoede"];
+  const usedVoices = new Set(assignments.values());
+  const unusedVoice = DIALOGUE_VOICES.find((voice) => !usedVoices.has(voice));
   const hash = [...normalized].reduce((sum, characterValue) => sum + characterValue.charCodeAt(0), 0);
-  return fallbackVoices[hash % fallbackVoices.length];
+  const voiceName = unusedVoice ?? DIALOGUE_VOICES[hash % DIALOGUE_VOICES.length];
+  assignments.set(normalized, voiceName);
+  return voiceName;
 }
 
 function buildViralDialogueCues(
@@ -960,6 +1045,7 @@ function buildViralDialogueCues(
   targetDurationSeconds: number,
 ): DialogueCue[] {
   const cues: DialogueCue[] = [];
+  const voiceAssignments = new Map<string, string>();
   dialogueShots.forEach((values, shotIndex) => {
     const dialogues = values
       .map(readViralDialogue)
@@ -982,7 +1068,7 @@ function buildViralDialogueCues(
         maximumDurationSeconds: Math.min(6.6, Math.max(1.2, turnWindowSeconds - 0.15)),
         speaker: dialogue.speaker,
         text: dialogue.text,
-        voiceName: getFixedVoiceName(dialogue.speaker),
+        voiceName: getFixedVoiceName(dialogue.speaker, voiceAssignments),
         voiceDirection: dialogue.voiceDirection,
       });
     });
@@ -990,13 +1076,55 @@ function buildViralDialogueCues(
   return cues;
 }
 
-function buildViralDialogueCuesFromStoredPrompt(
+function buildExtensionDialogueCues(
+  dialogueShots: readonly (readonly Record<string, unknown>[])[],
+  targetDurationSeconds: number,
+): DialogueCue[] {
+  const cues: DialogueCue[] = [];
+  const voiceAssignments = new Map<string, string>();
+
+  dialogueShots.forEach((values, shotIndex) => {
+    const dialogues = values
+      .map(readViralDialogue)
+      .filter((dialogue): dialogue is NonNullable<ReturnType<typeof readViralDialogue>> =>
+        dialogue !== null,
+      );
+    if (dialogues.length === 0) return;
+
+    const shotStartSeconds = shotIndex === 0 ? 0 : 8 + (shotIndex - 1) * 7;
+    const shotDurationSeconds = shotIndex === 0 ? 8 : 7;
+    const firstCueStartSeconds = shotStartSeconds + 0.45;
+    const availableEndSeconds = Math.min(
+      shotStartSeconds + shotDurationSeconds - 0.3,
+      targetDurationSeconds + 1.2,
+    );
+    const dialogueWindowSeconds = Math.max(
+      1.2,
+      availableEndSeconds - firstCueStartSeconds,
+    );
+    const turnWindowSeconds = dialogueWindowSeconds / dialogues.length;
+
+    dialogues.forEach((dialogue, turnIndex) => {
+      cues.push({
+        startSeconds: firstCueStartSeconds + turnIndex * turnWindowSeconds,
+        maximumDurationSeconds: Math.min(6.2, Math.max(1.1, turnWindowSeconds - 0.12)),
+        speaker: dialogue.speaker,
+        text: dialogue.text,
+        voiceName: getFixedVoiceName(dialogue.speaker, voiceAssignments),
+        voiceDirection: dialogue.voiceDirection,
+      });
+    });
+  });
+
+  return cues;
+}
+
+function buildDialogueCuesFromStoredPrompt(
   prompt: string,
   targetDurationSeconds: number,
 ): DialogueCue[] {
   try {
     const story = JSON.parse(prompt) as Record<string, unknown>;
-    if (story.creationMode !== "viral-story") return [];
     const moviePlan = asRecord(story.moviePlan);
     const opening = asRecord(moviePlan.opening);
     const continuations = Array.isArray(moviePlan.continuations)
@@ -1014,11 +1142,14 @@ function buildViralDialogueCuesFromStoredPrompt(
           : []),
       ]),
     ];
-    const shotCount = Math.max(1, Math.ceil(targetDurationSeconds / 8));
-    return buildViralDialogueCues(
-      selectEvenlyIncludingFinal(dialogueShots, shotCount),
-      targetDurationSeconds,
-    );
+    if (story.creationMode === "viral-story") {
+      const shotCount = Math.max(1, Math.ceil(targetDurationSeconds / 8));
+      return buildViralDialogueCues(
+        selectEvenlyIncludingFinal(dialogueShots, shotCount),
+        targetDurationSeconds,
+      );
+    }
+    return buildExtensionDialogueCues(dialogueShots, targetDurationSeconds);
   } catch {
     return [];
   }
