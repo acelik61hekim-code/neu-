@@ -30,6 +30,7 @@ type VideoStatus = {
   voiceMode?: "auto" | "dialogue" | "voiceover" | "no-voice";
   spokenLanguage?: "auto" | "de" | "en";
   nativeCharacterDialogue?: boolean;
+  trashTvReactionBoost?: boolean;
   hasReferenceImage?: boolean;
   currentChapter?: number;
   totalChapters?: number;
@@ -116,7 +117,10 @@ function SuccessContent() {
   const [recoveryState, setRecoveryState] = useState<"idle" | "working" | "error">("idle");
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
-  const recoverPaidVideo = async (nativeCharacterDialogue = false) => {
+  const recoverPaidVideo = async (
+    nativeCharacterDialogue = false,
+    trashTvReactionBoost = false,
+  ) => {
     if (!jobId || !sessionId || recoveryState === "working") return;
 
     setRecoveryState("working");
@@ -132,6 +136,7 @@ function SuccessContent() {
           retry_generation: true,
           skip_reference_image: true,
           native_character_dialogue: nativeCharacterDialogue,
+          trash_tv_reaction_boost: trashTvReactionBoost,
         }),
       });
       const data = (await response.json()) as { error?: string };
@@ -232,6 +237,7 @@ function SuccessContent() {
         connectionError={connectionError}
         onRecover={() => void recoverPaidVideo(videoStatus.nativeCharacterDialogue === true)}
         onNativeDialogue={() => void recoverPaidVideo(true)}
+        onReactionBoost={() => void recoverPaidVideo(true, true)}
         recoveryState={recoveryState}
         recoveryError={recoveryError}
       />
@@ -273,6 +279,7 @@ function StatusCard({
   connectionError,
   onRecover,
   onNativeDialogue,
+  onReactionBoost,
   recoveryState = "idle",
   recoveryError,
 }: {
@@ -282,6 +289,7 @@ function StatusCard({
   connectionError?: string | null;
   onRecover?: () => void;
   onNativeDialogue?: () => void;
+  onReactionBoost?: () => void;
   recoveryState?: "idle" | "working" | "error";
   recoveryError?: string | null;
 }) {
@@ -425,6 +433,25 @@ function StatusCard({
                   )}
                 </div>
               )}
+              {videoStatus.nativeCharacterDialogue &&
+                !videoStatus.trashTvReactionBoost &&
+                onReactionBoost && (
+                  <div>
+                    <button
+                      className="mt-3 inline-flex items-center justify-center rounded-xl border border-fuchsia-400/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={recoveryState === "working"}
+                      onClick={onReactionBoost}
+                      type="button"
+                    >
+                      {recoveryState === "working"
+                        ? "Streit-Fassung wird gestartet …"
+                        : "Mehr Streit & übertriebene Reaktionen"}
+                    </button>
+                    {recoveryError && (
+                      <p className="mt-3 text-xs leading-5 text-red-200/80">{recoveryError}</p>
+                    )}
+                  </div>
+                )}
             </div>
           )}
 

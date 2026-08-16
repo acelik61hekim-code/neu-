@@ -2231,6 +2231,8 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
       ? `
 VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 
+- In jedem 8-Sekunden-Abschnitt wird aktiv gestritten. Plane mindestens zwei klar sichtbare übertriebene Reaktionen: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder große Doppeltakes.
+- Niemand steht ruhig erklärend herum. Nutze schnelle Gegenaufnahmen und enge Reaktionsbilder; der Streit bleibt ohne körperliche Gewalt.
 - Dies ist ausdrücklich eine vertikale Social-Story für TikTok, Reels und Shorts.
 - Inszeniere die Geschichte als zugespitztes TikTok-Trash-TV mit Beziehungskonflikt, Vorwürfen, Geheimnissen, starken Reaktionen, Eskalation, Enthüllung und dramatischem Payoff.
 - Keine Dokumentation, keine Reportage, keine Wissensvermittlung, kein Interviewformat und kein erklärender Moderatorstil.

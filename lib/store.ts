@@ -238,6 +238,9 @@ export type VideoJob = {
   nativeDialogueAudioRetry?:
     boolean;
 
+  trashTvReactionBoost?:
+    boolean;
+
   maxRetries?:
     number;
 

@@ -122,6 +122,7 @@ export function createViralStoryPrompt(
     `Erstelle automatisch eine originelle, leicht verständliche und emotionale Kurzgeschichte zum Thema: ${topic}.`,
     "Nutze ausschließlich die folgenden ausgewählten Hauptfiguren und verändere niemals ihre Fruchtart, Gesichter, Körperproportionen, Kleidung, Farben oder Namen:",
     characterList,
+    "In jeder Szene wird sichtbar gestritten. Plane mindestens zwei übertriebene Reaktionen pro acht Sekunden: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder riesige Doppeltakes. Niemand steht ruhig erklärend herum; der Streit bleibt ohne körperliche Gewalt.",
     "Erzähle wie überzeichnetes TikTok-Trash-TV: ein sofortiger zwischenmenschlicher Konflikt, Vorwürfe, Geheimnisse, starke Reaktionen, eine dramatische Enthüllung und ein abgeschlossener überraschender Höhepunkt. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
     "Die Handlung braucht in den ersten zwei Sekunden einen sofort verständlichen visuellen Hook, danach klare Eskalationen, eine starke Enthüllung und ein abgeschlossenes überraschendes Ende.",
     "Die Figuren handeln wie erwachsene Menschen. Keine Kindergeschichte, keine Gewalt, keine Sexualisierung und keine Ähnlichkeit zu bekannten geschützten Figuren.",

@@ -21,6 +21,7 @@ export async function POST(req: NextRequest) {
     retry_generation?: unknown;
     skip_reference_image?: unknown;
     native_character_dialogue?: unknown;
+    trash_tv_reaction_boost?: unknown;
   };
   try {
     body = await req.json();
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
   const retryGeneration = body.retry_generation === true;
   const skipReferenceImage = body.skip_reference_image === true;
   const nativeCharacterDialogue = body.native_character_dialogue === true;
+  const trashTvReactionBoost = body.trash_tv_reaction_boost === true;
 
   if (body.test_ffmpeg === true) {
     if (job.status !== "done" || !job.videoUri?.startsWith("blob:") || job.targetDurationSeconds !== 8) {
@@ -125,7 +127,13 @@ export async function POST(req: NextRequest) {
     const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
       job.errorMessage ?? providerFailureMessage ?? "",
     );
-    const maximumRecoveryAttempts = nativeCharacterDialogue ? 4 : audioFailureCanRetry ? 2 : 1;
+    const maximumRecoveryAttempts = trashTvReactionBoost
+      ? 5
+      : nativeCharacterDialogue
+        ? 4
+        : audioFailureCanRetry
+          ? 2
+          : 1;
     if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
         { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },
@@ -146,6 +154,7 @@ export async function POST(req: NextRequest) {
       nativeCharacterDialogue &&
       job.nativeCharacterDialogue === true &&
       audioFailureCanRetry &&
+      !trashTvReactionBoost &&
       Array.isArray(job.chapterVideoUris) &&
       job.chapterVideoUris.length > 0;
 
@@ -168,7 +177,10 @@ export async function POST(req: NextRequest) {
       completedAt: undefined,
       manualRecoveryAttempts: previousRecoveryAttempts + 1,
       nativeCharacterDialogue,
-      nativeDialogueAudioRetry: nativeCharacterDialogue && audioFailureCanRetry,
+      nativeDialogueAudioRetry:
+        nativeCharacterDialogue &&
+        (audioFailureCanRetry || job.nativeDialogueAudioRetry === true),
+      trashTvReactionBoost,
       referenceImageUrl: skipReferenceImage ? undefined : job.referenceImageUrl,
       referenceImageMimeType: skipReferenceImage ? undefined : job.referenceImageMimeType,
     });
@@ -186,6 +198,7 @@ export async function POST(req: NextRequest) {
           recoveredFromPaidOrder: true,
           referenceImageSkipped: skipReferenceImage,
           nativeCharacterDialogue,
+          trashTvReactionBoost,
           jobId,
         },
         { status: 202 },

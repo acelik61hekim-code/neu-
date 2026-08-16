@@ -320,9 +320,10 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   const viralStoryMode = story.creationMode === "viral-story";
   const nativeCharacterDialogue = viralStoryMode && job.nativeCharacterDialogue === true;
   const nativeDialogueAudioRetry = nativeCharacterDialogue && job.nativeDialogueAudioRetry === true;
+  const trashTvReactionBoost = viralStoryMode && job.trashTvReactionBoost === true;
   const audioRecoveryFallback = !nativeCharacterDialogue && (job.manualRecoveryAttempts ?? 0) >= 2;
   const selectedAudioDirection = nativeDialogueAudioRetry
-    ? "AUDIO-FILTER-SAFE NATIVE CHARACTER DIALOGUE (highest priority): Use ordinary, calm, clear German conversational speech from the visible assigned character with synchronized lips. Use quiet neutral room ambience and simple Foley only. No music, narrator, voice-over, off-screen voice, shouting, screaming, crying, whispering, breathy vocalizations, singing, profanity or threats."
+    ? "AUDIO-FILTER-SAFE NATIVE CHARACTER DIALOGUE (highest priority): Use clear, emotionally tense but controlled German conversational speech from the visible assigned character with synchronized lips. The physical acting may be extremely dramatic even while the spoken delivery remains controlled. Use quiet neutral room ambience and simple Foley only. No music, narrator, voice-over, off-screen voice, shouting, screaming, crying, whispering, breathy vocalizations, singing, profanity or threats."
     : nativeCharacterDialogue
     ? "NATIVE ON-SCREEN CHARACTER DIALOGUE (highest priority): The visible active character speaks the assigned exact line audibly and naturally in German. Synchronize the voice with that character's mouth, face, emotion and body performance. Only the currently visible assigned character may speak. Voice consistency between separate shots is less important than clear in-scene speech. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
     : audioRecoveryFallback
@@ -376,7 +377,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         nativeCharacterDialogue,
         nativeDialogueAudioRetry,
       ),
-      buildViralTrashTvDirection(),
+      buildViralTrashTvDirection(trashTvReactionBoost),
       "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
     ].join("\n\n");
 
@@ -399,6 +400,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
             selectedAudioDirection,
             nativeCharacterDialogue,
             nativeDialogueAudioRetry,
+            trashTvReactionBoost,
           ),
           dialogues: [asRecord(continuation.dialogue), ...dialogueTurns],
         };
@@ -1091,13 +1093,18 @@ function buildViralReferenceDirection(story: Record<string, unknown>): string {
   ].filter(Boolean).join("\n");
 }
 
-function buildViralTrashTvDirection(): string {
+function buildViralTrashTvDirection(reactionBoost = false): string {
   return [
     "TIKTOK TRASH-TV DRAMA (mandatory):",
     "Stage an exaggerated interpersonal reality-show confrontation between the fruit characters: accusation, secret, betrayal, jealousy or alliance, escalating reactions, a sharp reveal and a dramatic payoff.",
-    "Favor confrontational eyelines, expressive reaction close-ups, awkward pauses, shocked gestures and socially charged staging that reads instantly on a phone screen.",
+    "Every shot contains an active visible verbal argument, never a calm explanatory conversation. Characters interrupt each other, point accusingly, throw their hands up, invade personal space without touching, turn away in outrage, snap back, roll their eyes, exchange hostile side-eye, recoil in disbelief and perform huge double-takes.",
+    "Include at least two unmistakably exaggerated physical reaction beats in every 8-second shot. Use rapid shot-reverse-shot coverage and tight reaction close-ups so the conflict reads instantly on a phone screen.",
+    "Nobody stands neutrally or behaves like a presenter. Keep the dispute non-violent: no hitting, pushing, injury or physical harm.",
+    reactionBoost
+      ? "MAXIMUM REACTION BOOST: Push facial expressions, gestures, timing and confrontational body language far beyond everyday realism, like the loudest peak moment of sensational reality television. The characters visibly argue throughout the shot and finish on a giant shocked, offended or triumphant reaction."
+      : "",
     "This is fictional entertainment, never a documentary, report, educational explainer, interview, presenter segment or observational nature film.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 function buildViralIndependentShotPrompt(
@@ -1108,6 +1115,7 @@ function buildViralIndependentShotPrompt(
   selectedAudioDirection: string,
   nativeCharacterDialogue: boolean,
   nativeDialogueAudioRetry: boolean,
+  trashTvReactionBoost: boolean,
 ): string {
   const title = typeof story.title === "string" ? story.title : "TikTok story";
   const summary = typeof story.summary === "string" ? story.summary : "";
@@ -1121,7 +1129,7 @@ function buildViralIndependentShotPrompt(
     `STORY TITLE: ${title}`,
     summary ? `COMPLETE STORY CONTEXT: ${summary}` : "",
     buildViralReferenceDirection(story),
-    buildViralTrashTvDirection(),
+    buildViralTrashTvDirection(trashTvReactionBoost),
     typeof continuation.storyBeat === "string" ? `STORY BEAT: ${continuation.storyBeat}` : "",
     typeof continuation.emotionalBeat === "string" ? `EMOTION: ${continuation.emotionalBeat}` : "",
     typeof continuation.actionContinuation === "string" ? `VISIBLE ACTION: ${continuation.actionContinuation}` : "",
