@@ -364,6 +364,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         readString(opening.veoPrompt, "moviePlan.opening.veoPrompt fehlt."),
       ),
     };
+    const shotCount = Math.max(1, Math.ceil(job.targetDurationSeconds / 8));
     const openingPrompt = [
       buildOpeningPrompt(
         safeOpening,
@@ -378,6 +379,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         nativeDialogueAudioRetry,
       ),
       buildViralTrashTvDirection(trashTvReactionBoost),
+      buildViralMicrodramaBeatDirection(1, shotCount),
       "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
     ].join("\n\n");
 
@@ -406,7 +408,6 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         };
       }),
     ];
-    const shotCount = Math.max(1, Math.ceil(job.targetDurationSeconds / 8));
     const selectedShots = selectEvenlyIncludingFinal(candidateShots, shotCount);
 
     selectedShots.forEach((shot, index) => {
@@ -1107,6 +1108,40 @@ function buildViralTrashTvDirection(reactionBoost = false): string {
   ].filter(Boolean).join("\n");
 }
 
+function buildViralMicrodramaBeatDirection(
+  shotNumber: number,
+  totalShots: number,
+): string {
+  let storyPhase: string;
+
+  if (totalShots <= 1) {
+    storyPhase =
+      "Compress the full arc into this shot: scandal cold open, visible evidence, direct confrontation, counter-reveal and an unresolved final sting.";
+  } else if (shotNumber === 1) {
+    storyPhase =
+      "COLD OPEN: Start inside the scandal or its consequence. Show the accusation and visible evidence immediately; never begin with backstory, recap or calm setup.";
+  } else if (shotNumber === totalShots) {
+    storyPhase =
+      "CLIFFHANGER: Give one partial answer, then reveal a bigger secret or new piece of evidence. Finish on a huge shocked reaction, an opening door, an incriminating prop or a half-revealed secret. Do not resolve, reconcile or settle into a calm ending.";
+  } else if (shotNumber === totalShots - 1) {
+    storyPhase =
+      "CONFRONTATION: Force a face-to-face accusation, interruption and counter-reveal. Reverse who appears guilty and push reactions to their highest level so far.";
+  } else if (shotNumber === 2) {
+    storyPhase =
+      "DISCOVERY: A character overhears, catches or finds a concrete piece of evidence. Turn suspicion into a direct accusation and end with an unexpected denial or threat to expose more.";
+  } else {
+    storyPhase =
+      "ESCALATION: Break an alliance, expose a contradiction or introduce a witness from the locked cast. Every action must tighten the same central scandal.";
+  }
+
+  return [
+    `VIRAL MICRODRAMA BEAT ${shotNumber}/${totalShots} (mandatory):`,
+    storyPhase,
+    "Internal 8-second rhythm: 0.0–1.5s visible hook; 1.5–4.0s accusation or evidence; 4.0–6.0s extreme reaction close-up; 6.0–8.0s escalation or surprise sting.",
+    "Keep every spoken line punchy and no longer than eight words. The visible character speaks it directly with synchronized lips; no narrator and no voice-over.",
+  ].join("\n");
+}
+
 function buildViralIndependentShotPrompt(
   story: Record<string, unknown>,
   continuation: Record<string, unknown>,
@@ -1130,6 +1165,7 @@ function buildViralIndependentShotPrompt(
     summary ? `COMPLETE STORY CONTEXT: ${summary}` : "",
     buildViralReferenceDirection(story),
     buildViralTrashTvDirection(trashTvReactionBoost),
+    buildViralMicrodramaBeatDirection(shotNumber, totalShots),
     typeof continuation.storyBeat === "string" ? `STORY BEAT: ${continuation.storyBeat}` : "",
     typeof continuation.emotionalBeat === "string" ? `EMOTION: ${continuation.emotionalBeat}` : "",
     typeof continuation.actionContinuation === "string" ? `VISIBLE ACTION: ${continuation.actionContinuation}` : "",
@@ -1143,7 +1179,7 @@ function buildViralIndependentShotPrompt(
     "Create a fresh, story-appropriate composition. Do not repeat the neutral reference-card pose or studio backdrop.",
     "The action must be instantly readable on a phone screen and advance the story without a visual reset or repeated beat.",
     isFinalShot
-      ? "Deliver the complete visual payoff early in this shot and end on a stable, emotionally clear resting frame."
+      ? "Deliver one partial payoff, then finish on an unresolved visual cliffhanger and the strongest reaction of the episode. Never use a calm resting frame or complete reconciliation."
       : "End on a strong reaction, reveal or motivated action that cuts cleanly to the next shot.",
     selectedAudioDirection,
     nativeCharacterDialogue

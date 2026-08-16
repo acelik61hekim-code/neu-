@@ -92,12 +92,12 @@ export const VIRAL_CHARACTERS = [
 ] as const satisfies readonly ViralCharacter[];
 
 export const VIRAL_STORY_TOPICS = [
-  "Fremdgehen und überraschende Enthüllung",
-  "Eifersucht mit unerwartetem Ende",
-  "Geheimes Doppelleben",
-  "Freundschaft wird auf die Probe gestellt",
-  "Verwechslung mit großem Twist",
-  "Peinliches Geheimnis wird öffentlich",
+  "Ein geheimer Flirt wird vor allen aufgedeckt",
+  "Eine heimliche Allianz wird verraten",
+  "Ein Beweisstück taucht im schlimmsten Moment auf",
+  "Ein geheimes Doppelleben fliegt auf",
+  "Ein Erbe verändert plötzlich alle Machtverhältnisse",
+  "Eine falsche Identität wird entlarvt",
 ] as const;
 
 export function getViralCharacters(ids: readonly string[]): ViralCharacter[] {
@@ -122,12 +122,15 @@ export function createViralStoryPrompt(
     `Erstelle automatisch eine originelle, leicht verständliche und emotionale Kurzgeschichte zum Thema: ${topic}.`,
     "Nutze ausschließlich die folgenden ausgewählten Hauptfiguren und verändere niemals ihre Fruchtart, Gesichter, Körperproportionen, Kleidung, Farben oder Namen:",
     characterList,
+    "Gib jeder Figur eine klare Trash-TV-Rolle, die aus ihrer Persönlichkeit entsteht: betrogene Hauptfigur, Provokateur, Geheimnisträger, Versuchung oder zweifelhafter Verbündeter. Lege eine Beziehung, ein verborgenes Geheimnis und ein sichtbares Beweisstück fest.",
     "In jeder Szene wird sichtbar gestritten. Plane mindestens zwei übertriebene Reaktionen pro acht Sekunden: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder riesige Doppeltakes. Niemand steht ruhig erklärend herum; der Streit bleibt ohne körperliche Gewalt.",
-    "Erzähle wie überzeichnetes TikTok-Trash-TV: ein sofortiger zwischenmenschlicher Konflikt, Vorwürfe, Geheimnisse, starke Reaktionen, eine dramatische Enthüllung und ein abgeschlossener überraschender Höhepunkt. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
-    "Die Handlung braucht in den ersten zwei Sekunden einen sofort verständlichen visuellen Hook, danach klare Eskalationen, eine starke Enthüllung und ein abgeschlossenes überraschendes Ende.",
+    "Erzähle wie eine zugespitzte, fortsetzbare TikTok-Microdrama-Serie: Skandal, Vorwürfe, Geheimnisse, starke Reaktionen, Gegenenthüllung und Cliffhanger. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
+    "Verbindliche Dramaturgie für ungefähr 30 Sekunden: Szene 1 beginnt ohne Einleitung mitten im Skandal; Szene 2 zeigt die Entdeckung oder das Beweisstück; Szene 3 bringt direkte Konfrontation und Gegenenthüllung; Szene 4 liefert eine Teilantwort und öffnet sofort ein größeres Geheimnis als Cliffhanger.",
+    "Jeder achtsekündige Abschnitt hat eigene Mini-Beats: 0–1,5 Sekunden sichtbarer Hook, 1,5–4 Sekunden Vorwurf oder Beweis, 4–6 Sekunden extremes Reaktions-Close-up, 6–8 Sekunden Eskalation oder überraschender Sting.",
+    "Die ersten zwei Sekunden zeigen bereits die Konsequenz oder den Skandal, nicht Vorgeschichte oder Zusammenfassung. Das Ende bleibt bewusst offen und serienfähig: eine Tür geht auf, ein neues Beweisstück erscheint, eine Figur reagiert geschockt oder ein Geheimnis wird nur halb enthüllt. Kein ruhiges Abschlussbild und keine vollständige Versöhnung.",
     "Die Figuren handeln wie erwachsene Menschen. Keine Kindergeschichte, keine Gewalt, keine Sexualisierung und keine Ähnlichkeit zu bekannten geschützten Figuren.",
     "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte. Schreibe kurze, natürliche Dialoge, in denen alle ausgewählten Figuren mindestens einmal sprechen. Die jeweils sichtbare Figur spricht ihren Satz selbst hörbar und lippensynchron in der Szene; unterschiedliche Stimmen zwischen Einstellungen sind akzeptabel.",
-    "Beginne den Dialog bereits im ersten Story-Beat. Die Sätze müssen einfach aussprechbar, höchstens zwölf Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.",
+    "Beginne den Dialog bereits im ersten Story-Beat. Die Sätze müssen einfach aussprechbar, höchstens acht Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.",
     "Erfinde alle fehlenden Details selbst und schließe die Planung ohne Rückfrage ab.",
   ].join("\n\n");
 }

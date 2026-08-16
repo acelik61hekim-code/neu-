@@ -2234,22 +2234,24 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - In jedem 8-Sekunden-Abschnitt wird aktiv gestritten. Plane mindestens zwei klar sichtbare übertriebene Reaktionen: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder große Doppeltakes.
 - Niemand steht ruhig erklärend herum. Nutze schnelle Gegenaufnahmen und enge Reaktionsbilder; der Streit bleibt ohne körperliche Gewalt.
 - Dies ist ausdrücklich eine vertikale Social-Story für TikTok, Reels und Shorts.
-- Inszeniere die Geschichte als zugespitztes TikTok-Trash-TV mit Beziehungskonflikt, Vorwürfen, Geheimnissen, starken Reaktionen, Eskalation, Enthüllung und dramatischem Payoff.
+- Inszeniere die Geschichte als fortsetzbares TikTok-Microdrama im zugespitzten Trash-TV-Stil: Beziehungskonflikt, Vorwürfe, Geheimnisse, starke Reaktionen, Gegenenthüllung und Cliffhanger.
 - Keine Dokumentation, keine Reportage, keine Wissensvermittlung, kein Interviewformat und kein erklärender Moderatorstil.
 - Die oben angegebenen Figuren sind eine geschlossene Besetzung. Erfinde keine weiteren Hauptfiguren.
+- Weise jeder Figur passend zu ihrer Persönlichkeit eine klare Rolle zu: betrogene Hauptfigur, Provokateur, Geheimnisträger, Versuchung oder zweifelhafter Verbündeter. Definiere ihre Beziehung, ein verborgenes Geheimnis und ein sichtbares Beweisstück.
 - Kopiere jede vollständige Figurenbeschreibung unverändert in productionBible.characterBible.fixedAppearance.
 - Fruchtart, Kopfform, Gesicht, Augen, Körperbau, Outfit, Farben, Schuhe und Accessoires sind unveränderliche Identitätsmerkmale.
 - Nutze maximal drei sichtbare Hauptfiguren pro Einstellung. Zeige nur Figuren, die für den jeweiligen Story-Beat nötig sind.
-- Die ersten zwei Sekunden müssen den Konflikt ohne Erklärung visuell verständlich machen.
-- Alle 6 bis 10 Sekunden braucht die Handlung eine neue Information, Konsequenz oder glaubwürdige Wendung.
-- Der letzte Story-Beat liefert eine klare Auflösung und ein visuell ruhiges Schlussbild.
+- Die ersten zwei Sekunden beginnen ohne Einleitung mitten in der Konsequenz oder im Skandal. Keine Vorgeschichte und keine Zusammenfassung.
+- Jeder 8-Sekunden-Abschnitt enthält diese internen Mini-Beats: 0–1,5 Sekunden sichtbarer Hook, 1,5–4 Sekunden Vorwurf oder Beweis, 4–6 Sekunden extremes Reaktions-Close-up, 6–8 Sekunden Eskalation oder überraschender Sting.
+- Bei ungefähr 30 Sekunden gilt verbindlich: Beat 1 Skandal-Cold-Open, Beat 2 Entdeckung oder Beweis, Beat 3 direkte Konfrontation plus Gegenenthüllung, Beat 4 Teilantwort plus größeres neues Geheimnis.
+- Der letzte Story-Beat endet bewusst ungelöst und serienfähig: eine Tür geht auf, ein neues Beweisstück erscheint, eine Figur reagiert geschockt oder ein Geheimnis wird nur halb enthüllt. Kein ruhiges Abschlussbild, keine vollständige Versöhnung und keine erklärende Zusammenfassung.
 - moviePlan.opening.dialogue.enabled ist true. Die erste ausgewählte Figur spricht sofort einen kurzen Hook-Satz.
 - moviePlan.opening.dialogueTurns ist ein Array für zusätzliche Sprecherwechsel innerhalb desselben 8-Sekunden-Clips.
 ${targetDurationSeconds <= 8
     ? "- Bei genau 8 Sekunden enthält opening.dialogue die erste Zeile und opening.dialogueTurns genau eine weitere aktivierte Zeile pro verbleibender ausgewählter Figur. Keine Zeile wiederholen. Jede Zeile hat höchstens sechs Wörter; alle Zeilen zusammen höchstens zwölf Wörter."
     : "- Bei längeren Videos bleibt opening.dialogueTurns leer; plane die weiteren Sprecher in den dialogue-Feldern der folgenden Abschnitte ein."}
 - Danach wechseln sich die ausgewählten Figuren natürlich ab. Jede ausgewählte Figur muss mindestens einmal mit ihrem exakten Namen als speaker sprechen.
-- Jeder Dialogsatz umfasst höchstens zwölf einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
+- Jeder Dialogsatz umfasst höchstens acht einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
 - Die jeweils sichtbare aktive Figur spricht ihren exakten Satz selbst hörbar und lippensynchron im Videoclip. Unterschiedliche Stimmen zwischen getrennten Einstellungen sind akzeptabel.
 - Kein Erzähler, kein Voice-over, keine Offscreen-Sprache und keine später darübergelegte Dialogspur.
 - Keine Untertitel, keine sichtbaren Sprechblasen und keine Fantasieschrift.
