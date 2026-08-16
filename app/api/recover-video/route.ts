@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
       job.errorMessage ?? providerFailureMessage ?? "",
     );
-    const maximumRecoveryAttempts = nativeCharacterDialogue ? 3 : audioFailureCanRetry ? 2 : 1;
+    const maximumRecoveryAttempts = nativeCharacterDialogue ? 4 : audioFailureCanRetry ? 2 : 1;
     if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
         { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },
@@ -142,6 +142,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ regenerating: true, starting: true, jobId }, { status: 202 });
     }
 
+    const resumeCompletedNativeSections =
+      nativeCharacterDialogue &&
+      job.nativeCharacterDialogue === true &&
+      audioFailureCanRetry &&
+      Array.isArray(job.chapterVideoUris) &&
+      job.chapterVideoUris.length > 0;
+
     await jobStore.set(jobId, {
       ...job,
       status: "processing",
@@ -151,7 +158,7 @@ export async function POST(req: NextRequest) {
       videoUri: undefined,
       videoUrl: undefined,
       videoUrls: undefined,
-      chapterVideoUris: undefined,
+      chapterVideoUris: resumeCompletedNativeSections ? job.chapterVideoUris : undefined,
       currentOperationName: undefined,
       currentOperationType: undefined,
       currentChapter: 1,
@@ -161,6 +168,7 @@ export async function POST(req: NextRequest) {
       completedAt: undefined,
       manualRecoveryAttempts: previousRecoveryAttempts + 1,
       nativeCharacterDialogue,
+      nativeDialogueAudioRetry: nativeCharacterDialogue && audioFailureCanRetry,
       referenceImageUrl: skipReferenceImage ? undefined : job.referenceImageUrl,
       referenceImageMimeType: skipReferenceImage ? undefined : job.referenceImageMimeType,
     });

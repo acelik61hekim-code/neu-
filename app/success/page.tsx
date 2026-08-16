@@ -230,7 +230,7 @@ function SuccessContent() {
         progress={progress}
         videoStatus={videoStatus}
         connectionError={connectionError}
-        onRecover={() => void recoverPaidVideo(false)}
+        onRecover={() => void recoverPaidVideo(videoStatus.nativeCharacterDialogue === true)}
         onNativeDialogue={() => void recoverPaidVideo(true)}
         recoveryState={recoveryState}
         recoveryError={recoveryError}
