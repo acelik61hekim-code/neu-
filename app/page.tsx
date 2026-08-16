@@ -1168,7 +1168,7 @@ export function StudioHome({
                     onChange={(event) => setClosingText(event.target.value)}
                     maxLength={160}
                     rows={5}
-                    placeholder={"KI VIDEO STUDIO\nki-video-studio.vercel.app"}
+                    placeholder={"KI VIDEO STUDIO\nkivideostudio.de"}
                     disabled={loading || previewLoading}
                     className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
                   />

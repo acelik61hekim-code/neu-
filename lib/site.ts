@@ -1,5 +1,5 @@
 export const SITE_NAME = "KI Video Studio";
-export const SITE_URL = "https://ki-video-studio.vercel.app";
+export const SITE_URL = "https://kivideostudio.de";
 export const SITE_DESCRIPTION =
   "Erstelle individuelle KI-Videos, vollständige KI-Songs und professionelle KI-Bilder direkt online – einfach beschrieben und sicher bezahlt.";
 

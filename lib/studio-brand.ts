@@ -1,5 +1,5 @@
 export const STUDIO_NAME = "KI Video Studio";
-export const STUDIO_URL = "https://ki-video-studio.vercel.app";
+export const STUDIO_URL = "https://kivideostudio.de";
 
 export const STUDIO_BRAND_CONTEXT = `
 FESTER MARKEN- UND PRODUKTKONTEXT
@@ -17,7 +17,7 @@ const ADVERTISEMENT_PATTERN =
   /\b(?:werb(?:ung|e|evideo|efilm)?|promo(?:tion|video)?|anzeige|reklame|marketing|commercial|advert(?:isement|ising)?)\b/i;
 
 const STUDIO_REFERENCE_PATTERN =
-  /(?:ki[\s-]?video[\s-]?studio|ki-video-studio\.vercel\.app|(?:mein(?:e|er|en|em)?|eigen(?:e|er|en|em)?|dein(?:e|er|en|em)?|sein(?:e|er|en|em)?|ihr(?:e|er|en|em)?|unser(?:e|er|en|em)?|dies(?:e|er|en|em)?)\s+(?:(?:eigen|aktuell)(?:e|er|en|em)?\s+)?(?:webseite|website|homepage|seite))/i;
+  /(?:ki[\s-]?video[\s-]?studio|kivideostudio\.de|ki-video-studio\.vercel\.app|(?:mein(?:e|er|en|em)?|eigen(?:e|er|en|em)?|dein(?:e|er|en|em)?|sein(?:e|er|en|em)?|ihr(?:e|er|en|em)?|unser(?:e|er|en|em)?|dies(?:e|er|en|em)?)\s+(?:(?:eigen|aktuell)(?:e|er|en|em)?\s+)?(?:webseite|website|homepage|seite))/i;
 
 export function isStudioWebsiteAdvertisement(value: string): boolean {
   return (
