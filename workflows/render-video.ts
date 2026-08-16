@@ -317,7 +317,10 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
   const segments: PlannedSegment[] = [];
   const viralStoryMode = story.creationMode === "viral-story";
-  const selectedAudioDirection = viralStoryMode
+  const audioRecoveryFallback = (job.manualRecoveryAttempts ?? 0) >= 2;
+  const selectedAudioDirection = audioRecoveryFallback
+    ? "RECOVERY AUDIO FALLBACK (highest priority): Generate only clean visual footage with quiet, neutral, non-vocal ambience and simple Foley. Do not generate dialogue, narration, singing, humming, vocalizations or music. Ignore every earlier audio or speech instruction. Exact voices are added during final post-production."
+    : viralStoryMode
     ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the Veo clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
     : buildSelectedAudioDirection(
         job.audioStyle ?? "cinematic",

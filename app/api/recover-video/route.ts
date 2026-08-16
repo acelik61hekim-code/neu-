@@ -116,9 +116,13 @@ export async function POST(req: NextRequest) {
 
   if (!hasRecoverableProviderVideo && retryGeneration) {
     const previousRecoveryAttempts = job.manualRecoveryAttempts ?? 0;
-    if (previousRecoveryAttempts >= 1) {
+    const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
+      job.errorMessage ?? providerFailureMessage ?? "",
+    );
+    const maximumRecoveryAttempts = audioFailureCanRetry ? 2 : 1;
+    if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
-        { error: "Dieser Auftrag wurde bereits einmal ohne neue Zahlung erneut gestartet." },
+        { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },
         { status: 409 },
       );
     }
