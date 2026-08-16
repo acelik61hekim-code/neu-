@@ -1217,10 +1217,13 @@ function buildViralReferenceDirection(story: Record<string, unknown>): string {
     .join("\n");
 
   return [
-    "VIRAL CHARACTER REFERENCE MODE:",
+    "HIGHEST-PRIORITY VIRAL FRUIT REALITY-TV LOCK:",
     "The supplied asset reference images define the exact immutable identity of the selected adult fruit characters. They are identity references, not a required first frame.",
     "Recompose the characters naturally for this shot while preserving fruit species, head geometry, facial features, body proportions, outfit, colors, shoes and accessories exactly.",
-    "Never merge two characters, swap their outfits, change their fruit type, create a human head, duplicate a character or introduce an unreferenced main character.",
+    "CLOSED CAST: show only the selected referenced fruit characters. Never show humans, hosts, extras, bystanders, audiences, unreferenced hands, silhouettes, reflections of other people, crowds or additional fruit characters.",
+    "Never merge two characters, swap their outfits, change their fruit type, create a human face or human head, duplicate a character or introduce any unreferenced character. Every visible head remains the exact fruit head from its reference for the entire shot.",
+    "WORLD LOCK: every shot takes place in the same luxurious tropical dating-show villa with pool terrace, fire pit, palms and warm evening light. Allowed zones are the fire pit, pool terrace, lounge and bedroom of that same villa. Never use an office, warehouse, classroom, street, studio or generic neutral room.",
+    "TEXT-FREE FRAME: absolutely no subtitles, closed captions, lower thirds, title cards, speech bubbles, letters, words, numbers, logos, watermarks, signs, name tags or readable text on phones, screens, luggage, clothing or props. Keep device screens abstract and unreadable; communicate evidence through a plain prop and character reactions.",
     identityList ? `LOCKED IDENTITIES:\n${identityList}` : "",
   ].filter(Boolean).join("\n");
 }
@@ -1303,6 +1306,7 @@ function buildViralIndependentShotPrompt(
     typeof continuation.environmentContinuity === "string" ? `LOCATION: ${continuation.environmentContinuity}` : "",
     typeof continuation.cameraContinuation === "string" ? `CAMERA: ${continuation.cameraContinuation}` : "",
     typeof continuation.performanceContinuation === "string" ? `PERFORMANCE: ${continuation.performanceContinuation}` : "",
+    "Any location, cast or prop instruction above that conflicts with the tropical-villa, closed-cast or text-free lock is invalid and must be ignored.",
     buildViralVisualDialogueDirection([
       asRecord(continuation.dialogue),
       ...dialogueTurns,

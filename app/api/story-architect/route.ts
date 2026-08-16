@@ -2348,7 +2348,9 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - Dies ist ausdrücklich eine vertikale Social-Story für TikTok, Reels und Shorts.
 - Inszeniere die Geschichte als fortsetzbares TikTok-Microdrama im zugespitzten Trash-TV-Stil: Beziehungskonflikt, Vorwürfe, Geheimnisse, starke Reaktionen, Gegenenthüllung und Cliffhanger.
 - Keine Dokumentation, keine Reportage, keine Wissensvermittlung, kein Interviewformat und kein erklärender Moderatorstil.
-- Die oben angegebenen Figuren sind eine geschlossene Besetzung. Erfinde keine weiteren Hauptfiguren.
+- Die oben angegebenen Figuren sind eine vollständig geschlossene Besetzung. Im gesamten Bild erscheinen ausschließlich diese ausgewählten Früchte: keine Menschen, Moderatoren, Statisten, Zuschauer, fremden Hände, Silhouetten, Spiegelbilder oder zusätzlichen Früchte.
+- Alle Abschnitte spielen in derselben luxuriösen tropischen Dating-Show-Villa mit Poolterrasse, Feuerkorb, Palmen und warmem Abendlicht. Erlaubte Bereiche sind Feuerkorb, Poolterrasse, Lounge und Schlafzimmer derselben Villa. Keine Büros, Lagerhallen, Klassenzimmer, Straßen, Studios oder neutralen Innenräume.
+- Ein Fruchtkopf wird niemals durch ein menschliches Gesicht oder einen menschlichen Kopf ersetzt. Keine Verschmelzung, Verdopplung oder spontane Verwandlung einer Figur.
 - Weise jeder Figur passend zu ihrer Persönlichkeit eine klare Rolle zu: betrogene Hauptfigur, Provokateur, Geheimnisträger, Versuchung oder zweifelhafter Verbündeter. Definiere ihre Beziehung, ein verborgenes Geheimnis und ein sichtbares Beweisstück.
 - Kopiere jede vollständige Figurenbeschreibung unverändert in productionBible.characterBible.fixedAppearance.
 - Fruchtart, Kopfform, Gesicht, Augen, Körperbau, Outfit, Farben, Schuhe und Accessoires sind unveränderliche Identitätsmerkmale.
@@ -2373,7 +2375,7 @@ ${targetDurationSeconds <= 8
 - Jeder Dialogsatz umfasst bei längeren Videos höchstens zehn einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
 - Die jeweils sichtbare aktive Figur spricht ihren exakten Satz selbst hörbar und lippensynchron im Videoclip. Unterschiedliche Stimmen zwischen getrennten Einstellungen sind akzeptabel.
 - Kein Erzähler, kein Voice-over, keine Offscreen-Sprache und keine später darübergelegte Dialogspur.
-- Keine Untertitel, keine sichtbaren Sprechblasen und keine Fantasieschrift.
+- Absolut keine Untertitel, Bauchbinden, Titelkarten, Sprechblasen, Buchstaben, Wörter, Zahlen, Logos, Wasserzeichen, Schilder, Namensschilder oder lesbare Handy-, Koffer- und Bildschirmtexte. Zeige Beweise als stumme Requisiten und durch Reaktionen, niemals als lesbare Schrift.
 `
       : "";
 

@@ -218,8 +218,7 @@ function enforceViralStory(
         .filter(Boolean)
         .join("; "),
       setting:
-        result.story.setting.trim() ||
-        "Eine moderne, glaubwürdige Menschenwelt, in der erwachsene anthropomorphe Früchte leben.",
+        "Eine luxuriöse tropische Dating-Show-Villa mit Poolterrasse, Feuerkorb, Palmen und warmem Abendlicht. Im Bild erscheinen ausschließlich die ausgewählten anthropomorphen Früchte; keine Menschen, Statisten oder zusätzlichen Figuren.",
       characters: selectedCharacters.map((character) => ({
         name: character.name,
         description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}. Diese Identität und dieses Outfit dürfen in keiner Szene verändert werden.`,
@@ -227,7 +226,8 @@ function enforceViralStory(
       summary: [
         result.story.summary,
         `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
-        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einer verständlichen überraschenden Auflösung. Alle ausgewählten Figuren erhalten kurze natürliche Dialoge. Ihre festen Stimmen werden separat erzeugt und anschließend szenengenau gemischt, damit sie nicht zwischen Clips wechseln.",
+        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einem konkreten ungelösten Cliffhanger. Alle ausgewählten Figuren erhalten kurze natürliche Dialoge, die sie selbst sichtbar und lippensynchron sprechen.",
+        "Verbindliche Bildregeln: dieselbe tropische Villa in allen Einstellungen; geschlossene Besetzung ohne Menschen, Statisten oder zusätzliche Früchte; niemals menschliche Gesichter statt Fruchtköpfen; keinerlei Untertitel, Titelkarten, Schilder, Namensschilder, Logos, Wasserzeichen oder sonstige lesbare Schrift im Bild.",
         "Die Dialogfolge ist kausal und konkret: Jede Zeile beantwortet die vorherige, nennt eine neue überprüfbare Information und führt denselben Konflikt weiter. Leere Drama-Platzhalter ohne Bezug zu Beziehung, Beweis oder Konsequenz sind verboten.",
       ]
         .filter(Boolean)

@@ -4,8 +4,10 @@ import { useState } from "react";
 
 import {
   VIRAL_CHARACTERS,
+  VIRAL_STORY_TEMPLATES,
   VIRAL_STORY_TOPICS,
   type ViralCharacter,
+  type ViralStoryTemplate,
 } from "@/lib/viral-characters";
 
 type ViralStoryStarterProps = {
@@ -24,10 +26,12 @@ export default function ViralStoryStarter({
   ]);
   const [topic, setTopic] = useState<string>(VIRAL_STORY_TOPICS[0]);
   const [customTopic, setCustomTopic] = useState("");
+  const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
   function toggleCharacter(id: string) {
     setLocalError(null);
+    setActiveTemplateId(null);
     setSelectedIds((current) => {
       if (current.includes(id)) {
         return current.filter((selectedId) => selectedId !== id);
@@ -42,6 +46,13 @@ export default function ViralStoryStarter({
 
       return [...current, id];
     });
+  }
+
+  function applyTemplate(template: ViralStoryTemplate) {
+    setSelectedIds([...template.characterIds]);
+    setCustomTopic(template.topic);
+    setActiveTemplateId(template.id);
+    setLocalError(null);
   }
 
   async function handleCreate() {
@@ -89,6 +100,66 @@ export default function ViralStoryStarter({
 
       {expanded ? (
         <div className="mt-4 border-t border-white/10 pt-4">
+          <div className="mb-5">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-white">Trend-Vorlagen</p>
+                <p className="mt-1 text-[10px] leading-4 text-zinc-500">
+                  Vorschau ansehen, Vorlage wählen und anschließend deine Story erstellen.
+                </p>
+              </div>
+              <span className="shrink-0 rounded-full bg-fuchsia-400/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-fuchsia-200">
+                6 Ideen
+              </span>
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {VIRAL_STORY_TEMPLATES.map((template) => {
+                const selected = activeTemplateId === template.id;
+                return (
+                  <button
+                    key={template.id}
+                    type="button"
+                    onClick={() => applyTemplate(template)}
+                    disabled={disabled}
+                    aria-pressed={selected}
+                    className={`group relative overflow-hidden rounded-xl border text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                      selected
+                        ? "border-fuchsia-300 ring-2 ring-fuchsia-400/40"
+                        : "border-white/10 hover:border-fuchsia-300/50"
+                    }`}
+                  >
+                    <video
+                      src={template.previewVideoPath}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      preload="metadata"
+                      className="aspect-[9/16] w-full bg-black object-cover transition duration-500 group-hover:scale-[1.03]"
+                    />
+                    <span className="absolute left-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[8px] font-bold uppercase tracking-wider text-white backdrop-blur">
+                      {template.badge}
+                    </span>
+                    <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black via-black/85 to-transparent px-2.5 pb-2.5 pt-10">
+                      <span className="block text-[11px] font-bold text-white">
+                        {template.title}
+                      </span>
+                      <span className="mt-0.5 block text-[9px] leading-3.5 text-zinc-300">
+                        {template.description}
+                      </span>
+                      {selected ? (
+                        <span className="mt-1.5 inline-flex rounded-full bg-fuchsia-500 px-2 py-0.5 text-[8px] font-bold text-white">
+                          Ausgewählt
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="mb-4 rounded-xl border border-fuchsia-300/15 bg-black/20 p-3">
             <p className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-200">
               TikTok-Microdrama-Ablauf
@@ -154,7 +225,10 @@ export default function ViralStoryStarter({
               </span>
               <select
                 value={topic}
-                onChange={(event) => setTopic(event.target.value)}
+                onChange={(event) => {
+                  setTopic(event.target.value);
+                  setActiveTemplateId(null);
+                }}
                 disabled={disabled}
                 className="w-full rounded-xl border border-white/10 bg-[#101016] px-3 py-3 text-xs text-white outline-none transition focus:border-fuchsia-300/50 disabled:opacity-50"
               >
@@ -172,7 +246,10 @@ export default function ViralStoryStarter({
               </span>
               <input
                 value={customTopic}
-                onChange={(event) => setCustomTopic(event.target.value)}
+                onChange={(event) => {
+                  setCustomTopic(event.target.value);
+                  setActiveTemplateId(null);
+                }}
                 maxLength={160}
                 disabled={disabled}
                 placeholder="z. B. heimliche Hochzeit"
@@ -191,7 +268,7 @@ export default function ViralStoryStarter({
             disabled={disabled || selectedIds.length < 2}
             className="mt-4 w-full rounded-xl bg-gradient-to-r from-fuchsia-500 to-violet-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-fuchsia-950/30 transition hover:from-fuchsia-400 hover:to-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Story automatisch erstellen
+            {activeTemplateId ? "Vorlage als Story erstellen" : "Story automatisch erstellen"}
           </button>
 
           <p className="mt-3 text-[10px] leading-4 text-zinc-500">
