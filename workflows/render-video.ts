@@ -74,19 +74,19 @@ const PROVIDER_RETRY_DELAYS_MS = [
 export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> {
   "use workflow";
 
-  const prepared = await prepareRenderJobStep(jobId);
-  const gate = await providerRenderEnabledStep(prepared.duration);
-  if (!gate.enabled) {
-    await markRenderDisabledStep(jobId);
-    return {
-      jobId,
-      providerRenderEnabled: false,
-      pipelineComplete: false,
-      reason: gate.reason || "Veo-Rendering ist durch den Sicherheitsschalter deaktiviert.",
-    };
-  }
-
   try {
+    const prepared = await prepareRenderJobStep(jobId);
+    const gate = await providerRenderEnabledStep(prepared.duration);
+    if (!gate.enabled) {
+      await markRenderDisabledStep(jobId);
+      return {
+        jobId,
+        providerRenderEnabled: false,
+        pipelineComplete: false,
+        reason: gate.reason || "Veo-Rendering ist durch den Sicherheitsschalter deaktiviert.",
+      };
+    }
+
     const chapterUris: string[] = [...prepared.completedSegmentUris];
     let completedExtensions = 0;
 
@@ -414,7 +414,26 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         };
       }),
     ];
-    const selectedShots = selectEvenlyIncludingFinal(candidateShots, shotCount);
+    const bibleCharacterNames = Array.isArray(asRecord(story.productionBible).characterBible)
+      ? (asRecord(story.productionBible).characterBible as unknown[])
+          .map(asRecord)
+          .map((character) => typeof character.name === "string" ? character.name.trim() : "")
+          .filter(Boolean)
+      : [];
+    const storyCharacterNames = Array.isArray(story.characters)
+      ? story.characters
+          .map(asRecord)
+          .map((character) => typeof character.name === "string" ? character.name.trim() : "")
+          .filter(Boolean)
+      : [];
+    const selectedCharacterNames = (
+      bibleCharacterNames.length >= 2 ? bibleCharacterNames : storyCharacterNames
+    ).slice(0, 3);
+    const selectedShots = selectViralShotsIncludingCharacters(
+      candidateShots,
+      shotCount,
+      selectedCharacterNames,
+    );
 
     selectedShots.forEach((shot, index) => {
       segments.push({
@@ -428,13 +447,6 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
       selectedShots.map((shot) => shot.dialogues),
       job.targetDurationSeconds,
     );
-    const selectedCharacterNames = Array.isArray(story.characters)
-      ? story.characters
-          .map(asRecord)
-          .map((character) => typeof character.name === "string" ? character.name.trim() : "")
-          .filter(Boolean)
-          .slice(0, 3)
-      : [];
     const requiredSpeakers = Math.min(3, Math.max(2, selectedCharacterNames.length));
     const cueSpeakers = new Set(
       dialogueCues.map((cue) => cue.speaker.toLocaleLowerCase("de-DE")),
@@ -986,6 +998,72 @@ function selectEvenlyIncludingFinal<T>(items: readonly T[], requestedCount: numb
     ...items.slice(0, requestedCount - 1),
     items[items.length - 1],
   ];
+}
+
+function dialogueSpeakerMatches(characterName: string, speakerName: string): boolean {
+  const fullName = characterName.toLocaleLowerCase("de-DE");
+  const shortName = fullName.split(",")[0].trim();
+  const normalizedSpeaker = speakerName.toLocaleLowerCase("de-DE");
+  return normalizedSpeaker === fullName || normalizedSpeaker === shortName;
+}
+
+function selectViralShotsIncludingCharacters<T extends {
+  dialogues: readonly Record<string, unknown>[];
+}>(
+  items: readonly T[],
+  requestedCount: number,
+  characterNames: readonly string[],
+): T[] {
+  if (requestedCount >= items.length) return [...items];
+  if (requestedCount <= 1) return items.length > 0 ? [items[0]] : [];
+
+  const lastIndex = items.length - 1;
+  const selectedIndices = new Set([
+    ...Array.from({ length: requestedCount - 1 }, (_, index) => index),
+    lastIndex,
+  ]);
+  const shotIncludesCharacter = (shotIndex: number, characterName: string) =>
+    items[shotIndex].dialogues.some((value) => {
+      const dialogue = readViralDialogue(value);
+      return dialogue !== null && dialogueSpeakerMatches(characterName, dialogue.speaker);
+    });
+  const selectionIncludesCharacter = (
+    indices: ReadonlySet<number>,
+    characterName: string,
+  ) => [...indices].some((index) => shotIncludesCharacter(index, characterName));
+
+  for (const missingCharacter of characterNames) {
+    if (selectionIncludesCharacter(selectedIndices, missingCharacter)) continue;
+
+    const replacementIndex = items.findIndex((_, index) =>
+      !selectedIndices.has(index) && shotIncludesCharacter(index, missingCharacter),
+    );
+    if (replacementIndex < 0) continue;
+
+    const charactersToKeep = characterNames.filter((characterName) =>
+      selectionIncludesCharacter(selectedIndices, characterName),
+    );
+    const removableIndex = [...selectedIndices]
+      .filter((index) => index !== 0 && index !== lastIndex)
+      .reverse()
+      .find((index) => {
+        const candidateIndices = new Set(selectedIndices);
+        candidateIndices.delete(index);
+        candidateIndices.add(replacementIndex);
+        return [...charactersToKeep, missingCharacter].every((characterName) =>
+          selectionIncludesCharacter(candidateIndices, characterName),
+        );
+      });
+
+    if (removableIndex !== undefined) {
+      selectedIndices.delete(removableIndex);
+      selectedIndices.add(replacementIndex);
+    }
+  }
+
+  return [...selectedIndices]
+    .sort((left, right) => left - right)
+    .map((index) => items[index]);
 }
 
 function readViralDialogue(value: Record<string, unknown>): {

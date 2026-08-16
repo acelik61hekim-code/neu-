@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { start } from "workflow/api";
+import { getRun, start } from "workflow/api";
 
 import { stripe } from "@/lib/stripe";
 import { jobStore } from "@/lib/store";
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const job = await jobStore.get(jobId);
+    let job = await jobStore.get(jobId);
     if (!job) {
       return NextResponse.json({ error: "Der Videoauftrag wurde nicht gefunden." }, { status: 404 });
     }
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
       // Nach dem Transport-Fix darf derselbe bezahlte Auftrag genau einmal sicher
       // wieder aufgenommen werden, ohne eine zweite Zahlung zu verlangen.
       await jobStore.clearWorkflowStart(jobId);
-      await jobStore.set(jobId, {
+      const recoveredJob = {
         ...job,
         status: "processing",
         renderStage: "queued",
@@ -118,15 +118,56 @@ export async function POST(request: NextRequest) {
         retryCount: (job.retryCount ?? 0) + 1,
         nextAttemptAt: Date.now(),
         errorMessage: undefined,
-      });
+      } as const;
+      await jobStore.set(jobId, recoveredJob);
+      job = recoveredJob;
     }
 
     if (locallyVerifiedPayment && job.status === "processing" && job.workerId) {
-      return NextResponse.json({
-        confirmed: true,
-        queued: true,
-        workflowRunId: job.workerId,
-      });
+      let workflowStatus: Awaited<ReturnType<typeof getRun>["status"]> | undefined;
+      try {
+        workflowStatus = await getRun(job.workerId).status;
+      } catch (error) {
+        console.warn("Workflow-Status konnte nicht geprüft werden:", error);
+      }
+
+      const failedBeforeProviderStart =
+        (workflowStatus === "failed" || workflowStatus === "cancelled") &&
+        !job.currentOperationName &&
+        (job.progressPercent ?? 0) <= 2;
+
+      if (!failedBeforeProviderStart) {
+        return NextResponse.json({
+          confirmed: true,
+          queued: true,
+          workflowRunId: job.workerId,
+        });
+      }
+
+      // Der Workflow ist sicher beendet, bevor eine kostenpflichtige
+      // Provider-Operation begonnen hat. Derselbe bezahlte Auftrag darf nach
+      // einem Code-Fix automatisch mit einem neuen Workflow weiterlaufen.
+      await jobStore.clearWorkflowStart(jobId);
+      const recoveredJob = {
+        ...job,
+        status: "processing",
+        renderStage: "queued",
+        progressPercent: 0,
+        currentChapter: 0,
+        currentExtension: 0,
+        currentOperationName: undefined,
+        currentOperationType: undefined,
+        workerId: undefined,
+        claimedAt: undefined,
+        leaseExpiresAt: undefined,
+        startedAt: undefined,
+        completedAt: undefined,
+        retryCount: (job.retryCount ?? 0) + 1,
+        nextAttemptAt: Date.now(),
+        errorMessage: undefined,
+      } as const;
+      await jobStore.set(jobId, recoveredJob);
+      job = recoveredJob;
     }
 
     /*

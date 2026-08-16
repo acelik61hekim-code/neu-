@@ -200,6 +200,16 @@ function SuccessContent() {
         setVideoStatus(data);
         setConnectionError(null);
 
+        if (
+          (data.status === "pending" || data.status === "processing") &&
+          (data.progressPercent ?? 0) === 0
+        ) {
+          // Solange noch keine Provider-Arbeit begonnen hat, darf die sichere
+          // serverseitige Bestätigung erneut prüfen, ob der Workflow beendet
+          // wurde und derselbe bezahlte Auftrag fortgesetzt werden muss.
+          checkoutConfirmed = false;
+        }
+
         if (data.status === "done" || data.status === "error") {
           if (interval) clearInterval(interval);
         }
