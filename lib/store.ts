@@ -224,6 +224,9 @@ export type VideoJob = {
   retryCount?:
     number;
 
+  manualRecoveryAttempts?:
+    number;
+
   maxRetries?:
     number;
 

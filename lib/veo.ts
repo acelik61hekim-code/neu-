@@ -127,7 +127,22 @@ type VideoOperationResponse =
             mimeType?: string;
           };
         }>;
+        generatedVideos?: Array<{
+          video?: {
+            uri?: string;
+            mimeType?: string;
+          } | string;
+        }>;
+        raiMediaFilteredCount?: number;
+        raiMediaFilteredReasons?: string[];
+        raiErrorMessage?: string;
       };
+      generatedVideos?: Array<{
+        video?: {
+          uri?: string;
+          mimeType?: string;
+        } | string;
+      }>;
     };
   };
 
@@ -721,19 +736,67 @@ export async function checkVideoStatus(
     );
   }
 
-  const video =
+  const generateVideoResponse =
     data.response
-      ?.generateVideoResponse
+      ?.generateVideoResponse;
+
+  const restVideo =
+    generateVideoResponse
       ?.generatedSamples
       ?.[0]
       ?.video;
 
+  const alternateVideo =
+    generateVideoResponse
+      ?.generatedVideos
+      ?.[0]
+      ?.video ??
+    data.response
+      ?.generatedVideos
+      ?.[0]
+      ?.video;
+
+  const alternateVideoObject =
+    typeof alternateVideo === "object" && alternateVideo !== null
+      ? alternateVideo
+      : undefined;
+
   const videoUri =
-    video?.uri;
+    restVideo?.uri ??
+    alternateVideoObject?.uri ??
+    (typeof alternateVideo === "string" ? alternateVideo : undefined);
+
+  const mimeType =
+    restVideo?.mimeType ??
+    alternateVideoObject?.mimeType ??
+    "video/mp4";
 
   if (
     !videoUri
   ) {
+    const filterReasons =
+      generateVideoResponse
+        ?.raiMediaFilteredReasons
+        ?.filter((reason) => reason.trim().length > 0) ??
+      [];
+    const filterMessage =
+      generateVideoResponse
+        ?.raiErrorMessage
+        ?.trim();
+
+    if (
+      filterReasons.length > 0 ||
+      (generateVideoResponse?.raiMediaFilteredCount ?? 0) > 0 ||
+      filterMessage
+    ) {
+      throw new Error(
+        `Veo hat die Videoausgabe durch die Sicherheitspruefung verworfen: ${[
+          ...filterReasons,
+          ...(filterMessage ? [filterMessage] : []),
+        ].join(" ") || "Kein Video wurde ausgegeben."}`,
+      );
+    }
+
     throw new Error(
       "Video fertig gemeldet, aber keine Video-URL erhalten.",
     );
@@ -757,9 +820,7 @@ export async function checkVideoStatus(
     done: true,
     videoUrl,
     videoUri,
-    mimeType:
-      video?.mimeType ??
-      "video/mp4",
+    mimeType,
   };
 }
 

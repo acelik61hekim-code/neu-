@@ -2,15 +2,25 @@ import { del } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { jobStore } from "@/lib/store";
+import { checkVideoStatus } from "@/lib/veo";
 import { trimAndStore } from "@/lib/video-backend/media";
-import { recoverVideoFinalizationWorkflow } from "@/workflows/render-video";
+import {
+  recoverVideoFinalizationWorkflow,
+  renderVideoWorkflow,
+} from "@/workflows/render-video";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
-  let body: { jobId?: unknown; session_id?: unknown; test_ffmpeg?: unknown };
+  let body: {
+    jobId?: unknown;
+    session_id?: unknown;
+    test_ffmpeg?: unknown;
+    retry_generation?: unknown;
+    skip_reference_image?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -23,13 +33,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "jobId and session_id are required." }, { status: 400 });
   }
 
-  const job = await jobStore.get(jobId);
+  let job = await jobStore.get(jobId);
   if (!job || job.stripeSessionId !== sessionId) {
     return NextResponse.json({ error: "Job not found." }, { status: 404 });
   }
   if (job.paymentStatus !== "paid") {
     return NextResponse.json({ error: "Job is not paid." }, { status: 409 });
   }
+
+  const retryGeneration = body.retry_generation === true;
+  const skipReferenceImage = body.skip_reference_image === true;
 
   if (body.test_ffmpeg === true) {
     if (job.status !== "done" || !job.videoUri?.startsWith("blob:") || job.targetDurationSeconds !== 8) {
@@ -62,8 +75,128 @@ export async function POST(req: NextRequest) {
   if (!job.targetDurationSeconds) {
     return NextResponse.json({ error: "The paid target duration is missing." }, { status: 409 });
   }
-  if (!job.videoUri || job.videoUri.startsWith("blob:") || job.videoUri.startsWith("local:") || job.currentOperationName) {
-    return NextResponse.json({ error: "No completed provider video is available for recovery." }, { status: 409 });
+
+  let providerFailureMessage: string | undefined;
+  if (job.currentOperationName) {
+    try {
+      const providerStatus = await checkVideoStatus(job.currentOperationName);
+      if (!providerStatus.done) {
+        return NextResponse.json({ recovering: true, waitingForProvider: true, jobId }, { status: 202 });
+      }
+      if (providerStatus.videoUri) {
+        job = {
+          ...job,
+          videoUri: providerStatus.videoUri,
+          videoUrl: providerStatus.videoUrl,
+          currentOperationName: undefined,
+          currentOperationType: undefined,
+          lastProviderPollAt: Date.now(),
+        };
+        await jobStore.set(jobId, job);
+      }
+    } catch (error) {
+      providerFailureMessage = error instanceof Error
+        ? error.message
+        : "The previous provider operation could not be recovered.";
+
+      if (!retryGeneration) {
+        return NextResponse.json(
+          { error: providerFailureMessage, retryAvailable: true },
+          { status: 409 },
+        );
+      }
+    }
+  }
+
+  const hasRecoverableProviderVideo =
+    Boolean(job.videoUri) &&
+    !job.videoUri?.startsWith("blob:") &&
+    !job.videoUri?.startsWith("local:") &&
+    !job.currentOperationName;
+
+  if (!hasRecoverableProviderVideo && retryGeneration) {
+    const previousRecoveryAttempts = job.manualRecoveryAttempts ?? 0;
+    if (previousRecoveryAttempts >= 1) {
+      return NextResponse.json(
+        { error: "Dieser Auftrag wurde bereits einmal ohne neue Zahlung erneut gestartet." },
+        { status: 409 },
+      );
+    }
+
+    await jobStore.clearWorkflowStart(jobId);
+    const claimed = await jobStore.claimWorkflowStart(
+      jobId,
+      `manual-recovery:${jobId}:${Date.now()}`,
+    );
+    if (!claimed) {
+      return NextResponse.json({ regenerating: true, starting: true, jobId }, { status: 202 });
+    }
+
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      renderStage: "queued",
+      progressPercent: 5,
+      errorMessage: undefined,
+      videoUri: undefined,
+      videoUrl: undefined,
+      videoUrls: undefined,
+      chapterVideoUris: undefined,
+      currentOperationName: undefined,
+      currentOperationType: undefined,
+      currentChapter: 1,
+      currentExtension: 0,
+      retryCount: 0,
+      nextAttemptAt: undefined,
+      completedAt: undefined,
+      manualRecoveryAttempts: previousRecoveryAttempts + 1,
+      referenceImageUrl: skipReferenceImage ? undefined : job.referenceImageUrl,
+      referenceImageMimeType: skipReferenceImage ? undefined : job.referenceImageMimeType,
+    });
+
+    try {
+      const run = await start(renderVideoWorkflow, [jobId]);
+      await jobStore.confirmWorkflowStarted(jobId, run.runId);
+      await jobStore.update(jobId, (current) => ({
+        ...current,
+        workerId: run.runId,
+      }));
+      return NextResponse.json(
+        {
+          regenerating: true,
+          recoveredFromPaidOrder: true,
+          referenceImageSkipped: skipReferenceImage,
+          jobId,
+        },
+        { status: 202 },
+      );
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "The paid video could not be restarted.";
+      await jobStore.clearWorkflowStart(jobId);
+      const latest = await jobStore.get(jobId);
+      if (latest) {
+        await jobStore.set(jobId, {
+          ...latest,
+          status: "error",
+          renderStage: "failed",
+          errorMessage: message,
+          manualRecoveryAttempts: previousRecoveryAttempts,
+        });
+      }
+      return NextResponse.json({ error: message }, { status: 500 });
+    }
+  }
+
+  if (!hasRecoverableProviderVideo) {
+    return NextResponse.json(
+      {
+        error: providerFailureMessage || "No completed provider video is available for recovery.",
+        retryAvailable: true,
+      },
+      { status: 409 },
+    );
   }
   if (job.status === "processing" && job.renderStage === "trimming") {
     return NextResponse.json({ recovering: true, jobId }, { status: 202 });

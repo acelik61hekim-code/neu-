@@ -112,6 +112,41 @@ function SuccessContent() {
     progressPercent: 0,
   });
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [recoveryState, setRecoveryState] = useState<"idle" | "working" | "error">("idle");
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
+  const recoverPaidVideo = async () => {
+    if (!jobId || !sessionId || recoveryState === "working") return;
+
+    setRecoveryState("working");
+    setRecoveryError(null);
+
+    try {
+      const response = await fetch("/api/recover-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          session_id: sessionId,
+          retry_generation: true,
+          skip_reference_image: true,
+        }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok && response.status !== 202) {
+        throw new Error(data.error || "Die Wiederherstellung konnte nicht gestartet werden.");
+      }
+
+      window.location.reload();
+    } catch (error) {
+      setRecoveryState("error");
+      setRecoveryError(
+        error instanceof Error
+          ? error.message
+          : "Die Wiederherstellung konnte nicht gestartet werden.",
+      );
+    }
+  };
 
   useEffect(() => {
     if (!jobId || !sessionId) {
@@ -193,6 +228,9 @@ function SuccessContent() {
         progress={progress}
         videoStatus={videoStatus}
         connectionError={connectionError}
+        onRecover={recoverPaidVideo}
+        recoveryState={recoveryState}
+        recoveryError={recoveryError}
       />
     </PageFrame>
   );
@@ -230,11 +268,17 @@ function StatusCard({
   progress,
   videoStatus = {},
   connectionError,
+  onRecover,
+  recoveryState = "idle",
+  recoveryError,
 }: {
   status: Status;
   progress: number;
   videoStatus?: VideoStatus;
   connectionError?: string | null;
+  onRecover?: () => void;
+  recoveryState?: "idle" | "working" | "error";
+  recoveryError?: string | null;
 }) {
   const isWorking = status === "pending" || status === "processing";
   const isDone = status === "done";
@@ -371,6 +415,21 @@ function StatusCard({
                   <p className="mt-2 text-sm leading-6 text-red-100/70">
                     {videoStatus.errorMessage ?? "Bitte versuche es später erneut oder wende dich an den Support."}
                   </p>
+                  {onRecover && (
+                    <button
+                      className="mt-4 inline-flex items-center justify-center rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={recoveryState === "working"}
+                      onClick={onRecover}
+                      type="button"
+                    >
+                      {recoveryState === "working"
+                        ? "Wiederherstellung wird gestartet …"
+                        : "Video ohne neue Zahlung erneut erstellen"}
+                    </button>
+                  )}
+                  {recoveryError && (
+                    <p className="mt-3 text-xs leading-5 text-red-200/80">{recoveryError}</p>
+                  )}
                 </div>
               </div>
             </div>
