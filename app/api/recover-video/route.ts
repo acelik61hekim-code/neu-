@@ -20,6 +20,7 @@ export async function POST(req: NextRequest) {
     test_ffmpeg?: unknown;
     retry_generation?: unknown;
     skip_reference_image?: unknown;
+    native_character_dialogue?: unknown;
   };
   try {
     body = await req.json();
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
 
   const retryGeneration = body.retry_generation === true;
   const skipReferenceImage = body.skip_reference_image === true;
+  const nativeCharacterDialogue = body.native_character_dialogue === true;
 
   if (body.test_ffmpeg === true) {
     if (job.status !== "done" || !job.videoUri?.startsWith("blob:") || job.targetDurationSeconds !== 8) {
@@ -69,7 +71,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (job.status === "done" && (job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"))) {
+  if (
+    job.status === "done" &&
+    (job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:")) &&
+    !(retryGeneration && nativeCharacterDialogue)
+  ) {
     return NextResponse.json({ recovered: true, alreadyComplete: true, jobId });
   }
   if (!job.targetDurationSeconds) {
@@ -119,7 +125,7 @@ export async function POST(req: NextRequest) {
     const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
       job.errorMessage ?? providerFailureMessage ?? "",
     );
-    const maximumRecoveryAttempts = audioFailureCanRetry ? 2 : 1;
+    const maximumRecoveryAttempts = nativeCharacterDialogue ? 3 : audioFailureCanRetry ? 2 : 1;
     if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
         { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },
@@ -154,6 +160,7 @@ export async function POST(req: NextRequest) {
       nextAttemptAt: undefined,
       completedAt: undefined,
       manualRecoveryAttempts: previousRecoveryAttempts + 1,
+      nativeCharacterDialogue,
       referenceImageUrl: skipReferenceImage ? undefined : job.referenceImageUrl,
       referenceImageMimeType: skipReferenceImage ? undefined : job.referenceImageMimeType,
     });
@@ -170,6 +177,7 @@ export async function POST(req: NextRequest) {
           regenerating: true,
           recoveredFromPaidOrder: true,
           referenceImageSkipped: skipReferenceImage,
+          nativeCharacterDialogue,
           jobId,
         },
         { status: 202 },

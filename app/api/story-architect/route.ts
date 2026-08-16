@@ -2232,6 +2232,8 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
 VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 
 - Dies ist ausdrücklich eine vertikale Social-Story für TikTok, Reels und Shorts.
+- Inszeniere die Geschichte als zugespitztes TikTok-Trash-TV mit Beziehungskonflikt, Vorwürfen, Geheimnissen, starken Reaktionen, Eskalation, Enthüllung und dramatischem Payoff.
+- Keine Dokumentation, keine Reportage, keine Wissensvermittlung, kein Interviewformat und kein erklärender Moderatorstil.
 - Die oben angegebenen Figuren sind eine geschlossene Besetzung. Erfinde keine weiteren Hauptfiguren.
 - Kopiere jede vollständige Figurenbeschreibung unverändert in productionBible.characterBible.fixedAppearance.
 - Fruchtart, Kopfform, Gesicht, Augen, Körperbau, Outfit, Farben, Schuhe und Accessoires sind unveränderliche Identitätsmerkmale.
@@ -2246,8 +2248,8 @@ ${targetDurationSeconds <= 8
     : "- Bei längeren Videos bleibt opening.dialogueTurns leer; plane die weiteren Sprecher in den dialogue-Feldern der folgenden Abschnitte ein."}
 - Danach wechseln sich die ausgewählten Figuren natürlich ab. Jede ausgewählte Figur muss mindestens einmal mit ihrem exakten Namen als speaker sprechen.
 - Jeder Dialogsatz umfasst höchstens zwölf einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
-- Die Videoclips selbst erzeugen keine hörbare Sprache. Plane aber die sichtbare Performance der aktiven Figur mit natürlicher Mund-, Gesichts- und Körperbewegung passend zum exakten Satz.
-- Alle festen Figurenstimmen werden später separat erzeugt und szenengenau hinzugefügt. Kein Erzähler und kein Voice-over.
+- Die jeweils sichtbare aktive Figur spricht ihren exakten Satz selbst hörbar und lippensynchron im Videoclip. Unterschiedliche Stimmen zwischen getrennten Einstellungen sind akzeptabel.
+- Kein Erzähler, kein Voice-over, keine Offscreen-Sprache und keine später darübergelegte Dialogspur.
 - Keine Untertitel, keine sichtbaren Sprechblasen und keine Fantasieschrift.
 `
       : "";
@@ -2408,7 +2410,7 @@ SCHNITTSTIL: SOCIAL / REELS
 `;
 
   const selectedAudioDirection = creationMode === "viral-story"
-    ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short dialogue lines and visible speaking performances, but generate only clean music, ambience and sound effects inside the Veo clips. Every character voice is synthesized separately and mixed in later. No native narration, no native dialogue and no subtitles."
+    ? "NATIVE ON-SCREEN CHARACTER DIALOGUE: Plan exact short dialogue lines that the assigned visible characters themselves speak audibly and lip-synchronously inside each Veo clip. Voice consistency between separate shots is less important than clear in-scene speech. No narrator, no voice-over, no off-screen speech, no separately mixed dialogue and no subtitles."
     : buildSelectedAudioDirection(
         audioStyle,
         voiceMode,

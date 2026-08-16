@@ -227,6 +227,14 @@ export type VideoJob = {
   manualRecoveryAttempts?:
     number;
 
+  /*
+   * Bei einer ausdrücklichen Neufassung sprechen die sichtbaren Figuren
+   * direkt im Veo-Material. In diesem Modus darf die Nachbearbeitung keine
+   * zusätzliche Dialog- oder Voiceover-Spur über das Video legen.
+   */
+  nativeCharacterDialogue?:
+    boolean;
+
   maxRetries?:
     number;
 

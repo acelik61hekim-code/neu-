@@ -122,9 +122,10 @@ export function createViralStoryPrompt(
     `Erstelle automatisch eine originelle, leicht verständliche und emotionale Kurzgeschichte zum Thema: ${topic}.`,
     "Nutze ausschließlich die folgenden ausgewählten Hauptfiguren und verändere niemals ihre Fruchtart, Gesichter, Körperproportionen, Kleidung, Farben oder Namen:",
     characterList,
+    "Erzähle wie überzeichnetes TikTok-Trash-TV: ein sofortiger zwischenmenschlicher Konflikt, Vorwürfe, Geheimnisse, starke Reaktionen, eine dramatische Enthüllung und ein abgeschlossener überraschender Höhepunkt. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
     "Die Handlung braucht in den ersten zwei Sekunden einen sofort verständlichen visuellen Hook, danach klare Eskalationen, eine starke Enthüllung und ein abgeschlossenes überraschendes Ende.",
     "Die Figuren handeln wie erwachsene Menschen. Keine Kindergeschichte, keine Gewalt, keine Sexualisierung und keine Ähnlichkeit zu bekannten geschützten Figuren.",
-    "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte. Schreibe kurze, natürliche Dialoge, in denen alle ausgewählten Figuren mindestens einmal sprechen. Jede Figur erhält später eine eigene feste deutsche Studiostimme, die separat erzeugt und passend in die Szenen gemischt wird.",
+    "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte. Schreibe kurze, natürliche Dialoge, in denen alle ausgewählten Figuren mindestens einmal sprechen. Die jeweils sichtbare Figur spricht ihren Satz selbst hörbar und lippensynchron in der Szene; unterschiedliche Stimmen zwischen Einstellungen sind akzeptabel.",
     "Beginne den Dialog bereits im ersten Story-Beat. Die Sätze müssen einfach aussprechbar, höchstens zwölf Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.",
     "Erfinde alle fehlenden Details selbst und schließe die Planung ohne Rückfrage ab.",
   ].join("\n\n");

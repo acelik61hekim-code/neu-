@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
     audioStyle: job.audioStyle,
     voiceMode: job.voiceMode,
     spokenLanguage: job.spokenLanguage,
+    nativeCharacterDialogue: job.nativeCharacterDialogue === true,
     hasReferenceImage: Boolean(job.referenceImageUrl),
     generationStrategy: job.generationStrategy,
     currentChapter: job.currentChapter ?? 0,

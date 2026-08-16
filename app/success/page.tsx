@@ -29,6 +29,7 @@ type VideoStatus = {
   audioStyle?: "cinematic" | "emotional" | "upbeat" | "electronic" | "ambient" | "no-music";
   voiceMode?: "auto" | "dialogue" | "voiceover" | "no-voice";
   spokenLanguage?: "auto" | "de" | "en";
+  nativeCharacterDialogue?: boolean;
   hasReferenceImage?: boolean;
   currentChapter?: number;
   totalChapters?: number;
@@ -115,7 +116,7 @@ function SuccessContent() {
   const [recoveryState, setRecoveryState] = useState<"idle" | "working" | "error">("idle");
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
 
-  const recoverPaidVideo = async () => {
+  const recoverPaidVideo = async (nativeCharacterDialogue = false) => {
     if (!jobId || !sessionId || recoveryState === "working") return;
 
     setRecoveryState("working");
@@ -130,6 +131,7 @@ function SuccessContent() {
           session_id: sessionId,
           retry_generation: true,
           skip_reference_image: true,
+          native_character_dialogue: nativeCharacterDialogue,
         }),
       });
       const data = (await response.json()) as { error?: string };
@@ -228,7 +230,8 @@ function SuccessContent() {
         progress={progress}
         videoStatus={videoStatus}
         connectionError={connectionError}
-        onRecover={recoverPaidVideo}
+        onRecover={() => void recoverPaidVideo(false)}
+        onNativeDialogue={() => void recoverPaidVideo(true)}
         recoveryState={recoveryState}
         recoveryError={recoveryError}
       />
@@ -269,6 +272,7 @@ function StatusCard({
   videoStatus = {},
   connectionError,
   onRecover,
+  onNativeDialogue,
   recoveryState = "idle",
   recoveryError,
 }: {
@@ -277,6 +281,7 @@ function StatusCard({
   videoStatus?: VideoStatus;
   connectionError?: string | null;
   onRecover?: () => void;
+  onNativeDialogue?: () => void;
   recoveryState?: "idle" | "working" | "error";
   recoveryError?: string | null;
 }) {
@@ -403,6 +408,23 @@ function StatusCard({
               >
                 Video herunterladen
               </a>
+              {!videoStatus.nativeCharacterDialogue && onNativeDialogue && (
+                <div>
+                  <button
+                    className="mt-3 inline-flex items-center justify-center rounded-xl border border-violet-400/30 bg-violet-400/10 px-5 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={recoveryState === "working"}
+                    onClick={onNativeDialogue}
+                    type="button"
+                  >
+                    {recoveryState === "working"
+                      ? "Neufassung wird gestartet …"
+                      : "Ohne Voiceover – Figuren selbst sprechen lassen"}
+                  </button>
+                  {recoveryError && (
+                    <p className="mt-3 text-xs leading-5 text-red-200/80">{recoveryError}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

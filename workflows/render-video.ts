@@ -317,8 +317,11 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
   const durationPlan = buildVideoDurationPlan(job.targetDurationSeconds);
   const segments: PlannedSegment[] = [];
   const viralStoryMode = story.creationMode === "viral-story";
-  const audioRecoveryFallback = (job.manualRecoveryAttempts ?? 0) >= 2;
-  const selectedAudioDirection = audioRecoveryFallback
+  const nativeCharacterDialogue = viralStoryMode && job.nativeCharacterDialogue === true;
+  const audioRecoveryFallback = !nativeCharacterDialogue && (job.manualRecoveryAttempts ?? 0) >= 2;
+  const selectedAudioDirection = nativeCharacterDialogue
+    ? "NATIVE ON-SCREEN CHARACTER DIALOGUE (highest priority): The visible active character speaks the assigned exact line audibly and naturally in German. Synchronize the voice with that character's mouth, face, emotion and body performance. Only the currently visible assigned character may speak. Voice consistency between separate shots is less important than clear in-scene speech. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
+    : audioRecoveryFallback
     ? "RECOVERY AUDIO FALLBACK (highest priority): Generate only clean visual footage with quiet, neutral, non-vocal ambience and simple Foley. Do not generate dialogue, narration, singing, humming, vocalizations or music. Ignore every earlier audio or speech instruction. Exact voices are added during final post-production."
     : viralStoryMode
     ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the Veo clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
@@ -364,7 +367,8 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
         selectedAudioDirection,
       ),
       buildViralReferenceDirection(story),
-      buildViralVisualDialogueDirection(openingDialogues),
+      buildViralVisualDialogueDirection(openingDialogues, nativeCharacterDialogue),
+      buildViralTrashTvDirection(),
       "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
     ].join("\n\n");
 
@@ -385,6 +389,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
             index + 2,
             rawContinuations.length + 1,
             selectedAudioDirection,
+            nativeCharacterDialogue,
           ),
           dialogues: [asRecord(continuation.dialogue), ...dialogueTurns],
         };
@@ -499,7 +504,7 @@ async function prepareRenderJobStep(jobId: string): Promise<PreparedRender> {
     totalExtensions,
     finishing: {
       voiceoverText: viralStoryMode ? undefined : job.voiceoverText,
-      dialogueCues: viralDialogueCues,
+      dialogueCues: nativeCharacterDialogue ? undefined : viralDialogueCues,
       closingText: job.closingText,
       spokenLanguage: job.spokenLanguage,
     },
@@ -1006,6 +1011,7 @@ function buildViralDialogueCuesFromStoredPrompt(
 
 function buildViralVisualDialogueDirection(
   values: readonly Record<string, unknown>[],
+  nativeCharacterDialogue = false,
 ): string {
   const dialogues = values
     .map(readViralDialogue)
@@ -1016,11 +1022,15 @@ function buildViralVisualDialogueDirection(
     return "No character speaks in this shot. Use reaction acting and clean background audio only.";
   }
   return [
-    "VISIBLE SPEAKING SEQUENCE:",
+    nativeCharacterDialogue
+      ? "MANDATORY NATIVE ON-SCREEN SPEAKING SEQUENCE:"
+      : "VISIBLE SPEAKING SEQUENCE:",
     ...dialogues.map((dialogue, index) =>
       `${index + 1}. ${dialogue.speaker}: \"${dialogue.text}\" — ${dialogue.voiceDirection}`,
     ),
-    "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the Veo clip. The fixed studio voices are added later.",
+    nativeCharacterDialogue
+      ? "The named visible characters themselves must say these exact words audibly, in this order, one at a time. Show each active speaker's face and mouth clearly and synchronize natural mouth, jaw and facial movement to their own voice. Never turn these lines into narration, voice-over, off-screen speech or speech by another character."
+      : "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the Veo clip. The fixed studio voices are added later.",
   ].join("\n");
 }
 
@@ -1047,12 +1057,22 @@ function buildViralReferenceDirection(story: Record<string, unknown>): string {
   ].filter(Boolean).join("\n");
 }
 
+function buildViralTrashTvDirection(): string {
+  return [
+    "TIKTOK TRASH-TV DRAMA (mandatory):",
+    "Stage an exaggerated interpersonal reality-show confrontation between the fruit characters: accusation, secret, betrayal, jealousy or alliance, escalating reactions, a sharp reveal and a dramatic payoff.",
+    "Favor confrontational eyelines, expressive reaction close-ups, awkward pauses, shocked gestures and socially charged staging that reads instantly on a phone screen.",
+    "This is fictional entertainment, never a documentary, report, educational explainer, interview, presenter segment or observational nature film.",
+  ].join("\n");
+}
+
 function buildViralIndependentShotPrompt(
   story: Record<string, unknown>,
   continuation: Record<string, unknown>,
   shotNumber: number,
   totalShots: number,
   selectedAudioDirection: string,
+  nativeCharacterDialogue: boolean,
 ): string {
   const title = typeof story.title === "string" ? story.title : "TikTok story";
   const summary = typeof story.summary === "string" ? story.summary : "";
@@ -1066,6 +1086,7 @@ function buildViralIndependentShotPrompt(
     `STORY TITLE: ${title}`,
     summary ? `COMPLETE STORY CONTEXT: ${summary}` : "",
     buildViralReferenceDirection(story),
+    buildViralTrashTvDirection(),
     typeof continuation.storyBeat === "string" ? `STORY BEAT: ${continuation.storyBeat}` : "",
     typeof continuation.emotionalBeat === "string" ? `EMOTION: ${continuation.emotionalBeat}` : "",
     typeof continuation.actionContinuation === "string" ? `VISIBLE ACTION: ${continuation.actionContinuation}` : "",
@@ -1075,14 +1096,16 @@ function buildViralIndependentShotPrompt(
     buildViralVisualDialogueDirection([
       asRecord(continuation.dialogue),
       ...dialogueTurns,
-    ]),
+    ], nativeCharacterDialogue),
     "Create a fresh, story-appropriate composition. Do not repeat the neutral reference-card pose or studio backdrop.",
     "The action must be instantly readable on a phone screen and advance the story without a visual reset or repeated beat.",
     isFinalShot
       ? "Deliver the complete visual payoff early in this shot and end on a stable, emotionally clear resting frame."
       : "End on a strong reaction, reveal or motivated action that cuts cleanly to the next shot.",
     selectedAudioDirection,
-    "No spoken words, no lip-synced dialogue, no subtitles, no captions, no readable text, no logos and no watermark.",
+    nativeCharacterDialogue
+      ? "The assigned visible characters speak their lines with synchronized lips. No narrator, no voice-over, no off-screen speech, no subtitles, no captions, no readable text, no logos and no watermark."
+      : "No spoken words, no lip-synced dialogue, no subtitles, no captions, no readable text, no logos and no watermark.",
   ].filter(Boolean).join("\n\n");
 }
 

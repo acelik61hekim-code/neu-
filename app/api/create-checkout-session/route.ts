@@ -583,6 +583,9 @@ export async function POST(
 
       spokenLanguage,
 
+      nativeCharacterDialogue:
+        hasValidViralDialoguePlan(prompt, targetDurationSeconds),
+
       voiceoverText:
         voiceoverText || undefined,
 
