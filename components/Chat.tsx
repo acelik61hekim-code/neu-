@@ -60,6 +60,7 @@ type ChatProps = {
 
 type Message = ConversationMessage & {
   id: number;
+  apiContent?: string;
 };
 
 const INITIAL_MESSAGE: Message = {
@@ -188,9 +189,12 @@ export default function Chat({
   async function handleSubmit(
     preparedInput?: string,
     preparedViralCharacterIds?: string[],
+    preparedApiContent?: string,
   ) {
     const cleanedInput =
       (preparedInput ?? input).trim();
+    const cleanedApiContent =
+      (preparedApiContent ?? cleanedInput).trim();
 
     const viralCharacterIds =
       preparedViralCharacterIds ?? activeViralCharacterIds;
@@ -216,6 +220,17 @@ export default function Chat({
     }
 
     if (
+      cleanedInput.length > AI_DIRECTOR_MESSAGE_MAX_CHARACTERS ||
+      cleanedApiContent.length > AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
+    ) {
+      setLocalError(
+        `Eine Nachricht darf höchstens ${AI_DIRECTOR_MESSAGE_MAX_CHARACTERS} Zeichen enthalten.`,
+      );
+
+      return;
+    }
+
+    if (
       thinking ||
       creatingMoviePlan ||
       finished ||
@@ -230,6 +245,9 @@ export default function Chat({
       id: Date.now(),
       role: "user",
       content: cleanedInput,
+      ...(cleanedApiContent !== cleanedInput
+        ? { apiContent: cleanedApiContent }
+        : {}),
     };
 
     const updatedMessages = [
@@ -259,7 +277,7 @@ export default function Chat({
             role:
               message.role,
             content:
-              message.content,
+              message.apiContent ?? message.content,
           }),
         );
 
@@ -406,9 +424,15 @@ export default function Chat({
 
     try {
       await onViralStoryStart?.(characters);
+      const visibleRequest =
+        `Erstelle eine ${formatDuration(targetDurationSeconds)} lange Trash-TV-Story zum Thema „${topic}“ mit ${characters
+          .map((character) => character.shortName)
+          .join(", ")}.`;
+
       await handleSubmit(
-        createViralStoryPrompt(ids, topic, targetDurationSeconds),
+        visibleRequest,
         ids,
+        createViralStoryPrompt(ids, topic, targetDurationSeconds),
       );
     } catch (viralError) {
       setLocalError(
