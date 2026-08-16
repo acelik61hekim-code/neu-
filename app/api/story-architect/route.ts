@@ -1443,10 +1443,74 @@ function normalizeArchitectResponse(
   };
 }
 
+function isInfidelityStory(story: StoryDraft): boolean {
+  return /fremdgeh|fremdgeher|affäre|seitensprung|untreu|betrüg|betrogen|geliebte|heimliche[rn]?\s+(?:flirt|beziehung)|cheat|infidel/i.test(
+    [story.title, story.genre, story.summary].join(" "),
+  );
+}
+
+function isVagueDramaLine(text: string): boolean {
+  const normalized = text
+    .trim()
+    .toLocaleLowerCase("de-DE")
+    .replace(/[„“\"'!?.,…:;]+/g, "")
+    .replace(/\s+/g, " ");
+
+  return [
+    /^das ist (?:doch )?(?:alles )?(?:völlig |ganz )?anders$/,
+    /^du verstehst das nicht$/,
+    /^frag .{0,24} nicht(?: zu viel)?$/,
+    /^(?:und )?das ist erst der anfang$/,
+    /^warte (?:nur )?ab$/,
+    /^ich kann das erklären$/,
+    /^es ist nicht so(?: wie du denkst)?$/,
+    /^du weißt gar nichts$/,
+    /^glaub mir$/,
+    /^was machst du (?:mit .+ )?hier$/,
+    /^das gehört (?:niemals )?(?:nicht )?(?:euch|dir|ihm|ihr)(?: beiden)?$/,
+    /^(?:aber )?(?:das|dies|das hier|dies hier) (?:ändert|verändert|beweist|erklärt) (?:einfach )?(?:alles|nichts)$/,
+  ].some((pattern) => pattern.test(normalized));
+}
+
+function buildViralDialogueArc(
+  targetDurationSeconds: VideoDurationSeconds,
+): string {
+  const dialogueBeatCount = targetDurationSeconds <= 8
+    ? 1
+    : 1 + Math.ceil((targetDurationSeconds - 8) / 7);
+
+  if (targetDurationSeconds === 60) {
+    return `
+VERBINDLICHER EINMINÜTIGER DIALOGBOGEN – NEUN KAUSALE BEATS
+
+1. Opening: Die betrogene Figur benennt sofort den konkreten Kuss, Gegenstand oder Nachrichtenfund.
+2. Erste Extension: Die beschuldigte Figur antwortet direkt auf genau diesen Vorwurf.
+3. Zweite Extension: Die dritte Figur nennt ein konkretes widersprechendes Detail.
+4. Dritte Extension: Die betrogene Figur fragt gezielt nach Dauer, Ort oder Motiv.
+5. Vierte Extension: Die beschuldigte Figur gesteht ein erstes überprüfbares Faktum.
+6. Fünfte Extension: Ein neues Beweisstück widerlegt eine Ausrede.
+7. Sechste Extension: Die betrogene Figur zieht eine konkrete persönliche Konsequenz.
+8. Siebte Extension: Eine Gegenenthüllung verändert Schuld oder Bündnis.
+9. Letzte Extension: Ein neuer Name, eine eintretende Figur oder ein eindeutig benanntes Beweisstück öffnet den Cliffhanger.
+
+Diese neun Dialogzeilen ergeben zusammen ein einziges verständliches Gespräch. Keine Zeile darf aus einer anderen Geschichte stammen.`;
+  }
+
+  return `
+VERBINDLICHER DIALOGBOGEN
+
+- Plane ${dialogueBeatCount} aufeinander aufbauende Dialogbeats für ${targetDurationSeconds} Sekunden.
+- Beginne mit einem konkret benannten Skandal oder Beweis.
+- Lass jede Antwort den unmittelbar vorherigen Vorwurf beantworten und eine neue Information ergänzen.
+- Steigere über Geständnis, Widerspruch und Konsequenz zu einem konkret benannten Cliffhanger.`;
+}
+
 function hasMandatoryDialoguePlan(
   response: ArchitectResponse,
   expectedSpeakers: readonly string[] = [],
   targetDurationSeconds = 30,
+  creationMode: VideoCreationMode = "standard",
+  story?: StoryDraft,
 ): boolean {
   if (
     response.productionBible.characterBible.length < 2 ||
@@ -1476,9 +1540,22 @@ function hasMandatoryDialoguePlan(
     Math.max(2, expectedSpeakers.length),
   );
 
+  const isViralDialogue = creationMode === "viral-story";
+  const minimumDialogueCount = isViralDialogue
+    ? Math.min(
+        plannedDialogue.length,
+        targetDurationSeconds <= 8
+          ? minimumSpeakerCount
+          : Math.max(
+              minimumSpeakerCount,
+              Math.ceil(targetDurationSeconds / 8),
+            ),
+      )
+    : minimumSpeakerCount;
+
   if (
     !plannedDialogue[0]?.enabled ||
-    enabledDialogue.length < minimumSpeakerCount
+    enabledDialogue.length < minimumDialogueCount
   ) {
     return false;
   }
@@ -1488,10 +1565,17 @@ function hasMandatoryDialoguePlan(
 
   const speakers = new Set<string>();
   let totalWordCount = 0;
-  const maximumWordsPerLine = targetDurationSeconds <= 8 ? 6 : 12;
+  let previousSpeaker = "";
+  let consecutiveSpeakerLines = 0;
+  const maximumWordsPerLine = targetDurationSeconds <= 8
+    ? 6
+    : isViralDialogue
+      ? 10
+      : 12;
 
   for (const dialogue of enabledDialogue) {
     const speaker = dialogue.speaker.trim();
+    const normalizedSpeaker = speaker.toLocaleLowerCase("de-DE");
     const wordCount =
       dialogue.text.trim().split(/\s+/).filter(Boolean).length;
 
@@ -1505,12 +1589,40 @@ function hasMandatoryDialoguePlan(
       return false;
     }
 
-    speakers.add(speaker.toLocaleLowerCase("de-DE"));
+    consecutiveSpeakerLines = normalizedSpeaker === previousSpeaker
+      ? consecutiveSpeakerLines + 1
+      : 1;
+
+    if (
+      isViralDialogue &&
+      (consecutiveSpeakerLines > 2 || isVagueDramaLine(dialogue.text))
+    ) {
+      return false;
+    }
+
+    speakers.add(normalizedSpeaker);
+    previousSpeaker = normalizedSpeaker;
     totalWordCount += wordCount;
   }
 
   if (speakers.size < minimumSpeakerCount) return false;
   if (targetDurationSeconds <= 8 && totalWordCount > 12) return false;
+
+  if (isViralDialogue && story && isInfidelityStory(story)) {
+    const completeDialogue = enabledDialogue
+      .map((dialogue) => dialogue.text)
+      .join(" ");
+    const namesConcreteConflict =
+      /fremdgeh|affäre|betrüg|betrogen|untreu|küss|kuss|lüg|heimlich|hintergangen|verrat|hochzeit|verlob|beziehung/i.test(
+        completeDialogue,
+      );
+    const namesConcreteEvidence =
+      /foto|nachricht|chat|video|hotel|rechnung|kuss|küss|bett|schlüssel|ticket|ring|ultraschall|schwanger|baby|parfüm|handy|beweis|gesehen|erwischt/i.test(
+        completeDialogue,
+      );
+
+    if (!namesConcreteConflict || !namesConcreteEvidence) return false;
+  }
 
   if (expectedSpeakers.length > 0) {
     const expected = expectedSpeakers.slice(0, 3).map((speaker) => {
@@ -2243,15 +2355,22 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - Nutze maximal drei sichtbare Hauptfiguren pro Einstellung. Zeige nur Figuren, die für den jeweiligen Story-Beat nötig sind.
 - Die ersten zwei Sekunden beginnen ohne Einleitung mitten in der Konsequenz oder im Skandal. Keine Vorgeschichte und keine Zusammenfassung.
 - Jeder 8-Sekunden-Abschnitt enthält diese internen Mini-Beats: 0–1,5 Sekunden sichtbarer Hook, 1,5–4 Sekunden Vorwurf oder Beweis, 4–6 Sekunden extremes Reaktions-Close-up, 6–8 Sekunden Eskalation oder überraschender Sting.
-- Bei ungefähr 30 Sekunden gilt verbindlich: Beat 1 Skandal-Cold-Open, Beat 2 Entdeckung oder Beweis, Beat 3 direkte Konfrontation plus Gegenenthüllung, Beat 4 Teilantwort plus größeres neues Geheimnis.
+${buildViralDialogueArc(targetDurationSeconds)}
+- Lege vor dem Schreiben intern eindeutig fest: Wer betrügt wen mit wem? Welche Beziehung besteht? Welches sichtbare Beweisstück überführt die Person? Wie lange läuft es? Was weiß die dritte Figur? Welche konkrete Gegenenthüllung folgt?
+- Jede Dialogzeile muss die vorherige Zeile direkt beantworten und eine neue überprüfbare Information ergänzen. Die Dialoge sind zusammen ein einziges Gespräch, keine Sammlung austauschbarer Drama-Sprüche.
+- Bei Fremdgehen müssen Partner, dritte Person, Beweisstück und mindestens ein Geständnis oder eine überprüfbare Lüge im Dialog verständlich werden.
+- Nutze konkrete Substantive und Handlungen wie Kuss, Nachricht, Foto, Hotelrechnung, Hochzeit oder Zeitraum. Pronomen allein ersetzen keine verständliche Enthüllung.
+- Verbotene leere Platzhaltersätze sind unter anderem: „Das ist alles völlig anders“, „Du verstehst das nicht“, „Frag ihn lieber nicht“, „Und das ist erst der Anfang“, „Das hier ändert alles“, „Warte ab“ und „Ich kann das erklären“.
+- Schreibe natürliches gesprochenes Deutsch. Keine künstlichen Zusammensetzungen wie „Hotelkuss“ und keine falsch getrennten Zahlwörter wie „vierzig zwei“; sage stattdessen „Kuss im Hotel“ und „Zimmer zweiundvierzig“.
+- Der finale Cliffhanger benennt das neue Geheimnis, Beweisstück oder die eintretende Figur konkret, statt nur weitere Spannung anzukündigen.
 - Der letzte Story-Beat endet bewusst ungelöst und serienfähig: eine Tür geht auf, ein neues Beweisstück erscheint, eine Figur reagiert geschockt oder ein Geheimnis wird nur halb enthüllt. Kein ruhiges Abschlussbild, keine vollständige Versöhnung und keine erklärende Zusammenfassung.
 - moviePlan.opening.dialogue.enabled ist true. Die erste ausgewählte Figur spricht sofort einen kurzen Hook-Satz.
 - moviePlan.opening.dialogueTurns ist ein Array für zusätzliche Sprecherwechsel innerhalb desselben 8-Sekunden-Clips.
 ${targetDurationSeconds <= 8
     ? "- Bei genau 8 Sekunden enthält opening.dialogue die erste Zeile und opening.dialogueTurns genau eine weitere aktivierte Zeile pro verbleibender ausgewählter Figur. Keine Zeile wiederholen. Jede Zeile hat höchstens sechs Wörter; alle Zeilen zusammen höchstens zwölf Wörter."
-    : "- Bei längeren Videos bleibt opening.dialogueTurns leer; plane die weiteren Sprecher in den dialogue-Feldern der folgenden Abschnitte ein."}
+    : "- Bei längeren Videos bleibt opening.dialogueTurns leer. Jede Fortsetzung enthält in ihrem dialogue-Feld genau eine aktivierte neue Dialogzeile; continuation.dialogueTurns bleibt leer."}
 - Danach wechseln sich die ausgewählten Figuren natürlich ab. Jede ausgewählte Figur muss mindestens einmal mit ihrem exakten Namen als speaker sprechen.
-- Jeder Dialogsatz umfasst höchstens acht einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
+- Jeder Dialogsatz umfasst bei längeren Videos höchstens zehn einfach aussprechbare Wörter und passt vollständig in seinen Bildabschnitt.
 - Die jeweils sichtbare aktive Figur spricht ihren exakten Satz selbst hörbar und lippensynchron im Videoclip. Unterschiedliche Stimmen zwischen getrennten Einstellungen sind akzeptabel.
 - Kein Erzähler, kein Voice-over, keine Offscreen-Sprache und keine später darübergelegte Dialogspur.
 - Keine Untertitel, keine sichtbaren Sprechblasen und keine Fantasieschrift.
@@ -2945,12 +3064,16 @@ export async function POST(request: Request) {
                 editingStyle,
                 voiceMode,
               );
-              return validateArchitectResponse(normalizedCandidate) &&
-                hasMandatoryDialoguePlan(
+              const structurallyValid = validateArchitectResponse(normalizedCandidate);
+              const dialogueValid = hasMandatoryDialoguePlan(
                   normalizedCandidate,
                   expectedDialogueSpeakers,
                   targetDurationSeconds,
+                  creationMode,
+                  story,
                 );
+
+              return structurallyValid && dialogueValid;
             }
           : undefined,
       );
@@ -3026,6 +3149,8 @@ export async function POST(request: Request) {
         normalized,
         expectedDialogueSpeakers,
         targetDurationSeconds,
+        creationMode,
+        story,
       )
     ) {
       return NextResponse.json(

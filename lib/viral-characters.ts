@@ -1,3 +1,5 @@
+import type { VideoDurationSeconds } from "@/types/story";
+
 export type ViralCharacter = {
   id: string;
   name: string;
@@ -108,8 +110,12 @@ export function getViralCharacters(ids: readonly string[]): ViralCharacter[] {
 export function createViralStoryPrompt(
   ids: readonly string[],
   topic: string,
+  targetDurationSeconds: VideoDurationSeconds = 30,
 ): string {
   const characters = getViralCharacters(ids);
+  const dialogueBeatCount = targetDurationSeconds <= 8
+    ? 1
+    : 1 + Math.ceil((targetDurationSeconds - 8) / 7);
   const characterList = characters
     .map(
       (character, index) =>
@@ -120,17 +126,24 @@ export function createViralStoryPrompt(
   return [
     "TIKTOK-STORY-MODUS MIT FESTEN FIGUREN.",
     `Erstelle automatisch eine originelle, leicht verständliche und emotionale Kurzgeschichte zum Thema: ${topic}.`,
+    `Plane die Geschichte ausdrücklich für ${targetDurationSeconds} Sekunden und ${dialogueBeatCount} aufeinanderfolgende Dialogabschnitte. Behandle eine einminütige Geschichte niemals wie eine verlängerte 30-Sekunden-Skizze.`,
     "Nutze ausschließlich die folgenden ausgewählten Hauptfiguren und verändere niemals ihre Fruchtart, Gesichter, Körperproportionen, Kleidung, Farben oder Namen:",
     characterList,
     "Gib jeder Figur eine klare Trash-TV-Rolle, die aus ihrer Persönlichkeit entsteht: betrogene Hauptfigur, Provokateur, Geheimnisträger, Versuchung oder zweifelhafter Verbündeter. Lege eine Beziehung, ein verborgenes Geheimnis und ein sichtbares Beweisstück fest.",
     "In jeder Szene wird sichtbar gestritten. Plane mindestens zwei übertriebene Reaktionen pro acht Sekunden: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder riesige Doppeltakes. Niemand steht ruhig erklärend herum; der Streit bleibt ohne körperliche Gewalt.",
     "Erzähle wie eine zugespitzte, fortsetzbare TikTok-Microdrama-Serie: Skandal, Vorwürfe, Geheimnisse, starke Reaktionen, Gegenenthüllung und Cliffhanger. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
-    "Verbindliche Dramaturgie für ungefähr 30 Sekunden: Szene 1 beginnt ohne Einleitung mitten im Skandal; Szene 2 zeigt die Entdeckung oder das Beweisstück; Szene 3 bringt direkte Konfrontation und Gegenenthüllung; Szene 4 liefert eine Teilantwort und öffnet sofort ein größeres Geheimnis als Cliffhanger.",
+    targetDurationSeconds === 60
+      ? "Verbindliche Dramaturgie für eine Minute: Dialogbeat 1 zeigt das Fremdgehen oder ein eindeutiges Beweisstück; Beat 2 ist die direkte Antwort des Beschuldigten; Beat 3 liefert die konkrete Aussage der dritten Figur; Beat 4 fragt nach Dauer oder Motiv; Beat 5 enthält ein erstes überprüfbares Geständnis; Beat 6 widerlegt eine Ausrede mit einem neuen Detail; Beat 7 zeigt eine persönliche Konsequenz; Beat 8 bringt eine Gegenenthüllung; Beat 9 endet mit einem konkreten neuen Beweis, Namen, Ereignis oder einer eintretenden Figur als Cliffhanger."
+      : `Verbindliche Dramaturgie: Nutze ${dialogueBeatCount} klar aufeinander aufbauende Dialogbeats – Skandal, Beweis, direkte Antwort, Eskalation, Gegenenthüllung und einen konkreten Cliffhanger.`,
     "Jeder achtsekündige Abschnitt hat eigene Mini-Beats: 0–1,5 Sekunden sichtbarer Hook, 1,5–4 Sekunden Vorwurf oder Beweis, 4–6 Sekunden extremes Reaktions-Close-up, 6–8 Sekunden Eskalation oder überraschender Sting.",
     "Die ersten zwei Sekunden zeigen bereits die Konsequenz oder den Skandal, nicht Vorgeschichte oder Zusammenfassung. Das Ende bleibt bewusst offen und serienfähig: eine Tür geht auf, ein neues Beweisstück erscheint, eine Figur reagiert geschockt oder ein Geheimnis wird nur halb enthüllt. Kein ruhiges Abschlussbild und keine vollständige Versöhnung.",
     "Die Figuren handeln wie erwachsene Menschen. Keine Kindergeschichte, keine Gewalt, keine Sexualisierung und keine Ähnlichkeit zu bekannten geschützten Figuren.",
     "Plane das Bild vertikal für TikTok. Keine eingeblendeten Texte. Schreibe kurze, natürliche Dialoge, in denen alle ausgewählten Figuren mindestens einmal sprechen. Die jeweils sichtbare Figur spricht ihren Satz selbst hörbar und lippensynchron in der Szene; unterschiedliche Stimmen zwischen Einstellungen sind akzeptabel.",
-    "Beginne den Dialog bereits im ersten Story-Beat. Die Sätze müssen einfach aussprechbar, höchstens acht Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.",
+    `Beginne den Dialog bereits im ersten Story-Beat. Jeder weitere Abschnitt enthält genau eine neue, handlungsrelevante Aussage. Die Sätze müssen einfach aussprechbar, höchstens ${targetDurationSeconds <= 8 ? "sechs" : "zehn"} Wörter lang und klar der jeweils sichtbaren Figur zugeordnet sein. Kein Erzähler und kein Voice-over.`,
+    "DIALOGLOGIK: Lege vor dem Schreiben eindeutig fest, wer wen betrogen hat, welche Beziehung bestand, welches sichtbare Beweisstück den Betrug belegt, wie lange das Geheimnis besteht und was die dritte Figur wusste. Jede Antwort muss direkt auf den vorherigen Satz reagieren und zusätzlich eine konkrete neue Information liefern.",
+    "Bei einer Fremdgeh-Geschichte müssen die Dialoge den Partner, die dritte Person, das Beweisstück und mindestens ein Geständnis oder eine überprüfbare Lüge verständlich benennen. Verwende konkrete Wörter wie Kuss, Nachricht, Foto, Hotelrechnung, Hochzeit oder Zeitraum statt nur er, sie, das und alles.",
+    "Verbotene leere Platzhaltersätze sind unter anderem: Das ist alles völlig anders; Du verstehst das nicht; Frag ihn lieber nicht; Und das ist erst der Anfang; Das hier ändert alles; Warte ab; Ich kann das erklären. Ein Cliffhanger nennt immer das konkrete neue Geheimnis oder Beweisstück.",
+    "Schreibe natürliches gesprochenes Deutsch. Keine künstlichen Zusammensetzungen wie Hotelkuss und keine falsch getrennten Zahlwörter wie vierzig zwei; sage stattdessen Kuss im Hotel und Zimmer zweiundvierzig.",
     "Erfinde alle fehlenden Details selbst und schließe die Planung ohne Rückfrage ab.",
   ].join("\n\n");
 }

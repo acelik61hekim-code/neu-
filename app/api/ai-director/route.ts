@@ -139,6 +139,9 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Ergänze selbst eine passende zweite Gesprächsfigur, falls der Nutzer nur eine Figur genannt hat; frage dafür nicht unnötig nach.
 - Beschreibe für jede Figur Aussehen, Persönlichkeit, Rolle und Beziehung zur anderen Figur so konkret, dass ihre Identität über alle Szenen stabil bleiben kann.
 - Die Zusammenfassung muss ein echtes abwechselndes Gespräch ermöglichen. Kein Monolog, kein Erzähler, kein Voice-over und keine Offscreen-Stimme.
+- Lege den Konflikt vor dem Dialog konkret fest: Beziehung, Auslöser, sichtbares Beweisstück, verborgenes Wissen und Konsequenz.
+- Jede Antwort reagiert direkt auf den vorherigen Satz und ergänzt eine neue überprüfbare Information. Vermeide austauschbare Platzhaltersätze wie „Das ist alles anders“, „Du verstehst das nicht“, „Warte ab“ oder „Das ist erst der Anfang“.
+- Bei Fremdgehen oder Verrat muss die Zusammenfassung eindeutig sagen, wer wen mit wem betrogen hat, wodurch es auffliegt und welche konkrete Gegenenthüllung folgt.
 - Wenn die übrigen Story-Angaben ausreichen, darf ready erst dann true sein, wenn mindestens zwei Gesprächsfiguren im Story-Objekt stehen.
 `;
 
@@ -225,6 +228,7 @@ function enforceViralStory(
         result.story.summary,
         `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
         "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einer verständlichen überraschenden Auflösung. Alle ausgewählten Figuren erhalten kurze natürliche Dialoge. Ihre festen Stimmen werden separat erzeugt und anschließend szenengenau gemischt, damit sie nicht zwischen Clips wechseln.",
+        "Die Dialogfolge ist kausal und konkret: Jede Zeile beantwortet die vorherige, nennt eine neue überprüfbare Information und führt denselben Konflikt weiter. Leere Drama-Platzhalter ohne Bezug zu Beziehung, Beweis oder Konsequenz sind verboten.",
       ]
         .filter(Boolean)
         .join(" "),

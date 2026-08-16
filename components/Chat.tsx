@@ -406,7 +406,10 @@ export default function Chat({
 
     try {
       await onViralStoryStart?.(characters);
-      await handleSubmit(createViralStoryPrompt(ids, topic), ids);
+      await handleSubmit(
+        createViralStoryPrompt(ids, topic, targetDurationSeconds),
+        ids,
+      );
     } catch (viralError) {
       setLocalError(
         viralError instanceof Error
