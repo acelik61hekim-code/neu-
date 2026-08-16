@@ -188,6 +188,30 @@ async function loadPublicImageAsDataUrl(path: string): Promise<string> {
   });
 }
 
+function hasCompleteMoviePlan(value: string): boolean {
+  if (!value.trim()) return false;
+
+  try {
+    const parsed = JSON.parse(value) as {
+      moviePlan?: {
+        opening?: {
+          veoPrompt?: unknown;
+        };
+      };
+      productionBible?: unknown;
+    };
+
+    return Boolean(
+      parsed.productionBible &&
+        parsed.moviePlan?.opening &&
+        typeof parsed.moviePlan.opening.veoPrompt === "string" &&
+        parsed.moviePlan.opening.veoPrompt.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function StudioHome({
   initialStudio = "video",
 }: {
@@ -287,6 +311,8 @@ export function StudioHome({
 
   const [previewReferenceMimeType, setPreviewReferenceMimeType] =
     useState<string | null>(null);
+
+  const storyReadyForPreview = hasCompleteMoviePlan(story);
 
   function resetPlannedProject() {
     setStory("");
@@ -575,6 +601,13 @@ export function StudioHome({
   }
 
   async function handleGeneratePreview() {
+    if (!storyReadyForPreview) {
+      setError(
+        "Warte bitte, bis der AI Director den Filmplan vollständig erstellt hat.",
+      );
+      return;
+    }
+
     const previewPrompt =
       getPreviewPrompt();
 
@@ -1337,6 +1370,15 @@ export function StudioHome({
                   </p>
                 </div>
 
+                {error ? (
+                  <div
+                    role="alert"
+                    className="mb-4 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm leading-5 text-red-100"
+                  >
+                    {error}
+                  </div>
+                ) : null}
+
                 {!previewImage && (
                   <button
                     type="button"
@@ -1346,13 +1388,15 @@ export function StudioHome({
                     disabled={
                       previewLoading ||
                       loading ||
-                      !story.trim()
+                      !storyReadyForPreview
                     }
                     className="inline-flex w-full items-center justify-center rounded-xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {previewLoading
                       ? "Vorschau wird erstellt ..."
-                      : "🖼 Vorschau erstellen"}
+                      : story.trim() && !storyReadyForPreview
+                        ? "Filmplan wird vorbereitet ..."
+                        : "🖼 Vorschau erstellen"}
                   </button>
                 )}
 

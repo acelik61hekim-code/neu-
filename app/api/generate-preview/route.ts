@@ -389,12 +389,12 @@ function isSafetyBlocked(
 export async function POST(
   request: Request,
 ) {
-  const rateLimit = await checkRateLimit(request, "preview-v2", 8, 60 * 60);
+  const rateLimit = await checkRateLimit(request, "preview-v3", 24, 60 * 60);
   if (!rateLimit.allowed) {
     return NextResponse.json(
       {
         success: false,
-        error: "Zu viele Vorschauen in kurzer Zeit. Bitte versuche es später erneut.",
+        error: "Du hast bereits viele Vorschauen erstellt. Bitte warte kurz und versuche es danach erneut.",
       },
       {
         status: 429,
