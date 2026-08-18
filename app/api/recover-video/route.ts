@@ -127,13 +127,19 @@ export async function POST(req: NextRequest) {
     const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
       job.errorMessage ?? providerFailureMessage ?? "",
     );
+    const internalProviderFailureCanRetry =
+      /internal server issue|try again in a few minutes|internen Serverfehler/i.test(
+        job.errorMessage ?? providerFailureMessage ?? "",
+      );
     const maximumRecoveryAttempts = trashTvReactionBoost
       ? 5
       : nativeCharacterDialogue
         ? 4
         : audioFailureCanRetry
           ? 2
-          : 1;
+          : internalProviderFailureCanRetry
+            ? 4
+            : 1;
     if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
         { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },

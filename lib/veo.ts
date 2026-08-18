@@ -104,6 +104,61 @@ export function getRetryableVeoStartError(
   };
 }
 
+const RESTARTABLE_OPERATION_STATUSES = new Set([
+  "INTERNAL",
+  "UNAVAILABLE",
+]);
+
+const RESTARTABLE_OPERATION_CODES = new Set([
+  13,
+  14,
+  500,
+  503,
+]);
+
+export class VeoProviderOperationError extends Error {
+  readonly provider = "google-veo";
+  readonly phase = "operation";
+  readonly providerStatus?: string;
+  readonly providerCode?: number;
+  readonly safeToRestart: boolean;
+
+  constructor(
+    message: string,
+    options: { providerStatus?: string; providerCode?: number },
+  ) {
+    super(message);
+    this.name = "VeoProviderOperationError";
+    this.providerStatus = options.providerStatus;
+    this.providerCode = options.providerCode;
+    this.safeToRestart =
+      (typeof options.providerStatus === "string" && RESTARTABLE_OPERATION_STATUSES.has(options.providerStatus)) ||
+      (typeof options.providerCode === "number" && RESTARTABLE_OPERATION_CODES.has(options.providerCode)) ||
+      /internal server issue|try again in a few minutes|temporarily unavailable/i.test(message);
+  }
+}
+
+export function getRestartableVeoOperationError(
+  error: unknown,
+): { message: string } | null {
+  if (typeof error !== "object" || error === null) return null;
+
+  const candidate = error as Partial<VeoProviderOperationError>;
+  if (
+    candidate.provider !== "google-veo" ||
+    candidate.phase !== "operation" ||
+    candidate.safeToRestart !== true
+  ) {
+    return null;
+  }
+
+  return {
+    message: typeof candidate.message === "string"
+      ? candidate.message
+      : "Google Veo hat die laufende Generierung wegen eines internen Serverfehlers beendet.",
+  };
+}
+
 type GeminiFileResource =
   GoogleApiError & {
     name?: string;
@@ -731,8 +786,12 @@ export async function checkVideoStatus(
   if (
     data.error?.message
   ) {
-    throw new Error(
+    throw new VeoProviderOperationError(
       data.error.message,
+      {
+        providerStatus: data.error.status,
+        providerCode: data.error.code,
+      },
     );
   }
 

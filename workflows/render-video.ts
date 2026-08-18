@@ -46,7 +46,13 @@ type PollResult = {
   done: boolean;
   videoUri?: string;
   mimeType?: string;
+  restartOperation?: boolean;
+  providerMessage?: string;
 };
+
+type OperationWaitResult =
+  | { completed: true; videoUri: string }
+  | { completed: false; providerMessage: string };
 
 type ProviderStartResult =
   | { started: true; operationName: string }
@@ -71,6 +77,12 @@ const PROVIDER_RETRY_DELAYS_MS = [
   12 * 60 * 60_000,
 ] as const;
 
+const PROVIDER_OPERATION_RESTART_DELAYS_MS = [
+  2 * 60_000,
+  10 * 60_000,
+  30 * 60_000,
+] as const;
+
 export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> {
   "use workflow";
 
@@ -91,15 +103,10 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
     let completedExtensions = 0;
 
     for (const segment of prepared.segments.slice(chapterUris.length)) {
-      const openingOperation = await startOpeningWithProviderRetry(
+      let currentUri = await completeOpeningWithOperationRecovery(
         jobId,
         segment.openingPrompt,
         prepared.aspectRatio,
-        segment.chapterNumber,
-      );
-      let currentUri = await waitForOperation(
-        jobId,
-        openingOperation,
         segment.chapterNumber,
         completedExtensions,
         prepared.totalExtensions,
@@ -107,17 +114,11 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
 
       for (let index = 0; index < segment.continuationPrompts.length; index += 1) {
         const globalExtensionNumber = completedExtensions + 1;
-        const operation = await startExtensionWithProviderRetry(
+        currentUri = await completeExtensionWithOperationRecovery(
           jobId,
           currentUri,
           segment.continuationPrompts[index],
           prepared.aspectRatio,
-          segment.chapterNumber,
-          globalExtensionNumber,
-        );
-        currentUri = await waitForOperation(
-          jobId,
-          operation,
           segment.chapterNumber,
           globalExtensionNumber,
           prepared.totalExtensions,
@@ -230,6 +231,113 @@ async function startExtensionWithProviderRetry(
   }
 
   throw new Error("Google Veo konnte die Fortsetzung nach mehreren sicheren Versuchen nicht starten.");
+}
+
+async function completeOpeningWithOperationRecovery(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<string> {
+  for (let attempt = 0; attempt <= PROVIDER_OPERATION_RESTART_DELAYS_MS.length; attempt += 1) {
+    const operationName = await startOpeningWithProviderRetry(
+      jobId,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+    );
+    const result = await waitForOperation(
+      jobId,
+      operationName,
+      chapterNumber,
+      completedExtensions,
+      totalExtensions,
+    );
+    if (result.completed) return result.videoUri;
+
+    const retryDelayMs = PROVIDER_OPERATION_RESTART_DELAYS_MS[attempt];
+    if (retryDelayMs === undefined) {
+      throw new Error(
+        "Google Veo hat die Videoerstellung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
+      );
+    }
+    await scheduleOperationRestartStep(jobId, retryDelayMs, result.providerMessage);
+    await sleep(`${Math.ceil(retryDelayMs / 1000)}s`);
+  }
+
+  throw new Error("Google Veo konnte die Videoerstellung nicht abschließen.");
+}
+
+async function completeExtensionWithOperationRecovery(
+  jobId: string,
+  previousVideoUri: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  extensionNumber: number,
+  totalExtensions: number,
+): Promise<string> {
+  for (let attempt = 0; attempt <= PROVIDER_OPERATION_RESTART_DELAYS_MS.length; attempt += 1) {
+    const operationName = await startExtensionWithProviderRetry(
+      jobId,
+      previousVideoUri,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+      extensionNumber,
+    );
+    const result = await waitForOperation(
+      jobId,
+      operationName,
+      chapterNumber,
+      extensionNumber,
+      totalExtensions,
+    );
+    if (result.completed) return result.videoUri;
+
+    const retryDelayMs = PROVIDER_OPERATION_RESTART_DELAYS_MS[attempt];
+    if (retryDelayMs === undefined) {
+      throw new Error(
+        "Google Veo hat die Videofortsetzung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
+      );
+    }
+    await scheduleOperationRestartStep(jobId, retryDelayMs, result.providerMessage);
+    await sleep(`${Math.ceil(retryDelayMs / 1000)}s`);
+  }
+
+  throw new Error("Google Veo konnte die Videofortsetzung nicht abschließen.");
+}
+
+async function scheduleOperationRestartStep(
+  jobId: string,
+  retryDelayMs: number,
+  providerMessage: string,
+): Promise<void> {
+  "use step";
+  const { jobStore } = await import("@/lib/store");
+  const job = await jobStore.get(jobId);
+  if (!job) throw new Error("Render-Job wurde vor dem automatischen Neustart nicht gefunden.");
+
+  const nextAttemptAt = Date.now() + retryDelayMs;
+  await jobStore.set(jobId, {
+    ...job,
+    status: "processing",
+    renderStage: "waiting-provider",
+    retryCount: (job.retryCount ?? 0) + 1,
+    nextAttemptAt,
+    errorMessage:
+      "Google Veo hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
+    currentOperationName: undefined,
+    currentOperationType: undefined,
+  });
+
+  console.warn("Restarting failed Veo operation after provider backoff", {
+    jobId,
+    retryDelayMs,
+    providerMessage,
+  });
 }
 
 async function prepareRecoveryFinalizationStep(jobId: string): Promise<{
@@ -812,11 +920,35 @@ async function pollVideoStep(
   totalExtensions: number,
 ): Promise<PollResult> {
   "use step";
-  const { checkVideoStatus } = await import("@/lib/veo");
+  const { checkVideoStatus, getRestartableVeoOperationError } = await import("@/lib/veo");
   const { jobStore } = await import("@/lib/store");
-  const status = await checkVideoStatus(operationName);
   const job = await jobStore.get(jobId);
   if (!job) throw new Error("Render-Job wurde beim Statusabruf nicht gefunden.");
+
+  let status: PollResult;
+  try {
+    status = await checkVideoStatus(operationName);
+  } catch (error) {
+    const restartableFailure = getRestartableVeoOperationError(error);
+    if (!restartableFailure) throw error;
+
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      renderStage: "waiting-provider",
+      lastProviderPollAt: Date.now(),
+      currentOperationName: undefined,
+      currentOperationType: undefined,
+      errorMessage:
+        "Google Veo hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
+    });
+    return {
+      done: false,
+      restartOperation: true,
+      providerMessage: restartableFailure.message,
+    };
+  }
+
   const completedFraction = totalExtensions > 0
     ? completedExtensions / Math.max(1, totalExtensions)
     : chapterNumber / Math.max(1, job.totalChapters ?? 1);
@@ -839,11 +971,17 @@ async function waitForOperation(
   chapterNumber: number,
   completedExtensions: number,
   totalExtensions: number,
-): Promise<string> {
+): Promise<OperationWaitResult> {
   for (let poll = 0; poll < 180; poll += 1) {
     await sleep("10s");
     const status = await pollVideoStep(jobId, operationName, chapterNumber, completedExtensions, totalExtensions);
-    if (status.done && status.videoUri) return status.videoUri;
+    if (status.restartOperation) {
+      return {
+        completed: false,
+        providerMessage: status.providerMessage || "Interner Google-Veo-Serverfehler.",
+      };
+    }
+    if (status.done && status.videoUri) return { completed: true, videoUri: status.videoUri };
   }
   throw new Error("Zeitüberschreitung nach 30 Minuten bei der Veo-Generierung.");
 }
