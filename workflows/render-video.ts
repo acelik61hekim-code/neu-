@@ -732,7 +732,7 @@ async function startOpeningVideoStep(
   "use step";
   if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
   const { jobStore } = await import("@/lib/store");
-  const { startVideoGeneration } = await import("@/lib/veo");
+  const { startVideoGeneration } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
   if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
   assertProviderRenderAllowed(job.targetDurationSeconds);
@@ -776,8 +776,8 @@ async function startOpeningVideoStep(
       maxAttempts: 1,
     });
   } catch (error) {
-    const { getRetryableVeoStartError } = await import("@/lib/veo");
-    const providerError = getRetryableVeoStartError(error);
+    const { getRetryableSeedanceStartError } = await import("@/lib/seedance");
+    const providerError = getRetryableSeedanceStartError(error);
     if (!providerError || plannedRetryDelayMs <= 0) throw error;
 
     const retryAfterMs = Math.min(
@@ -840,7 +840,7 @@ async function startExtensionVideoStep(
   "use step";
   if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
   const { jobStore } = await import("@/lib/store");
-  const { startVideoExtension } = await import("@/lib/veo");
+  const { startVideoExtension } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
   if (!job || job.paymentStatus !== "paid") throw new Error("Der Render-Job ist nicht bezahlt.");
   assertProviderRenderAllowed(job.targetDurationSeconds);
@@ -859,8 +859,8 @@ async function startExtensionVideoStep(
       maxAttempts: 1,
     });
   } catch (error) {
-    const { getRetryableVeoStartError } = await import("@/lib/veo");
-    const providerError = getRetryableVeoStartError(error);
+    const { getRetryableSeedanceStartError } = await import("@/lib/seedance");
+    const providerError = getRetryableSeedanceStartError(error);
     if (!providerError || plannedRetryDelayMs <= 0) throw error;
 
     const retryAfterMs = Math.min(
@@ -920,7 +920,7 @@ async function pollVideoStep(
   totalExtensions: number,
 ): Promise<PollResult> {
   "use step";
-  const { checkVideoStatus, getRestartableVeoOperationError } = await import("@/lib/veo");
+  const { checkVideoStatus, getRestartableSeedanceOperationError } = await import("@/lib/seedance");
   const { jobStore } = await import("@/lib/store");
   const job = await jobStore.get(jobId);
   if (!job) throw new Error("Render-Job wurde beim Statusabruf nicht gefunden.");
@@ -929,7 +929,7 @@ async function pollVideoStep(
   try {
     status = await checkVideoStatus(operationName);
   } catch (error) {
-    const restartableFailure = getRestartableVeoOperationError(error);
+    const restartableFailure = getRestartableSeedanceOperationError(error);
     if (!restartableFailure) throw error;
 
     await jobStore.set(jobId, {
@@ -1086,7 +1086,7 @@ async function failRenderJobStep(jobId: string, message: string): Promise<void> 
 }
 
 function assertProviderRenderAllowed(duration: number | undefined): void {
-  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") {
+  if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED!== "true") {
     throw new Error("VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.");
   }
   if (!duration || duration > CURRENTLY_RELEASED_MAX_DURATION_SECONDS) {

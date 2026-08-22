@@ -2,7 +2,14 @@ import { del } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 import { jobStore } from "@/lib/store";
-import { checkVideoStatus } from "@/lib/veo";
+import {
+  checkVideoStatus as checkVeoVideoStatus,
+} from "@/lib/veo";
+
+import {
+  checkVideoStatus as checkSeedanceVideoStatus,
+  isSeedanceOperationName,
+} from "@/lib/seedance";
 import { trimAndStore } from "@/lib/video-backend/media";
 import {
   recoverVideoFinalizationWorkflow,
@@ -87,7 +94,16 @@ export async function POST(req: NextRequest) {
   let providerFailureMessage: string | undefined;
   if (job.currentOperationName) {
     try {
-      const providerStatus = await checkVideoStatus(job.currentOperationName);
+      const providerStatus =
+  isSeedanceOperationName(
+    job.currentOperationName,
+  )
+    ? await checkSeedanceVideoStatus(
+        job.currentOperationName,
+      )
+    : await checkVeoVideoStatus(
+        job.currentOperationName,
+      );
       if (!providerStatus.done) {
         return NextResponse.json({ recovering: true, waitingForProvider: true, jobId }, { status: 202 });
       }

@@ -92,12 +92,20 @@ function missingProductionServices(): string[] {
   if (!process.env.STRIPE_WEBHOOK_SECRET) {
     missing.push("Stripe Webhook");
   }
-  if (!process.env.GEMINI_API_KEY) {
-    missing.push("Google AI");
-  }
-  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") {
-    missing.push("Veo Render");
-  }
+ if (!process.env.GEMINI_API_KEY) {
+  missing.push("Google AI");
+}
+
+if (!process.env.FAL_KEY) {
+  missing.push("fal.ai / Seedance");
+}
+
+if (
+  process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !==
+  "true"
+) {
+  missing.push("Seedance Render");
+}
   return missing;
 }
 
