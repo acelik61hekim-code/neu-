@@ -39,11 +39,13 @@ type GeneratedNarration = {
 const MAX_FINISHING_GRACE_SECONDS = 2;
 const NARRATION_START_DELAY_SECONDS = 0.65;
 const NARRATION_TAIL_SECONDS = 0.35;
+
 // Gemini narration is 24 kHz PCM. Some clips contain a narrow-band whistle at
 // its 12 kHz Nyquist edge, so notch that tone and keep the cutoff safely below it.
 const NARRATION_WHISTLE_HZ = 12_000;
 const NARRATION_WHISTLE_WIDTH_HZ = 300;
 const NARRATION_LOWPASS_HZ = 10_500;
+
 const localOutputRoot = resolve(
   process.cwd(),
   ".video-backend-backups",
@@ -54,20 +56,39 @@ export function resolveLocalVideoPath(value: string): string {
   const pathname = value.startsWith("local:")
     ? value.slice("local:".length)
     : value;
-  const normalized = pathname.replace(/\\/g, "/").replace(/^\/+/, "");
-  const destination = resolve(localOutputRoot, normalized);
+
+  const normalized = pathname
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  const destination = resolve(
+    localOutputRoot,
+    normalized,
+  );
+
   if (!destination.startsWith(`${localOutputRoot}${sep}`)) {
-    throw new Error("Ungültiger lokaler Videopfad.");
+    throw new Error(
+      "Ungültiger lokaler Videopfad.",
+    );
   }
+
   return destination;
 }
 
-async function withTemp<T>(run: (dir: string) => Promise<T>): Promise<T> {
-  const dir = await mkdtemp(join(tmpdir(), "video-backend-"));
+async function withTemp<T>(
+  run: (dir: string) => Promise<T>,
+): Promise<T> {
+  const dir = await mkdtemp(
+    join(tmpdir(), "video-backend-"),
+  );
+
   try {
     return await run(dir);
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    await rm(dir, {
+      recursive: true,
+      force: true,
+    });
   }
 }
 
@@ -81,29 +102,40 @@ async function saveWebStream(
   );
 }
 
-async function download(source: string, destination: string) {
+async function download(
+  source: string,
+  destination: string,
+) {
   if (source.startsWith("local:")) {
     await pipeline(
-      createReadStream(resolveLocalVideoPath(source)),
+      createReadStream(
+        resolveLocalVideoPath(source),
+      ),
       createWriteStream(destination),
     );
+
     return;
   }
 
   if (source.startsWith("blob:")) {
     const result = await get(
       source.slice("blob:".length),
-      { access: "private" },
+      {
+        access: "private",
+      },
     );
 
     if (!result?.stream) {
-      throw new Error("Private Blob konnte nicht gelesen werden.");
+      throw new Error(
+        "Private Blob konnte nicht gelesen werden.",
+      );
     }
 
     await saveWebStream(
       result.stream,
       destination,
     );
+
     return;
   }
 
@@ -143,7 +175,10 @@ async function download(source: string, destination: string) {
     },
   );
 
-  if (!response.ok || !response.body) {
+  if (
+    !response.ok ||
+    !response.body
+  ) {
     throw new Error(
       `Video-Download fehlgeschlagen (HTTP ${response.status}).`,
     );
@@ -176,7 +211,9 @@ async function upload(
 
     await mkdir(
       dirname(destination),
-      { recursive: true },
+      {
+        recursive: true,
+      },
     );
 
     await copyFile(
@@ -185,8 +222,11 @@ async function upload(
     );
 
     return {
-      pathname: `local:${pathname}`,
-      url: `local:${pathname}`,
+      pathname:
+        `local:${pathname}`,
+
+      url:
+        `local:${pathname}`,
     };
   }
 
@@ -229,7 +269,9 @@ function wrapOverlayText(
 
   for (
     const requestedLine of
-    value.replace(/\r/g, "").split("\n")
+    value
+      .replace(/\r/g, "")
+      .split("\n")
   ) {
     const words =
       requestedLine
@@ -329,11 +371,18 @@ function buildAtempoFilters(
   rate: number,
 ): string[] {
   const filters: string[] = [];
+
   let remaining =
-    Math.max(1, rate);
+    Math.max(
+      1,
+      rate,
+    );
 
   while (remaining > 2) {
-    filters.push("atempo=2");
+    filters.push(
+      "atempo=2",
+    );
+
     remaining /= 2;
   }
 
@@ -417,10 +466,15 @@ async function generateNarration(
 
           input: [
             "Synthesize the following exact spoken line as studio-quality speech.",
+
             languageDirection,
+
             "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
+
             `${deliveryDirection} Finish naturally within ${maximumSeconds.toFixed(1)} seconds.`,
+
             "SPOKEN SCRIPT:",
+
             text,
           ].join("\n"),
 
@@ -587,7 +641,8 @@ async function finishVideo(
   options:
     VideoFinishingOptions = {},
 ): Promise<void> {
-  const binary = ffmpegPath;
+  const binary =
+    ffmpegPath;
 
   if (!binary) {
     throw new Error(
@@ -613,8 +668,7 @@ async function finishVideo(
             cue.maximumDurationSeconds,
           ) &&
           cue.startSeconds >= 0 &&
-          cue.maximumDurationSeconds >=
-            1 &&
+          cue.maximumDurationSeconds >= 1 &&
           Boolean(
             cue.speaker.trim(),
           ) &&
@@ -625,7 +679,10 @@ async function finishVideo(
             cue.voiceName.trim(),
           ),
       )
-      .slice(0, 24);
+      .slice(
+        0,
+        24,
+      );
 
   const closingText =
     options.closingText?.trim() ??
@@ -679,14 +736,17 @@ async function finishVideo(
       args.push(
         "-f",
         "s16le",
+
         "-ar",
         String(
           audio.sampleRate,
         ),
+
         "-ac",
         String(
           audio.channels,
         ),
+
         "-i",
         audio.pathname,
       );
@@ -740,7 +800,9 @@ async function finishVideo(
           deliveryDirection:
             [
               `The visible character ${cue.speaker} is speaking.`,
+
               cue.voiceDirection,
+
               "Keep this character's vocal identity consistent with every other line assigned to the same voice.",
             ].join(" "),
         },
@@ -749,6 +811,7 @@ async function finishVideo(
     generatedDialogue.push({
       cue,
       audio,
+
       inputIndex:
         appendAudioInput(
           audio,
@@ -763,8 +826,10 @@ async function finishVideo(
   const naturalVideoEnd =
     Math.min(
       maximumOutputSeconds,
+
       Math.max(
         seconds,
+
         sourceDuration ??
           seconds,
       ),
@@ -788,11 +853,8 @@ async function finishVideo(
 
           item.cue.startSeconds +
             Math.min(
-              item.audio
-                .durationSeconds,
-
-              item.cue
-                .maximumDurationSeconds,
+              item.audio.durationSeconds,
+              item.cue.maximumDurationSeconds,
             ) +
             NARRATION_TAIL_SECONDS,
         ),
@@ -902,7 +964,8 @@ async function finishVideo(
       `[0:v]${videoFilters.join(",")}[v]`,
     );
 
-    videoMap = "[v]";
+    videoMap =
+      "[v]";
   }
 
   if (
@@ -959,34 +1022,30 @@ async function finishVideo(
           Math.max(
             1,
 
-            item.audio
-              .durationSeconds /
-              item.cue
-                .maximumDurationSeconds,
+            item.audio.durationSeconds /
+              item.cue.maximumDurationSeconds,
           );
 
         const label =
           `dialogue${index}`;
 
-        const dialogueFilters =
-          [
-            ...buildAtempoFilters(
-              dialogueTempo,
-            ),
+        const dialogueFilters = [
+          ...buildAtempoFilters(
+            dialogueTempo,
+          ),
 
-            "volume=1.36",
-            "highpass=f=80",
+          "volume=1.36",
+          "highpass=f=80",
 
-            `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+          `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
 
-            `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+          `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
 
-            `adelay=${Math.round(
-              item.cue
-                .startSeconds *
-                1000,
-            )}:all=1`,
-          ];
+          `adelay=${Math.round(
+            item.cue.startSeconds *
+              1000,
+          )}:all=1`,
+        ];
 
         filters.push(
           `[${item.inputIndex}:a]${dialogueFilters.join(",")}[${label}]`,
@@ -1002,7 +1061,8 @@ async function finishVideo(
       `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
     );
 
-    audioMap = "[a]";
+    audioMap =
+      "[a]";
   }
 
   if (
@@ -1090,14 +1150,28 @@ export async function trimAndStore(
   finishing:
     VideoFinishingOptions = {},
 ) {
-  // Veo opening videos are already exactly 8 seconds. Avoid an unnecessary
-  // native FFmpeg process and persist the provider file directly in Blob.
-  if (
-    seconds === 8 &&
+  /*
+   * Ein einzelnes Provider-Video ist bei diesen
+   * beiden Ziellängen bereits das vollständige Video:
+   *
+   * 8 Sekunden  -> Legacy-Veo
+   * 15 Sekunden -> Seedance
+   *
+   * Wenn weder Voice-over, Dialog noch Schluss-Text
+   * ergänzt werden muss, vermeiden wir deshalb eine
+   * unnötige erneute H.264-Kodierung über FFmpeg.
+   */
+  const canStoreProviderVideoDirectly =
+    (
+      seconds === 8 ||
+      seconds === 15
+    ) &&
     !finishing.voiceoverText &&
-    !finishing.dialogueCues
-      ?.length &&
-    !finishing.closingText
+    !finishing.dialogueCues?.length &&
+    !finishing.closingText;
+
+  if (
+    canStoreProviderVideoDirectly
   ) {
     return copyAndStore(
       source,
@@ -1195,7 +1269,9 @@ export async function mergeAndStore(
           file,
         );
 
-        files.push(file);
+        files.push(
+          file,
+        );
       }
 
       const list =
@@ -1231,6 +1307,7 @@ export async function mergeAndStore(
 
       /*
        * Seedance erstellt jeden Abschnitt als eigenständige Videodatei.
+       *
        * Deshalb kodieren wir das zusammengefügte Material bewusst auf
        * ein einheitliches H.264/AAC-Format neu, statt die Streams mit
        * "-c copy" unverändert aneinanderzuhängen.

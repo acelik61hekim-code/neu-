@@ -6,18 +6,26 @@ import {
 import { nanoid } from "nanoid";
 
 import { stripe } from "../../../lib/stripe";
+
 import {
   CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
   getVideoPriceCents,
   isReleasedVideoDuration,
 } from "../../../lib/pricing";
+
 import {
   isVideoAudioStyle,
   isVideoSpokenLanguage,
   isVideoVoiceMode,
 } from "../../../lib/audio-options";
-import { loadStoredPreview } from "../../../lib/video-backend/images";
-import { checkRateLimit } from "../../../lib/rate-limit";
+
+import {
+  loadStoredPreview,
+} from "../../../lib/video-backend/images";
+
+import {
+  checkRateLimit,
+} from "../../../lib/rate-limit";
 
 import {
   jobStore,
@@ -33,8 +41,17 @@ import type {
   VideoVoiceMode,
 } from "@/types/story";
 
+/*
+ * Neue Checkout-Längen.
+ *
+ * 8 Sekunden werden hier bewusst NICHT
+ * mehr akzeptiert.
+ *
+ * Alte 8-Sekunden-Aufträge werden weiterhin
+ * von Webhook / Confirm / Recovery verstanden.
+ */
 const SUPPORTED_VIDEO_DURATIONS = [
-  8,
+  15,
   30,
   60,
   120,
@@ -42,6 +59,9 @@ const SUPPORTED_VIDEO_DURATIONS = [
   240,
   300,
 ] as const satisfies readonly VideoDurationSeconds[];
+
+type CheckoutVideoDuration =
+  (typeof SUPPORTED_VIDEO_DURATIONS)[number];
 
 const SUPPORTED_ASPECT_RATIOS = [
   "9:16",
@@ -59,63 +79,126 @@ type CheckoutRequest = {
   prompt?: unknown;
 
   /*
-   * Altes Feld bleibt vorerst erhalten,
-   * damit bestehende Clients kompatibel bleiben.
+   * Altes Feld bleibt kompatibel.
+   *
+   * short bedeutet bei NEUEN Requests
+   * jetzt 15 Sekunden.
    */
   format?: unknown;
 
   targetDurationSeconds?: unknown;
+
   aspectRatio?: unknown;
+
   editingStyle?: unknown;
+
   audioStyle?: unknown;
+
   voiceMode?: unknown;
+
   spokenLanguage?: unknown;
+
   voiceoverText?: unknown;
+
   closingText?: unknown;
+
   referenceImageUri?: unknown;
+
   referenceImageMimeType?: unknown;
 };
 
-function missingProductionServices(): string[] {
-  if (process.env.NODE_ENV === "development") return [];
-
-  const missing: string[] = [];
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    missing.push("Redis");
-  }
+function missingProductionServices():
+  string[] {
   if (
-    !process.env.BLOB_READ_WRITE_TOKEN &&
-    !process.env.BLOB_STORE_ID
+    process.env.NODE_ENV ===
+    "development"
   ) {
-    missing.push("Vercel Blob");
+    return [];
   }
-  if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    missing.push("Stripe Webhook");
+
+  const missing:
+    string[] = [];
+
+  if (
+    !process.env
+      .UPSTASH_REDIS_REST_URL ||
+    !process.env
+      .UPSTASH_REDIS_REST_TOKEN
+  ) {
+    missing.push(
+      "Redis",
+    );
   }
- if (!process.env.GEMINI_API_KEY) {
-  missing.push("Google AI");
-}
 
-if (!process.env.FAL_KEY) {
-  missing.push("fal.ai / Seedance");
-}
+  if (
+    !process.env
+      .BLOB_READ_WRITE_TOKEN &&
+    !process.env
+      .BLOB_STORE_ID
+  ) {
+    missing.push(
+      "Vercel Blob",
+    );
+  }
 
-if (
-  process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !==
-  "true"
-) {
-  missing.push("Seedance Render");
-}
+  if (
+    !process.env
+      .STRIPE_WEBHOOK_SECRET
+  ) {
+    missing.push(
+      "Stripe Webhook",
+    );
+  }
+
+  if (
+    !process.env
+      .GEMINI_API_KEY
+  ) {
+    missing.push(
+      "Google AI",
+    );
+  }
+
+  if (
+    !process.env
+      .FAL_KEY
+  ) {
+    missing.push(
+      "fal.ai / Seedance",
+    );
+  }
+
+  if (
+    process.env
+      .SEEDANCE_WORKFLOW_RENDER_ENABLED !==
+    "true"
+  ) {
+    missing.push(
+      "Seedance Render",
+    );
+  }
+
   return missing;
 }
 
+/*
+ * Wichtig:
+ *
+ * Diese Funktion prüft NICHT den gesamten
+ * VideoDurationSeconds-Typ, weil dieser aus
+ * Legacy-Gründen weiterhin 8 enthält.
+ *
+ * Sie prüft ausschließlich die für NEUE
+ * Checkout-Sessions erlaubten Längen.
+ */
 function isVideoDurationSeconds(
   value: unknown,
-): value is VideoDurationSeconds {
+): value is CheckoutVideoDuration {
   return (
-    typeof value === "number" &&
+    typeof value ===
+      "number" &&
     SUPPORTED_VIDEO_DURATIONS.includes(
-      value as VideoDurationSeconds,
+      value as CheckoutVideoDuration,
     )
   );
 }
@@ -124,7 +207,8 @@ function isVideoAspectRatio(
   value: unknown,
 ): value is VideoAspectRatio {
   return (
-    typeof value === "string" &&
+    typeof value ===
+      "string" &&
     SUPPORTED_ASPECT_RATIOS.includes(
       value as VideoAspectRatio,
     )
@@ -135,7 +219,8 @@ function isVideoEditingStyle(
   value: unknown,
 ): value is VideoEditingStyle {
   return (
-    typeof value === "string" &&
+    typeof value ===
+      "string" &&
     SUPPORTED_EDITING_STYLES.includes(
       value as VideoEditingStyle,
     )
@@ -155,20 +240,28 @@ function normalizeDuration(
   }
 
   /*
-   * Rückwärtskompatibilität:
+   * Rückwärtskompatibilität für Clients,
+   * die noch kein targetDurationSeconds
+   * mitsenden:
    *
-   * Alte long-Requests waren 60 Sekunden,
-   * alte short-Requests 8 Sekunden.
+   * long  -> 60 Sekunden
+   * short -> 15 Sekunden
+   *
+   * Ein NEUER 8-Sekunden-Auftrag wird
+   * hier nicht mehr erzeugt.
    */
-  return legacyFormat === "long"
+  return legacyFormat ===
+    "long"
     ? 60
-    : 8;
+    : 15;
 }
 
 function normalizeAspectRatio(
   value: unknown,
 ): VideoAspectRatio {
-  return isVideoAspectRatio(value)
+  return isVideoAspectRatio(
+    value,
+  )
     ? value
     : "9:16";
 }
@@ -176,32 +269,41 @@ function normalizeAspectRatio(
 function normalizeEditingStyle(
   value: unknown,
 ): VideoEditingStyle {
-  return isVideoEditingStyle(value)
+  return isVideoEditingStyle(
+    value,
+  )
     ? value
     : "social";
 }
 
 function durationLabel(
-  durationSeconds: VideoDurationSeconds,
+  durationSeconds:
+    VideoDurationSeconds,
 ): string {
   if (
-    durationSeconds < 60
+    durationSeconds <
+    60
   ) {
     return `${durationSeconds} Sekunden`;
   }
 
   const minutes =
-    durationSeconds / 60;
+    durationSeconds /
+    60;
 
-  return minutes === 1
+  return minutes ===
+    1
     ? "1 Minute"
     : `${minutes} Minuten`;
 }
 
 function editingStyleLabel(
-  editingStyle: VideoEditingStyle,
+  editingStyle:
+    VideoEditingStyle,
 ): string {
-  switch (editingStyle) {
+  switch (
+    editingStyle
+  ) {
     case "cinematic":
       return "Kino / Film";
 
@@ -218,86 +320,348 @@ function editingStyleLabel(
 
 function hasValidDialoguePlan(
   prompt: string,
-  targetDurationSeconds: VideoDurationSeconds,
-  requireViralStory = false,
+  targetDurationSeconds:
+    VideoDurationSeconds,
+  requireViralStory =
+    false,
 ): boolean {
   try {
-    const story = JSON.parse(prompt) as {
-      creationMode?: unknown;
-      characters?: Array<{ name?: unknown }>;
-      productionBible?: {
-        characterBible?: Array<{ name?: unknown }>;
-      };
-      moviePlan?: {
-        opening?: { dialogue?: unknown; dialogueTurns?: unknown[] };
-        continuations?: Array<{ dialogue?: unknown; dialogueTurns?: unknown[] }>;
-      };
-    };
-    if (requireViralStory && story.creationMode !== "viral-story") return false;
+    const story =
+      JSON.parse(
+        prompt,
+      ) as {
+        creationMode?:
+          unknown;
 
-    const openingDialogueValues = [
-      story.moviePlan?.opening?.dialogue,
-      ...(story.moviePlan?.opening?.dialogueTurns ?? []),
-    ];
-    const continuationDialogueValues = (story.moviePlan?.continuations ?? []).flatMap((item) => [
-        item.dialogue,
-        ...(item.dialogueTurns ?? []),
-      ]);
-    const dialogueValues = [...openingDialogueValues, ...continuationDialogueValues];
-    const speakers = new Set<string>();
-    let validLineCount = 0;
-    let totalWordCount = 0;
-    const maximumWordsPerLine = targetDurationSeconds <= 8 ? 6 : 12;
-    const forbiddenSpeaker =
-      /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|ä)hl|sprecher(?:in)?$/i;
-    for (const value of dialogueValues) {
-      if (!value || typeof value !== "object") continue;
-      const dialogue = value as Record<string, unknown>;
-      if (dialogue.enabled !== true) continue;
-      const speaker = typeof dialogue.speaker === "string" ? dialogue.speaker.trim() : "";
-      const text = typeof dialogue.text === "string" ? dialogue.text.trim() : "";
-      const wordCount = text.split(/\s+/).filter(Boolean).length;
-      if (
-        !speaker ||
-        forbiddenSpeaker.test(speaker) ||
-        !text ||
-        wordCount > maximumWordsPerLine ||
-        text.length > 140
-      ) continue;
-      speakers.add(speaker.toLocaleLowerCase("de-DE"));
-      validLineCount += 1;
-      totalWordCount += wordCount;
-    }
+        characters?:
+          Array<{
+            name?: unknown;
+          }>;
 
-    const bibleSpeakers = (story.productionBible?.characterBible ?? [])
-      .map((character) => typeof character.name === "string" ? character.name.trim() : "")
-      .filter(Boolean);
-    const storySpeakers = (story.characters ?? [])
-      .map((character) => typeof character.name === "string" ? character.name.trim() : "")
-      .filter(Boolean);
-    const expectedSpeakers = (bibleSpeakers.length >= 2 ? bibleSpeakers : storySpeakers).slice(0, 3);
-    const requiredSpeakerCount = Math.min(3, Math.max(2, expectedSpeakers.length));
+        productionBible?: {
+          characterBible?:
+            Array<{
+              name?: unknown;
+            }>;
+        };
+
+        moviePlan?: {
+          opening?: {
+            dialogue?:
+              unknown;
+
+            dialogueTurns?:
+              unknown[];
+          };
+
+          continuations?:
+            Array<{
+              dialogue?:
+                unknown;
+
+              dialogueTurns?:
+                unknown[];
+            }>;
+        };
+      };
+
     if (
-      openingDialogueValues[0] === undefined ||
-      typeof openingDialogueValues[0] !== "object" ||
-      openingDialogueValues[0] === null ||
-      (openingDialogueValues[0] as Record<string, unknown>).enabled !== true ||
-      (targetDurationSeconds > 8 && !continuationDialogueValues.some((value) =>
-        typeof value === "object" && value !== null &&
-        (value as Record<string, unknown>).enabled === true
-      )) ||
-      validLineCount < requiredSpeakerCount ||
-      speakers.size < requiredSpeakerCount ||
-      (targetDurationSeconds <= 8 && totalWordCount > 12)
+      requireViralStory &&
+      story.creationMode !==
+        "viral-story"
     ) {
       return false;
     }
 
-    return expectedSpeakers.every((expectedSpeaker) => {
-      const fullName = expectedSpeaker.toLocaleLowerCase("de-DE");
-      const shortName = fullName.split(",")[0].trim();
-      return speakers.has(fullName) || speakers.has(shortName);
-    });
+    const openingDialogueValues = [
+      story.moviePlan
+        ?.opening
+        ?.dialogue,
+
+      ...(
+        story.moviePlan
+          ?.opening
+          ?.dialogueTurns ??
+        []
+      ),
+    ];
+
+    const continuationDialogueValues =
+      (
+        story.moviePlan
+          ?.continuations ??
+        []
+      ).flatMap(
+        (
+          item,
+        ) => [
+          item.dialogue,
+
+          ...(
+            item.dialogueTurns ??
+            []
+          ),
+        ],
+      );
+
+    const dialogueValues = [
+      ...openingDialogueValues,
+      ...continuationDialogueValues,
+    ];
+
+    const speakers =
+      new Set<string>();
+
+    let validLineCount =
+      0;
+
+    let totalWordCount =
+      0;
+
+    /*
+     * Ein neuer Seedance-Abschnitt besitzt
+     * bis zu 15 Sekunden.
+     *
+     * Kurze direkte Dialogsätze bleiben
+     * dadurch ausreichend gut sprechbar.
+     */
+    const maximumWordsPerLine =
+      12;
+
+    const forbiddenSpeaker =
+      /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|ä)hl|sprecher(?:in)?$/i;
+
+    for (
+      const value of
+      dialogueValues
+    ) {
+      if (
+        !value ||
+        typeof value !==
+          "object"
+      ) {
+        continue;
+      }
+
+      const dialogue =
+        value as Record<
+          string,
+          unknown
+        >;
+
+      if (
+        dialogue.enabled !==
+        true
+      ) {
+        continue;
+      }
+
+      const speaker =
+        typeof dialogue.speaker ===
+        "string"
+          ? dialogue.speaker
+              .trim()
+          : "";
+
+      const text =
+        typeof dialogue.text ===
+        "string"
+          ? dialogue.text
+              .trim()
+          : "";
+
+      const wordCount =
+        text
+          .split(/\s+/)
+          .filter(Boolean)
+          .length;
+
+      if (
+        !speaker ||
+        forbiddenSpeaker.test(
+          speaker,
+        ) ||
+        !text ||
+        wordCount >
+          maximumWordsPerLine ||
+        text.length >
+          140
+      ) {
+        continue;
+      }
+
+      speakers.add(
+        speaker.toLocaleLowerCase(
+          "de-DE",
+        ),
+      );
+
+      validLineCount +=
+        1;
+
+      totalWordCount +=
+        wordCount;
+    }
+
+    const bibleSpeakers =
+      (
+        story.productionBible
+          ?.characterBible ??
+        []
+      )
+        .map(
+          (
+            character,
+          ) =>
+            typeof character.name ===
+            "string"
+              ? character.name
+                  .trim()
+              : "",
+        )
+        .filter(
+          Boolean,
+        );
+
+    const storySpeakers =
+      (
+        story.characters ??
+        []
+      )
+        .map(
+          (
+            character,
+          ) =>
+            typeof character.name ===
+            "string"
+              ? character.name
+                  .trim()
+              : "",
+        )
+        .filter(
+          Boolean,
+        );
+
+    const expectedSpeakers =
+      (
+        bibleSpeakers.length >=
+        2
+          ? bibleSpeakers
+          : storySpeakers
+      ).slice(
+        0,
+        3,
+      );
+
+    const requiredSpeakerCount =
+      Math.min(
+        3,
+
+        Math.max(
+          2,
+          expectedSpeakers.length,
+        ),
+      );
+
+    const openingDialogue =
+      openingDialogueValues[
+        0
+      ];
+
+    const hasOpeningDialogue =
+      typeof openingDialogue ===
+        "object" &&
+      openingDialogue !==
+        null &&
+      (
+        openingDialogue as Record<
+          string,
+          unknown
+        >
+      ).enabled ===
+        true;
+
+    const hasContinuationDialogue =
+      continuationDialogueValues.some(
+        (
+          value,
+        ) =>
+          typeof value ===
+            "object" &&
+          value !==
+            null &&
+          (
+            value as Record<
+              string,
+              unknown
+            >
+          ).enabled ===
+            true,
+      );
+
+    if (
+      !hasOpeningDialogue ||
+
+      /*
+       * Bei 15 Sekunden existiert noch
+       * keine Fortsetzung.
+       *
+       * Ab 30 Sekunden muss der Dialog
+       * auch in mindestens einem weiteren
+       * 15-Sekunden-Abschnitt weitergehen.
+       */
+      (
+        targetDurationSeconds >
+          15 &&
+        !hasContinuationDialogue
+      ) ||
+
+      validLineCount <
+        requiredSpeakerCount ||
+
+      speakers.size <
+        requiredSpeakerCount ||
+
+      /*
+       * Beim einzelnen 15-Sekunden-Clip
+       * begrenzen wir die gesamte
+       * Dialogmenge zusätzlich.
+       */
+      (
+        targetDurationSeconds ===
+          15 &&
+        totalWordCount >
+          28
+      )
+    ) {
+      return false;
+    }
+
+    return expectedSpeakers.every(
+      (
+        expectedSpeaker,
+      ) => {
+        const fullName =
+          expectedSpeaker
+            .toLocaleLowerCase(
+              "de-DE",
+            );
+
+        const shortName =
+          fullName
+            .split(",")[0]
+            .trim();
+
+        return (
+          speakers.has(
+            fullName,
+          ) ||
+          speakers.has(
+            shortName,
+          )
+        );
+      },
+    );
   } catch {
     return false;
   }
@@ -305,52 +669,109 @@ function hasValidDialoguePlan(
 
 function hasValidViralDialoguePlan(
   prompt: string,
-  targetDurationSeconds: VideoDurationSeconds,
+  targetDurationSeconds:
+    VideoDurationSeconds,
 ): boolean {
-  return hasValidDialoguePlan(prompt, targetDurationSeconds, true);
+  return hasValidDialoguePlan(
+    prompt,
+    targetDurationSeconds,
+    true,
+  );
 }
 
 export async function POST(
   req: NextRequest,
 ) {
-  const rateLimit = await checkRateLimit(req, "checkout", 20, 60 * 60);
-  if (!rateLimit.allowed) {
+  const rateLimit =
+    await checkRateLimit(
+      req,
+      "checkout",
+      20,
+      60 * 60,
+    );
+
+  if (
+    !rateLimit.allowed
+  ) {
     return NextResponse.json(
-      { error: "Zu viele Bestellversuche in kurzer Zeit. Bitte versuche es später erneut." },
       {
-        status: 429,
-        headers: { "Retry-After": String(rateLimit.retryAfterSeconds) },
+        error:
+          "Zu viele Bestellversuche in kurzer Zeit. Bitte versuche es später erneut.",
+      },
+      {
+        status:
+          429,
+
+        headers: {
+          "Retry-After":
+            String(
+              rateLimit
+                .retryAfterSeconds,
+            ),
+        },
       },
     );
   }
 
-  const missingServices = missingProductionServices();
-  if (missingServices.length > 0) {
-    console.error("Checkout blockiert: Produktionsdienste fehlen:", missingServices);
+  const missingServices =
+    missingProductionServices();
+
+  if (
+    missingServices.length >
+    0
+  ) {
+    console.error(
+      "Checkout blockiert: Produktionsdienste fehlen:",
+      missingServices,
+    );
+
     return NextResponse.json(
       {
         error:
           "Die Video-Bestellung ist vorübergehend nicht verfügbar. Bitte versuche es später erneut.",
       },
-      { status: 503 },
+      {
+        status:
+          503,
+      },
     );
   }
 
-  const providerPause = await jobStore.getProviderPause();
-  if (providerPause) {
-    const retryAfterSeconds = Math.max(
-      60,
-      Math.ceil((providerPause.until - Date.now()) / 1000),
-    );
+  const providerPause =
+    await jobStore
+      .getProviderPause();
+
+  if (
+    providerPause
+  ) {
+    const retryAfterSeconds =
+      Math.max(
+        60,
+
+        Math.ceil(
+          (
+            providerPause.until -
+            Date.now()
+          ) /
+            1000,
+        ),
+      );
 
     return NextResponse.json(
       {
         error:
-          "Die Video-KI hat momentan ihr Google-Limit erreicht. Es wird keine Zahlung gestartet. Bitte versuche es später erneut.",
+          "Die Video-KI ist momentan ausgelastet. Es wird keine Zahlung gestartet. Bitte versuche es später erneut.",
       },
       {
-        status: 503,
-        headers: { "Retry-After": String(retryAfterSeconds) },
+        status:
+          503,
+
+        headers: {
+          "Retry-After":
+            String(
+              retryAfterSeconds,
+            ),
+        },
       },
     );
   }
@@ -360,7 +781,9 @@ export async function POST(
 
   try {
     body =
-      (await req.json()) as CheckoutRequest;
+      (
+        await req.json()
+      ) as CheckoutRequest;
   } catch {
     return NextResponse.json(
       {
@@ -368,18 +791,22 @@ export async function POST(
           "Der Request enthält kein gültiges JSON.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
   const prompt =
-    typeof body.prompt === "string"
-      ? body.prompt.trim()
+    typeof body.prompt ===
+    "string"
+      ? body.prompt
+          .trim()
       : "";
 
   if (
-    prompt.length < 3
+    prompt.length <
+    3
   ) {
     return NextResponse.json(
       {
@@ -387,11 +814,19 @@ export async function POST(
           "Bitte gib eine Beschreibung für dein Video ein.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
+  /*
+   * Wenn die Dauer explizit mitgesendet
+   * wurde, werden ausschließlich die
+   * neuen Checkout-Längen akzeptiert.
+   *
+   * 8 Sekunden ist hier bewusst ungültig.
+   */
   if (
     body.targetDurationSeconds !==
       undefined &&
@@ -402,10 +837,11 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Ungültige Videolänge. Erlaubt sind 8, 30, 60, 120, 180, 240 oder 300 Sekunden.",
+          "Ungültige Videolänge. Erlaubt sind 15, 30, 60, 120, 180, 240 oder 300 Sekunden.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -423,7 +859,8 @@ export async function POST(
           'Ungültiges Bildformat. Erlaubt sind "9:16" oder "16:9".',
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -441,7 +878,8 @@ export async function POST(
           'Ungültiger Schnittstil. Erlaubt sind "auto", "social", "cinematic" oder "music-video".',
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -452,117 +890,246 @@ export async function POST(
       body.format,
     );
 
-  if (!isReleasedVideoDuration(targetDurationSeconds)) {
+  if (
+    !isReleasedVideoDuration(
+      targetDurationSeconds,
+    )
+  ) {
     return NextResponse.json(
       {
         error:
           `Diese Videolänge befindet sich noch in der Qualitätsprüfung. Aktuell sind maximal ${CURRENTLY_RELEASED_MAX_DURATION_SECONDS} Sekunden freigeschaltet. Es wurde nichts berechnet.`,
       },
-      { status: 409 },
+      {
+        status:
+          409,
+      },
     );
   }
-
-  if (!isVideoAudioStyle(body.audioStyle)) {
-    return NextResponse.json(
-      { error: "Bitte wähle einen gültigen KI-Musikstil." },
-      { status: 400 },
-    );
-  }
-
-  if (!isVideoVoiceMode(body.voiceMode)) {
-    return NextResponse.json(
-      { error: "Bitte wähle eine gültige Stimmen-Option." },
-      { status: 400 },
-    );
-  }
-
-  if (!isVideoSpokenLanguage(body.spokenLanguage)) {
-    return NextResponse.json(
-      { error: "Bitte wähle eine gültige Sprache." },
-      { status: 400 },
-    );
-  }
-
-  const audioStyle = body.audioStyle as VideoAudioStyle;
-  const voiceMode = body.voiceMode as VideoVoiceMode;
-  const spokenLanguage = body.spokenLanguage as VideoSpokenLanguage;
 
   if (
-    voiceMode === "dialogue" &&
-    !hasValidDialoguePlan(prompt, targetDurationSeconds)
+    !isVideoAudioStyle(
+      body.audioStyle,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Bitte wähle einen gültigen KI-Musikstil.",
+      },
+      {
+        status:
+          400,
+      },
+    );
+  }
+
+  if (
+    !isVideoVoiceMode(
+      body.voiceMode,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Bitte wähle eine gültige Stimmen-Option.",
+      },
+      {
+        status:
+          400,
+      },
+    );
+  }
+
+  if (
+    !isVideoSpokenLanguage(
+      body.spokenLanguage,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Bitte wähle eine gültige Sprache.",
+      },
+      {
+        status:
+          400,
+      },
+    );
+  }
+
+  const audioStyle =
+    body.audioStyle as
+      VideoAudioStyle;
+
+  const voiceMode =
+    body.voiceMode as
+      VideoVoiceMode;
+
+  const spokenLanguage =
+    body.spokenLanguage as
+      VideoSpokenLanguage;
+
+  if (
+    voiceMode ===
+      "dialogue" &&
+    !hasValidDialoguePlan(
+      prompt,
+      targetDurationSeconds,
+    )
   ) {
     return NextResponse.json(
       {
         error:
           "Der Dialogplan enthält noch kein vollständiges Gespräch mit mindestens zwei sichtbaren Figuren. Bitte lass den Filmplan neu erstellen. Es wurde nichts berechnet.",
       },
-      { status: 400 },
+      {
+        status:
+          400,
+      },
     );
   }
 
   const voiceoverText =
-    typeof body.voiceoverText === "string"
-      ? body.voiceoverText.trim()
+    typeof body.voiceoverText ===
+    "string"
+      ? body.voiceoverText
+          .trim()
       : "";
 
   const closingText =
-    typeof body.closingText === "string"
-      ? body.closingText.trim()
+    typeof body.closingText ===
+    "string"
+      ? body.closingText
+          .trim()
       : "";
 
-  // Leave enough room for natural pauses and a complete final sentence. A
-  // higher limit forces the finishing step to accelerate otherwise good TTS.
-  const maximumVoiceoverWords = Math.max(16, Math.floor((targetDurationSeconds + 2) * 1.75));
-  const voiceoverWords = voiceoverText ? voiceoverText.split(/\s+/).filter(Boolean).length : 0;
+  /*
+   * Genug Platz für natürliche Pausen und
+   * einen vollständigen letzten Satz.
+   */
+  const maximumVoiceoverWords =
+    Math.max(
+      16,
 
-  if (voiceMode === "voiceover" && !voiceoverText) {
+      Math.floor(
+        (
+          targetDurationSeconds +
+          2
+        ) *
+          1.75,
+      ),
+    );
+
+  const voiceoverWords =
+    voiceoverText
+      ? voiceoverText
+          .split(/\s+/)
+          .filter(Boolean)
+          .length
+      : 0;
+
+  if (
+    voiceMode ===
+      "voiceover" &&
+    !voiceoverText
+  ) {
     return NextResponse.json(
-      { error: "Bitte gib den exakten Sprechertext für das Voice-over ein." },
-      { status: 400 },
+      {
+        error:
+          "Bitte gib den exakten Sprechertext für das Voice-over ein.",
+      },
+      {
+        status:
+          400,
+      },
     );
   }
 
-  if (voiceoverText.length > 4_000 || voiceoverWords > maximumVoiceoverWords) {
+  if (
+    voiceoverText.length >
+      4_000 ||
+    voiceoverWords >
+      maximumVoiceoverWords
+  ) {
     return NextResponse.json(
-      { error: `Der Sprechertext ist für ${targetDurationSeconds} Sekunden zu lang. Erlaubt sind ungefähr ${maximumVoiceoverWords} Wörter.` },
-      { status: 400 },
+      {
+        error:
+          `Der Sprechertext ist für ${targetDurationSeconds} Sekunden zu lang. Erlaubt sind ungefähr ${maximumVoiceoverWords} Wörter.`,
+      },
+      {
+        status:
+          400,
+      },
     );
   }
 
-  if (closingText.length > 160) {
+  if (
+    closingText.length >
+    160
+  ) {
     return NextResponse.json(
-      { error: "Die Schluss-Einblendung darf höchstens 160 Zeichen lang sein." },
-      { status: 400 },
+      {
+        error:
+          "Die Schluss-Einblendung darf höchstens 160 Zeichen lang sein.",
+      },
+      {
+        status:
+          400,
+      },
     );
   }
 
   const referenceImageUri =
-    typeof body.referenceImageUri === "string"
-      ? body.referenceImageUri.trim()
+    typeof body.referenceImageUri ===
+    "string"
+      ? body.referenceImageUri
+          .trim()
       : "";
 
   const referenceImageMimeType =
-    typeof body.referenceImageMimeType === "string"
-      ? body.referenceImageMimeType.trim()
+    typeof body.referenceImageMimeType ===
+    "string"
+      ? body.referenceImageMimeType
+          .trim()
       : "";
 
-  if (!referenceImageUri || !referenceImageMimeType) {
+  if (
+    !referenceImageUri ||
+    !referenceImageMimeType
+  ) {
     return NextResponse.json(
-      { error: "Die bestätigte Bildvorschau fehlt. Bitte erstelle sie erneut." },
-      { status: 400 },
+      {
+        error:
+          "Die bestätigte Bildvorschau fehlt. Bitte erstelle sie erneut.",
+      },
+      {
+        status:
+          400,
+      },
     );
   }
 
   try {
-    await loadStoredPreview(referenceImageUri, referenceImageMimeType);
-  } catch (error) {
+    await loadStoredPreview(
+      referenceImageUri,
+      referenceImageMimeType,
+    );
+  } catch (
+    error
+  ) {
     return NextResponse.json(
       {
-        error: error instanceof Error
-          ? error.message
-          : "Die bestätigte Bildvorschau konnte nicht geprüft werden.",
+        error:
+          error instanceof
+          Error
+            ? error.message
+            : "Die bestätigte Bildvorschau konnte nicht geprüft werden.",
       },
-      { status: 400 },
+      {
+        status:
+          400,
+      },
     );
   }
 
@@ -576,34 +1143,48 @@ export async function POST(
       body.editingStyle,
     );
 
+  /*
+   * 15 Sekunden ist jetzt das neue
+   * Short-Format.
+   */
   const videoFormat:
     VideoFormat =
-    targetDurationSeconds === 8
+    targetDurationSeconds ===
+    15
       ? "short"
       : "long";
 
-  const priceCents = getVideoPriceCents(targetDurationSeconds);
+  const priceCents =
+    getVideoPriceCents(
+      targetDurationSeconds,
+    );
 
   const productName = [
     "KI-generiertes Video",
+
     durationLabel(
       targetDurationSeconds,
     ),
+
     aspectRatio,
+
     editingStyleLabel(
       editingStyle,
     ),
-  ].join(" · ");
+  ].join(
+    " · ",
+  );
 
   const jobId =
     nanoid();
 
   /*
-   * Hier schreiben wir bewusst nur Felder, die
-   * der bestehende lib/store.ts sicher kennt.
+   * Hier schreiben wir nur Felder,
+   * die der bestehende Job Store kennt.
    *
-   * Die neuen Werte liegen zusätzlich in Stripe-Metadata
-   * und werden im nächsten Schritt vom Webhook übernommen.
+   * Die bezahlten Einstellungen werden
+   * zusätzlich in Stripe-Metadata gespeichert
+   * und danach serverseitig wieder geprüft.
    */
   await jobStore.set(
     jobId,
@@ -623,13 +1204,18 @@ export async function POST(
       spokenLanguage,
 
       nativeCharacterDialogue:
-        hasValidViralDialoguePlan(prompt, targetDurationSeconds),
+        hasValidViralDialoguePlan(
+          prompt,
+          targetDurationSeconds,
+        ),
 
       voiceoverText:
-        voiceoverText || undefined,
+        voiceoverText ||
+        undefined,
 
       closingText:
-        closingText || undefined,
+        closingText ||
+        undefined,
 
       referenceImageUrl:
         referenceImageUri,
@@ -707,23 +1293,21 @@ export async function POST(
         `${appUrl}?canceled=1`,
     });
 
-  if (!session.url) {
+  if (
+    !session.url
+  ) {
     return NextResponse.json(
       {
         error:
           "Stripe hat keine Checkout-Adresse zurückgegeben.",
       },
       {
-        status: 502,
+        status:
+          502,
       },
     );
   }
 
-  /*
-   * Deine neue page.tsx erwartet data.url.
-   * Die bisherige Route lieferte checkoutUrl.
-   * Für die Übergangsphase liefern wir beides.
-   */
   return NextResponse.json({
     url:
       session.url,
@@ -738,5 +1322,7 @@ export async function POST(
     aspectRatio,
 
     editingStyle,
+
+    priceCents,
   });
 }

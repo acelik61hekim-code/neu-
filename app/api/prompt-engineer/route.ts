@@ -36,44 +36,56 @@ type PromptEngineerApiRequest = {
   productionMemory?: ProductionMemory;
 };
 
-type GeneratedPromptResult = PromptEngineerResult & {
-  generationModel?: string;
-};
+type GeneratedPromptResult =
+  PromptEngineerResult & {
+    generationModel?: string;
+  };
 
 const promptResponseSchema = {
   type: "object",
+
   properties: {
     sceneId: {
       type: "integer",
     },
+
     veoPrompt: {
       type: "string",
     },
+
     audioPrompt: {
       type: "string",
     },
+
     negativePrompt: {
       type: "string",
     },
+
     dialogue: {
       type: "object",
+
       properties: {
         enabled: {
           type: "boolean",
         },
+
         speaker: {
           type: "string",
         },
+
         text: {
           type: "string",
         },
+
         language: {
           type: "string",
         },
+
         voiceDirection: {
           type: "string",
         },
       },
+
       required: [
         "enabled",
         "speaker",
@@ -81,21 +93,28 @@ const promptResponseSchema = {
         "language",
         "voiceDirection",
       ],
-      additionalProperties: false,
+
+      additionalProperties:
+        false,
     },
+
     camera: {
       type: "string",
     },
+
     lighting: {
       type: "string",
     },
+
     style: {
       type: "string",
     },
+
     transition: {
       type: "string",
     },
   },
+
   required: [
     "sceneId",
     "veoPrompt",
@@ -107,29 +126,75 @@ const promptResponseSchema = {
     "style",
     "transition",
   ],
-  additionalProperties: false,
+
+  additionalProperties:
+    false,
 };
 
 function isNonEmptyString(
   value: unknown,
 ): value is string {
   return (
-    typeof value === "string" &&
-    value.trim().length > 0
+    typeof value ===
+      "string" &&
+    value.trim().length >
+      0
   );
 }
 
 function isString(
   value: unknown,
 ): value is string {
-  return typeof value === "string";
+  return typeof value ===
+    "string";
+}
+
+function readSceneDuration(
+  value: unknown,
+): number {
+  if (
+    typeof value !==
+      "object" ||
+    value === null
+  ) {
+    return NaN;
+  }
+
+  const record =
+    value as Record<
+      string,
+      unknown
+    >;
+
+  return Number(
+    record.durationSeconds,
+  );
+}
+
+function isSupportedSceneDuration(
+  durationSeconds: number,
+): boolean {
+  /*
+   * 8 Sekunden bleiben für alte
+   * Legacy-Szenen gültig.
+   *
+   * Neue Seedance-Szenen verwenden
+   * 15 Sekunden.
+   */
+  return (
+    durationSeconds ===
+      8 ||
+    durationSeconds ===
+      15
+  );
 }
 
 function isScene(
   value: unknown,
 ): value is Scene {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null
   ) {
     return false;
@@ -138,43 +203,88 @@ function isScene(
   const scene =
     value as Partial<Scene>;
 
+  const durationSeconds =
+    readSceneDuration(
+      value,
+    );
+
   return (
-    typeof scene.id === "number" &&
-    isNonEmptyString(scene.title) &&
-    isNonEmptyString(scene.description) &&
-    isNonEmptyString(scene.location) &&
-    isNonEmptyString(scene.mood) &&
-    isNonEmptyString(scene.keyAction) &&
-    isNonEmptyString(scene.visualFocus) &&
-    isNonEmptyString(scene.startFrame) &&
-    isNonEmptyString(scene.endingFrame) &&
+    typeof scene.id ===
+      "number" &&
+
+    isNonEmptyString(
+      scene.title,
+    ) &&
+
+    isNonEmptyString(
+      scene.description,
+    ) &&
+
+    isNonEmptyString(
+      scene.location,
+    ) &&
+
+    isNonEmptyString(
+      scene.mood,
+    ) &&
+
+    isNonEmptyString(
+      scene.keyAction,
+    ) &&
+
+    isNonEmptyString(
+      scene.visualFocus,
+    ) &&
+
+    isNonEmptyString(
+      scene.startFrame,
+    ) &&
+
+    isNonEmptyString(
+      scene.endingFrame,
+    ) &&
+
     isNonEmptyString(
       scene.characterStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.characterStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.environmentStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.environmentStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.cameraStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.cameraStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.lightingState,
     ) &&
+
     isNonEmptyString(
       scene.continuityNotes,
     ) &&
-    typeof scene.dialogue === "object" &&
-    scene.dialogue !== null &&
-    scene.durationSeconds === 8
+
+    typeof scene.dialogue ===
+      "object" &&
+
+    scene.dialogue !==
+      null &&
+
+    isSupportedSceneDuration(
+      durationSeconds,
+    )
   );
 }
 
@@ -182,7 +292,8 @@ function isStory(
   value: unknown,
 ): value is Story {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null
   ) {
     return false;
@@ -192,16 +303,39 @@ function isStory(
     value as Partial<Story>;
 
   return (
-    isNonEmptyString(story.title) &&
-    isNonEmptyString(story.genre) &&
-    isNonEmptyString(story.mood) &&
-    isNonEmptyString(story.setting) &&
-    isNonEmptyString(story.summary) &&
-    Array.isArray(story.characters) &&
+    isNonEmptyString(
+      story.title,
+    ) &&
+
+    isNonEmptyString(
+      story.genre,
+    ) &&
+
+    isNonEmptyString(
+      story.mood,
+    ) &&
+
+    isNonEmptyString(
+      story.setting,
+    ) &&
+
+    isNonEmptyString(
+      story.summary,
+    ) &&
+
+    Array.isArray(
+      story.characters,
+    ) &&
+
     typeof story.productionBible ===
       "object" &&
-    story.productionBible !== null &&
-    Array.isArray(story.scenes)
+
+    story.productionBible !==
+      null &&
+
+    Array.isArray(
+      story.scenes,
+    )
   );
 }
 
@@ -209,9 +343,12 @@ function isProductionMemory(
   value: unknown,
 ): value is ProductionMemory {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null ||
-    Array.isArray(value)
+    Array.isArray(
+      value,
+    )
   ) {
     return false;
   }
@@ -220,15 +357,41 @@ function isProductionMemory(
     value as Partial<ProductionMemory>;
 
   return (
-    Array.isArray(memory.characters) &&
-    Array.isArray(memory.locations) &&
-    Array.isArray(memory.props) &&
-    Array.isArray(memory.sceneContinuity) &&
-    isString(memory.globalVisualStyle) &&
-    isString(memory.globalColorGrade) &&
-    isString(memory.globalCameraLanguage) &&
-    isString(memory.globalLightingStyle) &&
-    isString(memory.globalAudioStyle)
+    Array.isArray(
+      memory.characters,
+    ) &&
+
+    Array.isArray(
+      memory.locations,
+    ) &&
+
+    Array.isArray(
+      memory.props,
+    ) &&
+
+    Array.isArray(
+      memory.sceneContinuity,
+    ) &&
+
+    isString(
+      memory.globalVisualStyle,
+    ) &&
+
+    isString(
+      memory.globalColorGrade,
+    ) &&
+
+    isString(
+      memory.globalCameraLanguage,
+    ) &&
+
+    isString(
+      memory.globalLightingStyle,
+    ) &&
+
+    isString(
+      memory.globalAudioStyle,
+    )
   );
 }
 
@@ -236,7 +399,8 @@ function isPromptEngineerResult(
   value: unknown,
 ): value is PromptEngineerResult {
   if (
-    typeof value !== "object" ||
+    typeof value !==
+      "object" ||
     value === null
   ) {
     return false;
@@ -246,47 +410,94 @@ function isPromptEngineerResult(
     value as Partial<PromptEngineerResult>;
 
   if (
-    typeof result.sceneId !== "number" ||
-    !isNonEmptyString(result.veoPrompt) ||
-    !isNonEmptyString(result.audioPrompt) ||
+    typeof result.sceneId !==
+      "number" ||
+
+    !isNonEmptyString(
+      result.veoPrompt,
+    ) ||
+
+    !isNonEmptyString(
+      result.audioPrompt,
+    ) ||
+
     !isNonEmptyString(
       result.negativePrompt,
     ) ||
-    !isNonEmptyString(result.camera) ||
-    !isNonEmptyString(result.lighting) ||
-    !isNonEmptyString(result.style) ||
-    !isNonEmptyString(result.transition)
+
+    !isNonEmptyString(
+      result.camera,
+    ) ||
+
+    !isNonEmptyString(
+      result.lighting,
+    ) ||
+
+    !isNonEmptyString(
+      result.style,
+    ) ||
+
+    !isNonEmptyString(
+      result.transition,
+    )
   ) {
     return false;
   }
 
   if (
-    typeof result.dialogue !== "object" ||
-    result.dialogue === null
+    typeof result.dialogue !==
+      "object" ||
+    result.dialogue ===
+      null
   ) {
     return false;
   }
 
-  const dialogue = result.dialogue;
+  const dialogue =
+    result.dialogue;
 
   if (
-    typeof dialogue.enabled !== "boolean" ||
-    !isString(dialogue.speaker) ||
-    !isString(dialogue.text) ||
-    !isString(dialogue.language) ||
-    !isString(dialogue.voiceDirection)
+    typeof dialogue.enabled !==
+      "boolean" ||
+
+    !isString(
+      dialogue.speaker,
+    ) ||
+
+    !isString(
+      dialogue.text,
+    ) ||
+
+    !isString(
+      dialogue.language,
+    ) ||
+
+    !isString(
+      dialogue.voiceDirection,
+    )
   ) {
     return false;
   }
 
-  if (!dialogue.enabled) {
+  if (
+    !dialogue.enabled
+  ) {
     return true;
   }
 
   return (
-    isNonEmptyString(dialogue.speaker) &&
-    isNonEmptyString(dialogue.text) &&
-    isNonEmptyString(dialogue.language) &&
+    isNonEmptyString(
+      dialogue.speaker,
+    ) &&
+
+    isNonEmptyString(
+      dialogue.text,
+    ) &&
+
+    isNonEmptyString(
+      dialogue.language,
+    ) &&
+
     isNonEmptyString(
       dialogue.voiceDirection,
     )
@@ -298,63 +509,105 @@ function cleanJsonText(
 ): string {
   return text
     .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
+    .replace(
+      /^```json\s*/i,
+      "",
+    )
+    .replace(
+      /^```\s*/i,
+      "",
+    )
+    .replace(
+      /\s*```$/i,
+      "",
+    )
     .trim();
 }
 
 function sleep(
   milliseconds: number,
 ): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, milliseconds);
-  });
+  return new Promise(
+    (
+      resolve,
+    ) => {
+      setTimeout(
+        resolve,
+        milliseconds,
+      );
+    },
+  );
 }
 
 function getErrorDetails(
   error: unknown,
 ): ErrorDetails {
-  let status: number | undefined;
-  let code: number | undefined;
+  let status:
+    number |
+    undefined;
+
+  let code:
+    number |
+    undefined;
+
   let message =
     "Unbekannter Fehler bei der Gemini-Anfrage.";
 
-  if (error instanceof Error) {
-    message = error.message;
-  } else if (typeof error === "string") {
-    message = error;
+  if (
+    error instanceof
+    Error
+  ) {
+    message =
+      error.message;
+  } else if (
+    typeof error ===
+    "string"
+  ) {
+    message =
+      error;
   }
 
   if (
-    typeof error === "object" &&
+    typeof error ===
+      "object" &&
     error !== null
   ) {
     const record =
-      error as Record<string, unknown>;
+      error as Record<
+        string,
+        unknown
+      >;
 
     if (
-      typeof record.status === "number"
+      typeof record.status ===
+      "number"
     ) {
-      status = record.status;
+      status =
+        record.status;
     }
 
     if (
-      typeof record.code === "number"
+      typeof record.code ===
+      "number"
     ) {
-      code = record.code;
+      code =
+        record.code;
     }
 
     if (
-      typeof record.message === "string"
+      typeof record.message ===
+      "string"
     ) {
-      message = record.message;
+      message =
+        record.message;
     }
 
-    const nestedError = record.error;
+    const nestedError =
+      record.error;
 
     if (
-      typeof nestedError === "object" &&
+      typeof nestedError ===
+        "object" &&
       nestedError !== null
     ) {
       const nestedRecord =
@@ -367,14 +620,16 @@ function getErrorDetails(
         typeof nestedRecord.status ===
         "number"
       ) {
-        status = nestedRecord.status;
+        status =
+          nestedRecord.status;
       }
 
       if (
         typeof nestedRecord.code ===
         "number"
       ) {
-        code = nestedRecord.code;
+        code =
+          nestedRecord.code;
       }
 
       if (
@@ -387,15 +642,19 @@ function getErrorDetails(
     }
   }
 
-  const statusMatch = message.match(
-    /\b(400|401|403|404|408|429|500|502|503|504)\b/,
-  );
+  const statusMatch =
+    message.match(
+      /\b(400|401|403|404|408|429|500|502|503|504)\b/,
+    );
 
   if (
     !status &&
     statusMatch
   ) {
-    status = Number(statusMatch[1]);
+    status =
+      Number(
+        statusMatch[1],
+      );
   }
 
   return {
@@ -409,7 +668,9 @@ function isRetryableGeminiError(
   error: unknown,
 ): boolean {
   const details =
-    getErrorDetails(error);
+    getErrorDetails(
+      error,
+    );
 
   const retryableStatuses = [
     408,
@@ -445,21 +706,27 @@ function isRetryableGeminiError(
     normalizedMessage.includes(
       "unavailable",
     ) ||
+
     normalizedMessage.includes(
       "high demand",
     ) ||
+
     normalizedMessage.includes(
       "overloaded",
     ) ||
+
     normalizedMessage.includes(
       "temporarily",
     ) ||
+
     normalizedMessage.includes(
       "resource exhausted",
     ) ||
+
     normalizedMessage.includes(
       "too many requests",
     ) ||
+
     normalizedMessage.includes(
       "deadline exceeded",
     )
@@ -470,11 +737,15 @@ function isModelUnavailableError(
   error: unknown,
 ): boolean {
   const details =
-    getErrorDetails(error);
+    getErrorDetails(
+      error,
+    );
 
   if (
-    details.status === 404 ||
-    details.code === 404
+    details.status ===
+      404 ||
+    details.code ===
+      404
   ) {
     return true;
   }
@@ -486,9 +757,11 @@ function isModelUnavailableError(
     normalizedMessage.includes(
       "model not found",
     ) ||
+
     normalizedMessage.includes(
       "not found for api version",
     ) ||
+
     normalizedMessage.includes(
       "is not supported",
     )
@@ -500,12 +773,21 @@ function createRetryDelay(
 ): number {
   const exponentialDelay =
     INITIAL_RETRY_DELAY_MS *
-    2 ** (attempt - 1);
+    2 ** (
+      attempt -
+      1
+    );
 
   const jitter =
-    Math.floor(Math.random() * 500);
+    Math.floor(
+      Math.random() *
+      500,
+    );
 
-  return exponentialDelay + jitter;
+  return (
+    exponentialDelay +
+    jitter
+  );
 }
 
 async function generatePromptWithFallback(
@@ -515,12 +797,17 @@ async function generatePromptWithFallback(
   text: string;
   model: string;
 }> {
-  let lastError: unknown;
+  let lastError:
+    unknown;
 
-  for (const model of PROMPT_MODELS) {
+  for (
+    const model of
+    PROMPT_MODELS
+  ) {
     for (
       let attempt = 1;
-      attempt <= RETRIES_PER_MODEL;
+      attempt <=
+        RETRIES_PER_MODEL;
       attempt += 1
     ) {
       try {
@@ -529,23 +816,35 @@ async function generatePromptWithFallback(
         );
 
         const response =
-          await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              responseMimeType:
-                "application/json",
-              responseJsonSchema:
-                promptResponseSchema,
-              temperature: 0.2,
-              maxOutputTokens: 8192,
-            },
-          });
+          await ai.models
+            .generateContent({
+              model,
+
+              contents:
+                prompt,
+
+              config: {
+                responseMimeType:
+                  "application/json",
+
+                responseJsonSchema:
+                  promptResponseSchema,
+
+                temperature:
+                  0.2,
+
+                maxOutputTokens:
+                  8192,
+              },
+            });
 
         const text =
-          response.text?.trim();
+          response.text
+            ?.trim();
 
-        if (!text) {
+        if (
+          !text
+        ) {
           throw new Error(
             "Gemini hat keine Prompt-Antwort zurückgegeben.",
           );
@@ -555,22 +854,32 @@ async function generatePromptWithFallback(
           text,
           model,
         };
-      } catch (error: unknown) {
-        lastError = error;
+      } catch (
+        error:
+          unknown
+      ) {
+        lastError =
+          error;
 
         console.warn(
           `Prompt Engineer fehlgeschlagen: ${model}, Versuch ${attempt}`,
-          getErrorDetails(error),
+          getErrorDetails(
+            error,
+          ),
         );
 
         if (
-          isModelUnavailableError(error)
+          isModelUnavailableError(
+            error,
+          )
         ) {
           break;
         }
 
         if (
-          !isRetryableGeminiError(error)
+          !isRetryableGeminiError(
+            error,
+          )
         ) {
           throw error;
         }
@@ -580,7 +889,9 @@ async function generatePromptWithFallback(
           RETRIES_PER_MODEL
         ) {
           await sleep(
-            createRetryDelay(attempt),
+            createRetryDelay(
+              attempt,
+            ),
           );
         }
       }
@@ -593,6 +904,29 @@ async function generatePromptWithFallback(
       "Alle Gemini-Modelle sind momentan nicht erreichbar.",
     )
   );
+}
+
+function buildSegmentTimeline(
+  durationSeconds: number,
+): string {
+  if (
+    durationSeconds <=
+    8
+  ) {
+    return [
+      "- 0.0 to 1.0 seconds",
+      "- 1.0 to 3.0 seconds",
+      "- 3.0 to 6.0 seconds",
+      "- 6.0 to 8.0 seconds",
+    ].join("\n");
+  }
+
+  return [
+    "- 0.0 to 3.0 seconds",
+    "- 3.0 to 7.0 seconds",
+    "- 7.0 to 11.0 seconds",
+    `- 11.0 to ${durationSeconds.toFixed(1)} seconds`,
+  ].join("\n");
 }
 
 function buildPromptEngineerPrompt({
@@ -629,18 +963,26 @@ function buildPromptEngineerPrompt({
         )
       : "No runtime production memory exists yet. Use the production bible and planned scene continuity.";
 
+  const segmentDuration =
+    readSceneDuration(
+      scene,
+    );
+
+  const segmentTimeline =
+    buildSegmentTimeline(
+      segmentDuration,
+    );
+
   return `
-You are a professional continuity-focused prompt engineer for Google Veo.
+You are a professional continuity-focused prompt engineer for Seedance 2.0 Fast.
 
 You are not creating an isolated video.
 
-You are creating one eight-second segment of a single continuous
-forty-eight-second movie that is split into six separately generated clips.
+You are creating one ${segmentDuration}-second segment of a single continuous movie that may be split into multiple separately generated clips.
 
 The viewer should not notice that the clips were generated separately.
 
-Your output must strictly preserve the production bible and the exact
-continuity state from the surrounding scenes.
+Your output must strictly preserve the production bible and the exact continuity state from the surrounding scenes.
 
 STORY
 
@@ -682,7 +1024,7 @@ PRODUCTION MEMORY RULES
 - Never restore an outdated environment, lighting, weather or time-of-day state.
 - Never restore an outdated camera position or movement state.
 - Use previousLastFrameUrl and sceneContinuity metadata as continuity references when present.
-- Do not claim that Veo can see a URL unless the video-generation request actually supplies the referenced image.
+- Never claim that the video model can see a URL unless that image or video is actually supplied to the provider request as reference media.
 - If no runtime memory exists yet, follow the Production Bible and the planned scene states exactly.
 
 PREVIOUS SCENE
@@ -703,7 +1045,7 @@ ${nextSceneText}
 
 CORE CONTINUITY RULES
 
-- Treat all six scenes as one uninterrupted movie.
+- Treat every scene as part of one uninterrupted movie.
 - Do not redesign any character.
 - Do not change any face.
 - Do not change facial proportions.
@@ -729,13 +1071,11 @@ CORE CONTINUITY RULES
 
 The current scene must begin exactly from its startFrame.
 
-If a previous scene exists, the first visible frame must reproduce
-the previous scene's endingFrame as closely as possible.
+If a previous scene exists, the first visible frame must reproduce the previous scene's endingFrame as closely as possible.
 
 The current scene must end exactly at its endingFrame.
 
-If a next scene exists, the final frame must be suitable as the exact
-visual starting frame of the next clip.
+If a next scene exists, the final frame must be suitable as the exact visual starting frame of the next clip.
 
 CHARACTER CONSISTENCY
 
@@ -750,10 +1090,9 @@ Do not summarize them with phrases such as:
 - unchanged clothing
 - consistent appearance
 
-Veo may not remember previous requests.
+Each separately generated provider request must be understandable on its own.
 
-Therefore, write the exact face, hair, body, clothing, accessories,
-movement style and visible condition again in the prompt.
+Therefore, write the exact face, hair, body, clothing, accessories, movement style and visible condition again in the prompt.
 
 Do not invent details that contradict the character bible.
 
@@ -769,8 +1108,7 @@ If the previous camera was moving, continue that movement naturally.
 
 Do not introduce a hard cut unless the scene explicitly requires one.
 
-Prefer continuous camera motion, motivated reframing or hidden cuts
-through darkness, foreground objects, whip movement or occlusion.
+Prefer continuous camera motion, motivated reframing or hidden cuts through darkness, foreground objects, whip movement or occlusion.
 
 VISUAL CONTINUITY
 
@@ -798,14 +1136,11 @@ AUDIO CONTINUITY
 
 Use productionBible.audioBible.
 
-The audioPrompt must preserve continuous ambience, music character,
-environmental sounds and volume relationships.
+The audioPrompt must preserve continuous ambience, music character, environmental sounds and volume relationships.
 
-If a sound is active at the end of the previous scene,
-it must continue naturally at the beginning of this scene.
+If a sound is active at the end of the previous scene, it must continue naturally at the beginning of this scene.
 
-If a sound continues into the next scene,
-describe how it remains active at the ending frame.
+If a sound continues into the next scene, describe how it remains active at the ending frame.
 
 Avoid abrupt resets of ambience or music.
 
@@ -834,18 +1169,20 @@ If dialogue.enabled is true:
 - do not add extra words
 - request clear natural speech
 - request accurate synchronized lip movement
-- keep the spoken line short enough for eight seconds
+- keep the spoken line short enough for the ${segmentDuration}-second segment
 - keep dialogue louder than music
 - do not create subtitles
 
-VEO PROMPT REQUIREMENTS
+VIDEO PROMPT REQUIREMENTS
+
+The field is still called veoPrompt for backward compatibility inside the application, but the content must be a production-ready English Seedance 2.0 Fast prompt.
 
 veoPrompt must be fully written in English.
 
 It must include:
 
-1. exact eight-second duration
-2. vertical 9:16 composition
+1. exact ${segmentDuration}-second duration
+2. the exact project composition and intended aspect ratio
 3. exact starting frame
 4. complete visible character identities
 5. exact character positions and poses
@@ -862,16 +1199,17 @@ It must include:
 
 Use a clear timeline such as:
 
-- 0.0 to 1.0 seconds
-- 1.0 to 3.0 seconds
-- 3.0 to 6.0 seconds
-- 6.0 to 8.0 seconds
+${segmentTimeline}
 
 The timeline must not add unrelated actions.
 
-The first second must stabilize the continuity from the previous clip.
+The opening moment must immediately preserve continuity from the previous clip.
 
-The final second must settle into the precise ending frame.
+The final moment must settle into the precise ending frame or a natural continuation state for the next segment.
+
+For a 15-second Seedance segment, use the extra duration for meaningful action progression, reactions, camera movement and continuity rather than stretching a single static action.
+
+Seedance may support multiple motivated shots inside one generation, but every cut must preserve character identity, wardrobe, environment, screen direction, lighting and story continuity.
 
 AUDIO PROMPT REQUIREMENTS
 
@@ -933,7 +1271,7 @@ sceneId:
 Return the exact current scene ID.
 
 veoPrompt:
-A production-ready English Veo prompt.
+A production-ready English Seedance 2.0 Fast video prompt. The legacy field name veoPrompt must remain unchanged.
 
 audioPrompt:
 A production-ready English audio prompt.
@@ -954,8 +1292,7 @@ style:
 Summarize the fixed visual identity from the production bible.
 
 transition:
-Describe precisely how this clip begins from the previous ending frame
-and how its ending frame connects into the next scene.
+Describe precisely how this clip begins from the previous ending frame and how its ending frame connects into the next scene.
 
 FINAL INTERNAL CHECK
 
@@ -963,6 +1300,7 @@ Before returning JSON, verify:
 
 - sceneId matches the current scene
 - veoPrompt is in English
+- veoPrompt is written for a ${segmentDuration}-second Seedance segment
 - audioPrompt is in English
 - all character identity traits match the production bible
 - clothing and accessories are preserved
@@ -984,143 +1322,202 @@ export async function POST(
   request: Request,
 ) {
   const apiKey =
-    process.env.GEMINI_API_KEY;
+    process.env
+      .GEMINI_API_KEY;
 
-  if (!apiKey) {
+  if (
+    !apiKey
+  ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
       },
       {
-        status: 500,
+        status:
+          500,
       },
     );
   }
 
-  let body: PromptEngineerApiRequest;
+  let body:
+    PromptEngineerApiRequest;
 
   try {
     body =
-      (await request.json()) as PromptEngineerApiRequest;
+      (
+        await request.json()
+      ) as PromptEngineerApiRequest;
   } catch {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "Der Request enthält kein gültiges JSON.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
-  if (!isStory(body.story)) {
+  if (
+    !isStory(
+      body.story,
+    )
+  ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "Die vollständige Story einschließlich productionBible fehlt oder ist ungültig.",
       },
       {
-        status: 400,
-      },
-    );
-  }
-
-  if (!isScene(body.scene)) {
-    return NextResponse.json(
-      {
-        success: false,
-        error:
-          "Die übergebene Szene ist unvollständig oder ungültig.",
-      },
-      {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
   if (
-    body.previousScene !== undefined &&
-    body.previousScene !== null &&
-    !isScene(body.previousScene)
+    !isScene(
+      body.scene,
+    )
   ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
+        error:
+          "Die übergebene Szene ist unvollständig oder ungültig. Unterstützt werden 15-Sekunden-Szenen sowie alte 8-Sekunden-Legacy-Szenen.",
+      },
+      {
+        status:
+          400,
+      },
+    );
+  }
+
+  if (
+    body.previousScene !==
+      undefined &&
+    body.previousScene !==
+      null &&
+    !isScene(
+      body.previousScene,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        success:
+          false,
+
         error:
           "Die vorherige Szene ist ungültig.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
   if (
-    body.nextScene !== undefined &&
-    body.nextScene !== null &&
-    !isScene(body.nextScene)
+    body.nextScene !==
+      undefined &&
+    body.nextScene !==
+      null &&
+    !isScene(
+      body.nextScene,
+    )
   ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "Die nächste Szene ist ungültig.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
-  const story = body.story;
-  const scene = body.scene;
+  const story =
+    body.story;
+
+  const scene =
+    body.scene;
+
   const previousScene =
-    body.previousScene ?? null;
+    body.previousScene ??
+    null;
+
   const nextScene =
-    body.nextScene ?? null;
+    body.nextScene ??
+    null;
 
   const productionMemory =
     body.productionMemory ??
     story.productionMemory;
 
   if (
-    productionMemory !== undefined &&
+    productionMemory !==
+      undefined &&
     !isProductionMemory(
       productionMemory,
     )
   ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "Der Production Memory ist ungültig.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
   const expectedScene =
     story.scenes.find(
-      (storyScene) =>
-        storyScene.id === scene.id,
+      (
+        storyScene,
+      ) =>
+        storyScene.id ===
+        scene.id,
     );
 
-  if (!expectedScene) {
+  if (
+    !expectedScene
+  ) {
     return NextResponse.json(
       {
-        success: false,
+        success:
+          false,
+
         error:
           "Die Szene gehört nicht zur übergebenen Story.",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -1135,9 +1532,10 @@ export async function POST(
     });
 
   try {
-    const ai = new GoogleGenAI({
-      apiKey,
-    });
+    const ai =
+      new GoogleGenAI({
+        apiKey,
+      });
 
     const generationResult =
       await generatePromptWithFallback(
@@ -1150,18 +1548,25 @@ export async function POST(
         generationResult.text,
       );
 
-    let parsed: unknown;
+    let parsed:
+      unknown;
 
     try {
       parsed =
-        JSON.parse(cleanedText);
-    } catch (parseError) {
+        JSON.parse(
+          cleanedText,
+        );
+    } catch (
+      parseError
+    ) {
       console.error(
         "Ungültige Prompt-Engineer-Antwort:",
         {
           model:
             generationResult.model,
+
           parseError,
+
           rawText:
             generationResult.text,
         },
@@ -1169,76 +1574,101 @@ export async function POST(
 
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           error:
             "Der Prompt Engineer hat ungültiges JSON erzeugt. Bitte versuche es erneut.",
         },
         {
-          status: 502,
+          status:
+            502,
         },
       );
     }
 
     if (
-      !isPromptEngineerResult(parsed)
+      !isPromptEngineerResult(
+        parsed,
+      )
     ) {
       console.error(
         "Prompt-Engineer-Antwort hat ein ungültiges Format:",
         {
           model:
             generationResult.model,
+
           parsed,
         },
       );
 
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           error:
             "Der Prompt Engineer hat unvollständige Produktionsanweisungen erzeugt.",
         },
         {
-          status: 502,
+          status:
+            502,
         },
       );
     }
 
     /*
-     * Die aktuelle Szene wird vom Server vorgegeben.
+     * Die aktuelle Szene wird vom Server
+     * vorgegeben.
      *
-     * Falls Gemini versehentlich eine falsche sceneId
-     * zurückgibt, normalisieren wir sie auf die sichere,
-     * bereits validierte ID der angeforderten Szene.
+     * Falls Gemini versehentlich eine
+     * falsche sceneId zurückgibt,
+     * normalisieren wir sie auf die
+     * bereits validierte Szenen-ID.
      */
-    if (parsed.sceneId !== scene.id) {
+    if (
+      parsed.sceneId !==
+      scene.id
+    ) {
       console.warn(
         "Prompt Engineer hat eine abweichende Szenen-ID zurückgegeben:",
         {
-          model: generationResult.model,
-          expectedSceneId: scene.id,
-          returnedSceneId: parsed.sceneId,
+          model:
+            generationResult.model,
+
+          expectedSceneId:
+            scene.id,
+
+          returnedSceneId:
+            parsed.sceneId,
         },
       );
     }
 
-    const normalizedResult: PromptEngineerResult = {
+    const normalizedResult:
+      PromptEngineerResult = {
       ...parsed,
-      sceneId: scene.id,
+
+      sceneId:
+        scene.id,
     };
 
     /*
-     * Wir überschreiben den Dialog bewusst mit
-     * dem Original aus dem Story Architect.
+     * Der Dialog wird bewusst wieder
+     * aus dem Story Architect übernommen.
      *
-     * Dadurch kann der Prompt Engineer den
-     * gesprochenen Text nicht versehentlich
-     * verändern oder neu erfinden.
+     * Dadurch darf der Prompt Engineer
+     * Wörter, Sprecher oder Sprache
+     * nicht verändern.
      */
-    const finalResult: GeneratedPromptResult = {
+    const finalResult:
+      GeneratedPromptResult = {
       ...normalizedResult,
+
       dialogue: {
         ...scene.dialogue,
       },
+
       generationModel:
         generationResult.model,
     };
@@ -1246,9 +1676,14 @@ export async function POST(
     return NextResponse.json(
       finalResult,
     );
-  } catch (error: unknown) {
+  } catch (
+    error:
+      unknown
+  ) {
     const details =
-      getErrorDetails(error);
+      getErrorDetails(
+        error,
+      );
 
     console.error(
       "Prompt-Engineer-Fehler:",
@@ -1259,30 +1694,40 @@ export async function POST(
     );
 
     if (
-      isRetryableGeminiError(error)
+      isRetryableGeminiError(
+        error,
+      )
     ) {
       return NextResponse.json(
         {
-          success: false,
+          success:
+            false,
+
           error:
             "Die Gemini-Modelle sind momentan ausgelastet. Mehrere Modelle und automatische Wiederholungen wurden bereits versucht. Bitte probiere es gleich erneut.",
         },
         {
-          status: 503,
+          status:
+            503,
         },
       );
     }
 
     return NextResponse.json(
       {
-        success: false,
-        error: details.message,
+        success:
+          false,
+
+        error:
+          details.message,
       },
       {
         status:
           details.status &&
-          details.status >= 400 &&
-          details.status <= 599
+          details.status >=
+            400 &&
+          details.status <=
+            599
             ? details.status
             : 500,
       },

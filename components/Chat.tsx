@@ -45,7 +45,7 @@ type ChatProps = {
    * weiterhin ohne Änderungen kompiliert.
    *
    * Sobald page.tsx die Auswahl besitzt, werden diese
-   * drei Werte von dort an Chat übergeben.
+   * Werte von dort an Chat übergeben.
    */
   targetDurationSeconds?: VideoDurationSeconds;
   aspectRatio?: VideoAspectRatio;
@@ -55,7 +55,9 @@ type ChatProps = {
   spokenLanguage?: VideoSpokenLanguage;
   voiceoverText?: string;
   closingText?: string;
-  onViralStoryStart?: (characters: ViralCharacter[]) => Promise<void> | void;
+  onViralStoryStart?: (
+    characters: ViralCharacter[],
+  ) => Promise<void> | void;
 };
 
 type Message = ConversationMessage & {
@@ -77,7 +79,8 @@ function formatDuration(
     return `${durationSeconds} Sek.`;
   }
 
-  const minutes = durationSeconds / 60;
+  const minutes =
+    durationSeconds / 60;
 
   return minutes === 1
     ? "1 Min."
@@ -125,40 +128,59 @@ export default function Chat({
   closingText = "",
   onViralStoryStart,
 }: ChatProps) {
-  const [messages, setMessages] =
+  const [
+    messages,
+    setMessages,
+  ] =
     useState<Message[]>([
       INITIAL_MESSAGE,
     ]);
 
-  const [input, setInput] =
+  const [
+    input,
+    setInput,
+  ] =
     useState("");
 
-  const [thinking, setThinking] =
+  const [
+    thinking,
+    setThinking,
+  ] =
     useState(false);
 
   const [
     creatingMoviePlan,
     setCreatingMoviePlan,
-  ] = useState(false);
-
-  const [finished, setFinished] =
+  ] =
     useState(false);
 
-  const [activeViralCharacterIds, setActiveViralCharacterIds] =
+  const [
+    finished,
+    setFinished,
+  ] =
+    useState(false);
+
+  const [
+    activeViralCharacterIds,
+    setActiveViralCharacterIds,
+  ] =
     useState<string[]>([]);
 
   const [
     completeStory,
     setCompleteStory,
-  ] = useState<Story | null>(
-    null,
-  );
+  ] =
+    useState<Story | null>(
+      null,
+    );
 
   const [
     localError,
     setLocalError,
   ] =
-    useState<string | null>(
+    useState<
+      string | null
+    >(
       null,
     );
 
@@ -168,22 +190,30 @@ export default function Chat({
     const userMessages =
       conversation.filter(
         (message) =>
-          message.role === "user",
+          message.role ===
+          "user",
       );
 
     if (
-      userMessages.length === 0
+      userMessages.length ===
+      0
     ) {
       return "";
     }
 
     return [
       "Bisherige Angaben des Nutzers:",
+
       ...userMessages.map(
-        (message, index) =>
+        (
+          message,
+          index,
+        ) =>
           `${index + 1}. ${message.content}`,
       ),
-    ].join("\n\n");
+    ].join(
+      "\n\n",
+    );
   }
 
   async function handleSubmit(
@@ -192,16 +222,28 @@ export default function Chat({
     preparedApiContent?: string,
   ) {
     const cleanedInput =
-      (preparedInput ?? input).trim();
+      (
+        preparedInput ??
+        input
+      ).trim();
+
     const cleanedApiContent =
-      (preparedApiContent ?? cleanedInput).trim();
+      (
+        preparedApiContent ??
+        cleanedInput
+      ).trim();
 
     const viralCharacterIds =
-      preparedViralCharacterIds ?? activeViralCharacterIds;
+      preparedViralCharacterIds ??
+      activeViralCharacterIds;
 
-    const isViralStory = viralCharacterIds.length >= 2;
+    const isViralStory =
+      viralCharacterIds.length >=
+      2;
 
-    if (!cleanedInput) {
+    if (
+      !cleanedInput
+    ) {
       setLocalError(
         "Bitte schreibe zuerst eine Antwort.",
       );
@@ -210,7 +252,8 @@ export default function Chat({
     }
 
     if (
-      cleanedInput.length < 3
+      cleanedInput.length <
+      3
     ) {
       setLocalError(
         "Deine Antwort ist noch etwas zu kurz.",
@@ -220,8 +263,10 @@ export default function Chat({
     }
 
     if (
-      cleanedInput.length > AI_DIRECTOR_MESSAGE_MAX_CHARACTERS ||
-      cleanedApiContent.length > AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
+      cleanedInput.length >
+        AI_DIRECTOR_MESSAGE_MAX_CHARACTERS ||
+      cleanedApiContent.length >
+        AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
     ) {
       setLocalError(
         `Eine Nachricht darf höchstens ${AI_DIRECTOR_MESSAGE_MAX_CHARACTERS} Zeichen enthalten.`,
@@ -239,15 +284,30 @@ export default function Chat({
       return;
     }
 
-    setLocalError(null);
+    setLocalError(
+      null,
+    );
 
-    const userMessage: Message = {
-      id: Date.now(),
-      role: "user",
-      content: cleanedInput,
-      ...(cleanedApiContent !== cleanedInput
-        ? { apiContent: cleanedApiContent }
-        : {}),
+    const userMessage:
+      Message = {
+      id:
+        Date.now(),
+
+      role:
+        "user",
+
+      content:
+        cleanedInput,
+
+      ...(
+        cleanedApiContent !==
+        cleanedInput
+          ? {
+              apiContent:
+                cleanedApiContent,
+            }
+          : {}
+      ),
     };
 
     const updatedMessages = [
@@ -259,25 +319,36 @@ export default function Chat({
       updatedMessages,
     );
 
-    setInput("");
-    setThinking(true);
+    setInput(
+      "",
+    );
+
+    setThinking(
+      true,
+    );
 
     const storyNotes =
       createStoryNotes(
         updatedMessages,
       );
 
-    onStoryChange(storyNotes);
+    onStoryChange(
+      storyNotes,
+    );
 
     try {
       const conversation:
         ConversationMessage[] =
         updatedMessages.map(
-          (message) => ({
+          (
+            message,
+          ) => ({
             role:
               message.role,
+
             content:
-              message.apiContent ?? message.content,
+              message.apiContent ??
+              message.content,
           }),
         );
 
@@ -285,13 +356,21 @@ export default function Chat({
         await requestAiDirector(
           conversation,
           viralCharacterIds,
-          !isViralStory && voiceMode === "dialogue",
+
+          !isViralStory &&
+            voiceMode ===
+              "dialogue",
         );
 
       const assistantMessage:
         Message = {
-        id: Date.now() + 1,
-        role: "assistant",
+        id:
+          Date.now() +
+          1,
+
+        role:
+          "assistant",
+
         content:
           directorResult.reply,
       };
@@ -308,11 +387,15 @@ export default function Chat({
       const directorFinished =
         directorResult.finished;
 
-      if (!directorFinished) {
+      if (
+        !directorFinished
+      ) {
         return;
       }
 
-      setThinking(false);
+      setThinking(
+        false,
+      );
 
       setCreatingMoviePlan(
         true,
@@ -322,8 +405,8 @@ export default function Chat({
        * WICHTIG:
        * Hier wird ausschließlich geplant.
        *
-       * Es wird KEIN Veo-Video gestartet.
-       * Die teure Videogenerierung gehört in den
+       * Es wird KEIN Seedance-Video gestartet.
+       * Die kostenpflichtige Videogenerierung gehört in den
        * Flow:
        *
        * Story -> Preview -> Bestätigung -> Zahlung
@@ -332,15 +415,32 @@ export default function Chat({
       const generatedStory =
         await requestStoryArchitect(
           directorResult.story,
+
           targetDurationSeconds,
-          isViralStory ? "9:16" : aspectRatio,
-          isViralStory ? "social" : editingStyle,
+
+          isViralStory
+            ? "9:16"
+            : aspectRatio,
+
+          isViralStory
+            ? "social"
+            : editingStyle,
+
           audioStyle,
-          isViralStory ? "dialogue" : voiceMode,
+
+          isViralStory
+            ? "dialogue"
+            : voiceMode,
+
           spokenLanguage,
+
           voiceoverText,
+
           closingText,
-          isViralStory ? "viral-story" : "standard",
+
+          isViralStory
+            ? "viral-story"
+            : "standard",
         );
 
       if (
@@ -352,24 +452,32 @@ export default function Chat({
       }
 
       if (
-        voiceMode === "voiceover" &&
+        voiceMode ===
+          "voiceover" &&
+
         !voiceoverText.trim() &&
+
         onVoiceoverTextChange
       ) {
         try {
           const automaticVoiceover =
             await requestAutomaticVoiceover(
               generatedStory,
+
               targetDurationSeconds,
+
               spokenLanguage,
             );
 
           onVoiceoverTextChange(
             automaticVoiceover,
           );
-        } catch (voiceoverError) {
+        } catch (
+          voiceoverError
+        ) {
           setLocalError(
-            voiceoverError instanceof Error
+            voiceoverError instanceof
+            Error
               ? `${voiceoverError.message} Du kannst den Sprechertext auch selbst eintragen.`
               : "Der automatische Sprechertext konnte nicht erstellt werden. Du kannst ihn selbst eintragen.",
           );
@@ -380,7 +488,9 @@ export default function Chat({
         generatedStory,
       );
 
-      setFinished(true);
+      setFinished(
+        true,
+      );
 
       onStoryChange(
         JSON.stringify(
@@ -399,12 +509,14 @@ export default function Chat({
 
       setLocalError(
         requestError instanceof
-          Error
+        Error
           ? requestError.message
           : "Die Story konnte nicht erstellt werden.",
       );
     } finally {
-      setThinking(false);
+      setThinking(
+        false,
+      );
 
       setCreatingMoviePlan(
         false,
@@ -413,30 +525,70 @@ export default function Chat({
   }
 
   async function handleViralStoryCreate(
-    characters: ViralCharacter[],
-    topic: string,
-  ) {
-    if (thinking || creatingMoviePlan || finished || loading) return;
+    characters:
+      ViralCharacter[],
 
-    const ids = characters.map((character) => character.id);
-    setActiveViralCharacterIds(ids);
-    setLocalError(null);
+    topic:
+      string,
+  ) {
+    if (
+      thinking ||
+      creatingMoviePlan ||
+      finished ||
+      loading
+    ) {
+      return;
+    }
+
+    const ids =
+      characters.map(
+        (
+          character,
+        ) =>
+          character.id,
+      );
+
+    setActiveViralCharacterIds(
+      ids,
+    );
+
+    setLocalError(
+      null,
+    );
 
     try {
-      await onViralStoryStart?.(characters);
+      await onViralStoryStart?.(
+        characters,
+      );
+
       const visibleRequest =
-        `Erstelle eine ${formatDuration(targetDurationSeconds)} lange Trash-TV-Story zum Thema „${topic}“ mit ${characters
-          .map((character) => character.shortName)
+        `Erstelle eine ${formatDuration(
+          targetDurationSeconds,
+        )} lange Trash-TV-Story zum Thema „${topic}“ mit ${characters
+          .map(
+            (
+              character,
+            ) =>
+              character.shortName,
+          )
           .join(", ")}.`;
 
       await handleSubmit(
         visibleRequest,
         ids,
-        createViralStoryPrompt(ids, topic, targetDurationSeconds),
+
+        createViralStoryPrompt(
+          ids,
+          topic,
+          targetDurationSeconds,
+        ),
       );
-    } catch (viralError) {
+    } catch (
+      viralError
+    ) {
       setLocalError(
-        viralError instanceof Error
+        viralError instanceof
+        Error
           ? viralError.message
           : "Der TikTok-Story-Modus konnte nicht gestartet werden.",
       );
@@ -448,7 +600,8 @@ export default function Chat({
       React.KeyboardEvent<HTMLTextAreaElement>,
   ) {
     if (
-      event.key === "Enter" &&
+      event.key ===
+        "Enter" &&
       !event.shiftKey
     ) {
       event.preventDefault();
@@ -461,20 +614,31 @@ export default function Chat({
     setMessages([
       {
         ...INITIAL_MESSAGE,
-        id: Date.now(),
+
+        id:
+          Date.now(),
       },
     ]);
 
-    setInput("");
-    setThinking(false);
+    setInput(
+      "",
+    );
+
+    setThinking(
+      false,
+    );
 
     setCreatingMoviePlan(
       false,
     );
 
-    setFinished(false);
+    setFinished(
+      false,
+    );
 
-    setActiveViralCharacterIds([]);
+    setActiveViralCharacterIds(
+      [],
+    );
 
     setCompleteStory(
       null,
@@ -484,11 +648,14 @@ export default function Chat({
       null,
     );
 
-    onStoryChange("");
+    onStoryChange(
+      "",
+    );
   }
 
   const displayedError =
-    localError || error;
+    localError ||
+    error;
 
   const isProcessing =
     thinking ||
@@ -537,13 +704,17 @@ export default function Chat({
                 }`}
               />
 
-              {statusText}
+              {
+                statusText
+              }
             </div>
           </div>
         </div>
 
         <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-500">
-          {activityLabel}
+          {
+            activityLabel
+          }
         </span>
       </div>
 
@@ -551,15 +722,24 @@ export default function Chat({
         <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
           {!finished ? (
             <ViralStoryStarter
-              disabled={isProcessing || loading}
-              onCreate={handleViralStoryCreate}
+              disabled={
+                isProcessing ||
+                loading
+              }
+              onCreate={
+                handleViralStoryCreate
+              }
             />
           ) : null}
 
           {messages.map(
-            (message) => (
+            (
+              message,
+            ) => (
               <div
-                key={message.id}
+                key={
+                  message.id
+                }
                 className={`flex ${
                   message.role ===
                   "user"
@@ -587,8 +767,8 @@ export default function Chat({
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-2xl rounded-tl-md border border-white/10 bg-white/5 px-4 py-3 text-sm text-zinc-400">
                 <LoadingIcon className="animate-spin" />
-                AI Director denkt
-                nach
+
+                AI Director denkt nach
               </div>
             </div>
           )}
@@ -597,16 +777,21 @@ export default function Chat({
             <div className="flex justify-start">
               <div className="flex items-center gap-2 rounded-2xl rounded-tl-md border border-violet-400/20 bg-violet-400/10 px-4 py-3 text-sm text-violet-200">
                 <LoadingIcon className="animate-spin" />
-                Story Architect
-                plant{" "}
+
+                Story Architect plant{" "}
+
                 {formatDuration(
                   targetDurationSeconds,
                 )}{" "}
+
                 ·{" "}
+
                 {formatEditingStyle(
                   editingStyle,
                 )}{" "}
+
                 ·{" "}
+
                 {formatAspectRatio(
                   aspectRatio,
                 )}
@@ -614,224 +799,156 @@ export default function Chat({
             </div>
           )}
 
-          {plan && completeStory && (
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-violet-400/20 bg-violet-400/10 p-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-                  Filmplan
-                </p>
+          {plan &&
+            completeStory && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-violet-400/20 bg-violet-400/10 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
+                    Filmplan
+                  </p>
 
-                <h3 className="mt-2 text-lg font-semibold text-white">
-                  {
-                    completeStory.title
-                  }
-                </h3>
-
-                <p className="mt-2 text-sm leading-6 text-zinc-300">
-                  {
-                    completeStory.summary
-                  }
-                </p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                  <h3 className="mt-2 text-lg font-semibold text-white">
                     {
-                      completeStory.genre
+                      completeStory.title
                     }
-                  </span>
+                  </h3>
 
-                  <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                  <p className="mt-2 text-sm leading-6 text-zinc-300">
                     {
-                      completeStory.mood
+                      completeStory.summary
                     }
-                  </span>
+                  </p>
 
-                  <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
-                    {formatDuration(
-                      plan.targetDurationSeconds,
-                    )}
-                  </span>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                      {
+                        completeStory.genre
+                      }
+                    </span>
 
-                  <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
-                    {formatAspectRatio(
-                      plan.aspectRatio,
-                    )}
-                  </span>
+                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                      {
+                        completeStory.mood
+                      }
+                    </span>
 
-                  <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
-                    {formatEditingStyle(
-                      plan.editingStyle ??
-                        "social",
-                    )}
-                  </span>
+                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                      {formatDuration(
+                        plan.targetDurationSeconds,
+                      )}
+                    </span>
+
+                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                      {formatAspectRatio(
+                        plan.aspectRatio,
+                      )}
+                    </span>
+
+                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-xs text-violet-200">
+                      {formatEditingStyle(
+                        plan.editingStyle ??
+                          "social",
+                      )}
+                    </span>
+                  </div>
                 </div>
-              </div>
 
-              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
-                <p className="text-sm font-medium text-emerald-200">
-                  ✓ Planung abgeschlossen
-                </p>
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
+                  <p className="text-sm font-medium text-emerald-200">
+                    ✓ Planung abgeschlossen
+                  </p>
 
-                <p className="mt-1 text-xs leading-5 text-emerald-200/70">
-                  Hier wird bewusst noch
-                  kein kostenpflichtiges
-                  Video erzeugt. Der
-                  fertige Filmplan geht
-                  als Nächstes in die
-                  Vorschau und danach in
-                  den Zahlungs- und
-                  Render-Flow.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-                  Opening · 0–8 Sekunden
-                </p>
-
-                <h4 className="mt-2 font-semibold text-white">
-                  {
-                    plan.opening.title
-                  }
-                </h4>
-
-                <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  {
-                    plan.opening.action
-                  }
-                </p>
-
-                <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
-                  <PromptSection
-                    title="Hook"
-                    content={
-                      plan.opening.hook
-                    }
-                  />
-
-                  <PromptSection
-                    title="Kamera"
-                    content={
-                      plan.opening
-                        .cameraPlan
-                    }
-                  />
-
-                  <PromptSection
-                    title="Veo-Prompt"
-                    content={
-                      plan.opening
-                        .veoPrompt
-                    }
-                  />
-
-                  <PromptSection
-                    title="Audio"
-                    content={
-                      plan.opening
-                        .audioPrompt
-                    }
-                  />
+                  <p className="mt-1 text-xs leading-5 text-emerald-200/70">
+                    Hier wird bewusst noch kein kostenpflichtiges
+                    Video erzeugt. Der fertige Filmplan geht als
+                    Nächstes in die Vorschau und danach in den
+                    Zahlungs- und Render-Flow.
+                  </p>
                 </div>
-              </div>
 
-              {plan.continuations.length >
-                0 && (
-                <div className="space-y-3">
-                  {plan.continuations.map(
-                    (
-                      continuation,
-                    ) => (
-                      <article
-                        key={
-                          continuation.id
-                        }
-                        className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-                            Fortsetzung{" "}
-                            {
-                              continuation.extensionNumber
-                            }
-                          </p>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                  <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
+                    Opening · 0–
+                    {
+                      plan.opening.endSecond
+                    }{" "}
+                    Sekunden
+                  </p>
 
-                          <span className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-500">
-                            {
-                              continuation.startSecond
-                            }
-                            –
-                            {
-                              continuation.endSecond
-                            }{" "}
-                            Sek.
-                          </span>
-                        </div>
+                  <h4 className="mt-2 font-semibold text-white">
+                    {
+                      plan.opening.title
+                    }
+                  </h4>
 
-                        <h4 className="mt-2 font-semibold text-white">
-                          {
-                            continuation.title
-                          }
-                        </h4>
+                  <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    {
+                      plan.opening.action
+                    }
+                  </p>
 
-                        <p className="mt-2 text-sm leading-6 text-zinc-400">
-                          {
-                            continuation.actionContinuation
-                          }
-                        </p>
+                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                    <PromptSection
+                      title="Hook"
+                      content={
+                        plan.opening.hook
+                      }
+                    />
 
-                        <div className="mt-3 space-y-3">
-                          <PromptSection
-                            title="Story Beat"
-                            content={
-                              continuation.storyBeat
-                            }
-                          />
+                    <PromptSection
+                      title="Kamera"
+                      content={
+                        plan.opening
+                          .cameraPlan
+                      }
+                    />
 
-                          <PromptSection
-                            title="Kamera / Schnitt"
-                            content={
-                              continuation.cameraContinuation
-                            }
-                          />
-                        </div>
-                      </article>
-                    ),
-                  )}
+                    <PromptSection
+                      title="Video-Prompt"
+                      content={
+                        plan.opening
+                          .veoPrompt
+                      }
+                    />
+
+                    <PromptSection
+                      title="Audio"
+                      content={
+                        plan.opening
+                          .audioPrompt
+                      }
+                    />
+                  </div>
                 </div>
-              )}
 
-              {plan.chapters &&
-                plan.chapters.length >
+                {plan.continuations.length >
                   0 && (
                   <div className="space-y-3">
-                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
-                      Kapitelplan
-                    </p>
-
-                    {plan.chapters.map(
-                      (chapter) => (
+                    {plan.continuations.map(
+                      (
+                        continuation,
+                      ) => (
                         <article
                           key={
-                            chapter.id
+                            continuation.id
                           }
                           className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
                         >
                           <div className="flex items-center justify-between gap-4">
                             <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-                              Kapitel{" "}
+                              Fortsetzung{" "}
                               {
-                                chapter.id
+                                continuation.extensionNumber
                               }
                             </p>
 
                             <span className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-500">
                               {
-                                chapter.startSecond
+                                continuation.startSecond
                               }
                               –
                               {
-                                chapter.endSecond
+                                continuation.endSecond
                               }{" "}
                               Sek.
                             </span>
@@ -839,29 +956,28 @@ export default function Chat({
 
                           <h4 className="mt-2 font-semibold text-white">
                             {
-                              chapter.title
+                              continuation.title
                             }
                           </h4>
 
+                          <p className="mt-2 text-sm leading-6 text-zinc-400">
+                            {
+                              continuation.actionContinuation
+                            }
+                          </p>
+
                           <div className="mt-3 space-y-3">
                             <PromptSection
-                              title="Story-Ziel"
+                              title="Story Beat"
                               content={
-                                chapter.storyGoal
+                                continuation.storyBeat
                               }
                             />
 
                             <PromptSection
-                              title="Visuelles Ziel"
+                              title="Kamera / Schnitt"
                               content={
-                                chapter.visualGoal
-                              }
-                            />
-
-                            <PromptSection
-                              title="Übergang"
-                              content={
-                                chapter.transitionOut
+                                continuation.cameraContinuation
                               }
                             />
                           </div>
@@ -870,8 +986,80 @@ export default function Chat({
                     )}
                   </div>
                 )}
-            </div>
-          )}
+
+                {plan.chapters &&
+                  plan.chapters.length >
+                    0 && (
+                    <div className="space-y-3">
+                      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                        Kapitelplan
+                      </p>
+
+                      {plan.chapters.map(
+                        (
+                          chapter,
+                        ) => (
+                          <article
+                            key={
+                              chapter.id
+                            }
+                            className="rounded-2xl border border-white/10 bg-white/[0.035] p-4"
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
+                                Kapitel{" "}
+                                {
+                                  chapter.id
+                                }
+                              </p>
+
+                              <span className="rounded-lg bg-white/5 px-2 py-1 text-xs text-zinc-500">
+                                {
+                                  chapter.startSecond
+                                }
+                                –
+                                {
+                                  chapter.endSecond
+                                }{" "}
+                                Sek.
+                              </span>
+                            </div>
+
+                            <h4 className="mt-2 font-semibold text-white">
+                              {
+                                chapter.title
+                              }
+                            </h4>
+
+                            <div className="mt-3 space-y-3">
+                              <PromptSection
+                                title="Story-Ziel"
+                                content={
+                                  chapter.storyGoal
+                                }
+                              />
+
+                              <PromptSection
+                                title="Visuelles Ziel"
+                                content={
+                                  chapter.visualGoal
+                                }
+                              />
+
+                              <PromptSection
+                                title="Übergang"
+                                content={
+                                  chapter.transitionOut
+                                }
+                              />
+                            </div>
+                          </article>
+                        ),
+                      )}
+                    </div>
+                  )}
+              </div>
+            )}
         </div>
 
         <div className="border-t border-white/10 p-5 sm:p-6">
@@ -879,16 +1067,12 @@ export default function Chat({
           completeStory ? (
             <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4">
               <p className="text-sm font-medium text-emerald-200">
-                Dein Filmplan ist
-                vollständig.
+                Dein Filmplan ist vollständig.
               </p>
 
               <p className="mt-1 text-xs leading-5 text-emerald-200/60">
-                Prüfe rechts die
-                Vorschau. Erst nach
-                Freigabe und Zahlung
-                wird die eigentliche
-                Videogenerierung
+                Prüfe rechts die Vorschau. Erst nach Freigabe und
+                Zahlung wird die eigentliche Videogenerierung
                 gestartet.
               </p>
 
@@ -912,13 +1096,14 @@ export default function Chat({
                 }`}
               >
                 <textarea
-                  value={input}
+                  value={
+                    input
+                  }
                   onChange={(
                     event,
                   ) => {
                     setInput(
-                      event.target
-                        .value,
+                      event.target.value,
                     );
 
                     if (
@@ -948,7 +1133,11 @@ export default function Chat({
                     {
                       input.length
                     }
-                    /{AI_DIRECTOR_MESSAGE_MAX_CHARACTERS} Zeichen
+                    /
+                    {
+                      AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
+                    }{" "}
+                    Zeichen
                   </span>
 
                   <button
@@ -990,9 +1179,7 @@ export default function Chat({
               )}
 
               <p className="mt-3 text-xs leading-5 text-zinc-600">
-                Enter zum Senden ·
-                Shift + Enter für
-                eine neue Zeile
+                Enter zum Senden · Shift + Enter für eine neue Zeile
               </p>
             </>
           )}
@@ -1011,18 +1198,24 @@ function PromptSection({
   title,
   content,
 }: PromptSectionProps) {
-  if (!content) {
+  if (
+    !content
+  ) {
     return null;
   }
 
   return (
     <div className="rounded-xl border border-white/5 bg-black/20 p-3">
       <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-        {title}
+        {
+          title
+        }
       </p>
 
       <p className="mt-1.5 whitespace-pre-wrap text-xs leading-5 text-zinc-300">
-        {content}
+        {
+          content
+        }
       </p>
     </div>
   );

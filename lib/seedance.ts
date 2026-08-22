@@ -13,6 +13,19 @@ const REFERENCE_TO_VIDEO_MODEL =
 
 const OPERATION_PREFIX = "fal-seedance";
 
+/*
+ * Neue Standardlänge:
+ *
+ * Seedance erzeugt für unsere neue Pipeline immer
+ * 15-Sekunden-Blöcke.
+ *
+ * 15 s  -> 1 Clip
+ * 30 s  -> 2 Clips
+ * 60 s  -> 4 Clips
+ * 120 s -> 8 Clips
+ */
+export const SEEDANCE_DEFAULT_CLIP_DURATION_SECONDS = 15;
+
 type SeedanceImageReference = {
   data: string;
   mimeType:
@@ -27,6 +40,15 @@ export type SeedanceGenerationOptions = {
   referenceImages?: SeedanceImageReference[];
   maxAttempts?: number;
 
+  /*
+   * Standard ist 15 Sekunden.
+   *
+   * Das optionale Feld bleibt vorhanden,
+   * damit ältere Jobs bei Bedarf auch mit ihrer
+   * ursprünglichen Dauer wiederhergestellt werden können.
+   */
+  durationSeconds?: number;
+
   /**
    * Wird von fal.ai aufgerufen, sobald die Generierung
    * abgeschlossen oder fehlgeschlagen ist.
@@ -38,6 +60,11 @@ export type SeedanceExtensionOptions = {
   aspectRatio?: VideoAspectRatio;
   extensionNumber?: number;
   maxAttempts?: number;
+
+  /*
+   * Standard ist ebenfalls 15 Sekunden.
+   */
+  durationSeconds?: number;
 
   /**
    * Wird von fal.ai aufgerufen, sobald die Fortsetzung
@@ -280,6 +307,34 @@ function readHttpStatus(
   return 0;
 }
 
+/*
+ * Seedance 2.0 Fast unterstützt Clip-Längen
+ * bis maximal 15 Sekunden.
+ *
+ * Wir erlauben intern weiterhin kürzere Werte,
+ * damit bestehende Legacy-Aufträge bei Bedarf
+ * wiederhergestellt werden können.
+ */
+function normalizeDurationSeconds(
+  value: number | undefined,
+): number {
+  const duration =
+    value ??
+    SEEDANCE_DEFAULT_CLIP_DURATION_SECONDS;
+
+  if (
+    !Number.isInteger(duration) ||
+    duration < 4 ||
+    duration > 15
+  ) {
+    throw new Error(
+      "Ungültige Seedance-Cliplänge. Erlaubt sind 4 bis 15 Sekunden.",
+    );
+  }
+
+  return duration;
+}
+
 function normalizeWebhookUrl(
   value: string | undefined,
 ): string | undefined {
@@ -436,9 +491,21 @@ export async function startVideoGeneration(
   const aspectRatio =
     options.aspectRatio ?? "9:16";
 
+  const durationSeconds =
+    normalizeDurationSeconds(
+      options.durationSeconds,
+    );
+
   const commonInput = {
     resolution: "720p",
-    duration: "8",
+
+    /*
+     * Neue Pipeline:
+     * standardmäßig 15 Sekunden pro Provider-Job.
+     */
+    duration:
+      String(durationSeconds),
+
     aspect_ratio: aspectRatio,
     generate_audio: true,
     bitrate_mode: "standard",
@@ -532,6 +599,11 @@ export async function startVideoExtension(
     );
   }
 
+  const durationSeconds =
+    normalizeDurationSeconds(
+      options.durationSeconds,
+    );
+
   return submitSeedance(
     REFERENCE_TO_VIDEO_MODEL,
     {
@@ -551,7 +623,12 @@ export async function startVideoExtension(
 
       resolution: "720p",
 
-      duration: "7",
+      /*
+       * Neue Pipeline:
+       * ebenfalls standardmäßig 15 Sekunden.
+       */
+      duration:
+        String(durationSeconds),
 
       aspect_ratio:
         options.aspectRatio ?? "9:16",
@@ -676,13 +753,13 @@ export function readSeedanceWebhookResult(
 
 /**
  * Bleibt absichtlich erhalten:
+ *
  * - manuelle Recovery
  * - bestehende alte Jobs
  * - Debugging
  *
- * Der normale neue Workflow soll anschließend aber
- * über den fal.ai-Webhook weiterlaufen und nicht mehr
- * alle 10 Sekunden pollen.
+ * Der normale Workflow läuft über den
+ * fal.ai-Webhook und pollt nicht permanent.
  */
 export async function checkVideoStatus(
   operationName: string,
