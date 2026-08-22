@@ -390,7 +390,7 @@ async function providerRenderEnabledStep(duration: number): Promise<{ enabled: b
   } catch (error) {
     return {
       enabled: false,
-      reason: error instanceof Error ? error.message : "Veo-Rendering ist deaktiviert.",
+      reason: error instanceof Error ? error.message : "Seedance-Rendering ist deaktiviert.",
     };
   }
 }
@@ -730,7 +730,9 @@ async function startOpeningVideoStep(
   plannedRetryDelayMs: number,
 ): Promise<ProviderStartResult> {
   "use step";
-  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
+  if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !== "true") {
+  throw new Error("Seedance-Rendering ist deaktiviert.");
+}
   const { jobStore } = await import("@/lib/store");
   const { startVideoGeneration } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
@@ -838,7 +840,9 @@ async function startExtensionVideoStep(
   plannedRetryDelayMs: number,
 ): Promise<ProviderStartResult> {
   "use step";
-  if (process.env.VEO_WORKFLOW_RENDER_ENABLED !== "true") throw new Error("Veo-Rendering ist deaktiviert.");
+  if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !== "true") {
+  throw new Error("Seedance-Rendering ist deaktiviert.");
+}
   const { jobStore } = await import("@/lib/store");
   const { startVideoExtension } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
@@ -1087,7 +1091,7 @@ async function failRenderJobStep(jobId: string, message: string): Promise<void> 
 
 function assertProviderRenderAllowed(duration: number | undefined): void {
   if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED!== "true") {
-    throw new Error("VEO_WORKFLOW_RENDER_ENABLED ist deaktiviert.");
+    throw new Error("SEEDANCE_WORKFLOW_RENDER_ENABLED ist deaktiviert.");
   }
   if (!duration || duration > CURRENTLY_RELEASED_MAX_DURATION_SECONDS) {
     throw new Error(`Die Videodauer ${duration || "unbekannt"}s ueberschreitet die freigegebene Grenze von ${CURRENTLY_RELEASED_MAX_DURATION_SECONDS}s.`);
