@@ -1,4 +1,4 @@
-import { sleep } from "workflow";
+import { createWebhook, sleep } from "workflow";
 import { CURRENTLY_RELEASED_MAX_DURATION_SECONDS } from "@/lib/pricing";
 import { VIRAL_CHARACTERS } from "@/lib/viral-characters";
 import type { VideoAspectRatio, VideoDurationSeconds } from "@/types/story";
@@ -42,20 +42,25 @@ type RenderResult = {
   reason?: string;
 };
 
-type PollResult = {
-  done: boolean;
-  videoUri?: string;
-  mimeType?: string;
-  restartOperation?: boolean;
-  providerMessage?: string;
+type WebhookOperationResult =
+  | { completed: true; videoUri: string }
+  | {
+      completed: false;
+      providerMessage: string;
+      restartAllowed: boolean;
+    };
+
+type StartedProviderOperation = {
+  operationName: string;
+  reusedExistingOperation: boolean;
 };
 
-type OperationWaitResult =
-  | { completed: true; videoUri: string }
-  | { completed: false; providerMessage: string };
-
 type ProviderStartResult =
-  | { started: true; operationName: string }
+  | {
+      started: true;
+      operationName: string;
+      reusedExistingOperation: boolean;
+    }
   | {
       started: false;
       retryAfterMs: number;
@@ -192,7 +197,8 @@ async function startOpeningWithProviderRetry(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
-): Promise<string> {
+  webhookUrl: string,
+): Promise<StartedProviderOperation> {
   for (let attempt = 0; attempt <= PROVIDER_RETRY_DELAYS_MS.length; attempt += 1) {
     const plannedRetryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt] ?? 0;
     const result = await startOpeningVideoStep(
@@ -200,14 +206,21 @@ async function startOpeningWithProviderRetry(
       prompt,
       aspectRatio,
       chapterNumber,
+      webhookUrl,
       plannedRetryDelayMs,
     );
 
-    if (result.started) return result.operationName;
+    if (result.started === true) {
+      return {
+        operationName: result.operationName,
+        reusedExistingOperation: result.reusedExistingOperation,
+      };
+    }
+
     await sleep(`${Math.ceil(result.retryAfterMs / 1000)}s`);
   }
 
-  throw new Error("Google Veo konnte nach mehreren sicheren Versuchen nicht gestartet werden.");
+  throw new Error("Seedance konnte nach mehreren sicheren Versuchen nicht gestartet werden.");
 }
 
 async function startExtensionWithProviderRetry(
@@ -217,7 +230,8 @@ async function startExtensionWithProviderRetry(
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
   extensionNumber: number,
-): Promise<string> {
+  webhookUrl: string,
+): Promise<StartedProviderOperation> {
   for (let attempt = 0; attempt <= PROVIDER_RETRY_DELAYS_MS.length; attempt += 1) {
     const plannedRetryDelayMs = PROVIDER_RETRY_DELAYS_MS[attempt] ?? 0;
     const result = await startExtensionVideoStep(
@@ -227,14 +241,54 @@ async function startExtensionWithProviderRetry(
       aspectRatio,
       chapterNumber,
       extensionNumber,
+      webhookUrl,
       plannedRetryDelayMs,
     );
 
-    if (result.started) return result.operationName;
+    if (result.started === true) {
+      return {
+        operationName: result.operationName,
+        reusedExistingOperation: result.reusedExistingOperation,
+      };
+    }
+
     await sleep(`${Math.ceil(result.retryAfterMs / 1000)}s`);
   }
 
-  throw new Error("Google Veo konnte die Fortsetzung nach mehreren sicheren Versuchen nicht starten.");
+  throw new Error("Seedance konnte die Fortsetzung nach mehreren sicheren Versuchen nicht starten.");
+}
+
+async function waitForExistingSeedanceOperation(
+  jobId: string,
+  operationName: string,
+  chapterNumber: number,
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<WebhookOperationResult> {
+  // Nur fuer Operationen, die vor dem Webhook-Umbau gestartet wurden.
+  // Neue Seedance-Auftraege warten ausschliesslich auf den fal.ai-Webhook.
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    const result = await recoverExistingSeedanceOperationStep(
+      jobId,
+      operationName,
+      chapterNumber,
+      completedExtensions,
+      totalExtensions,
+    );
+
+    if (result.completed === true || (result.completed === false && result.restartAllowed)) {
+      return result;
+    }
+
+    await sleep("30s");
+  }
+
+  return {
+    completed: false,
+    restartAllowed: false,
+    providerMessage:
+      "Die bereits gestartete Seedance-Operation laeuft nach 60 Minuten noch. Sie wurde nicht doppelt gestartet.",
+  };
 }
 
 async function completeOpeningWithOperationRecovery(
@@ -246,32 +300,58 @@ async function completeOpeningWithOperationRecovery(
   totalExtensions: number,
 ): Promise<string> {
   for (let attempt = 0; attempt <= PROVIDER_OPERATION_RESTART_DELAYS_MS.length; attempt += 1) {
-    const operationName = await startOpeningWithProviderRetry(
+    using webhook = createWebhook();
+
+    const started = await startOpeningWithProviderRetry(
       jobId,
       prompt,
       aspectRatio,
       chapterNumber,
+      webhook.url,
     );
-    const result = await waitForOperation(
-      jobId,
-      operationName,
-      chapterNumber,
-      completedExtensions,
-      totalExtensions,
-    );
-    if (result.completed) return result.videoUri;
+
+    let result: WebhookOperationResult;
+
+    if (started.reusedExistingOperation) {
+      result = await waitForExistingSeedanceOperation(
+        jobId,
+        started.operationName,
+        chapterNumber,
+        completedExtensions,
+        totalExtensions,
+      );
+    } else {
+      const request = await webhook;
+      const payload = await request.json();
+
+      result = await handleSeedanceWebhookStep(
+        jobId,
+        started.operationName,
+        payload,
+        chapterNumber,
+        completedExtensions,
+        totalExtensions,
+      );
+    }
+
+    if (result.completed === true) return result.videoUri;
+
+    if (!result.restartAllowed) {
+      throw new Error(result.providerMessage);
+    }
 
     const retryDelayMs = PROVIDER_OPERATION_RESTART_DELAYS_MS[attempt];
     if (retryDelayMs === undefined) {
       throw new Error(
-        "Google Veo hat die Videoerstellung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
+        "Seedance hat die Videoerstellung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
       );
     }
+
     await scheduleOperationRestartStep(jobId, retryDelayMs, result.providerMessage);
     await sleep(`${Math.ceil(retryDelayMs / 1000)}s`);
   }
 
-  throw new Error("Google Veo konnte die Videoerstellung nicht abschließen.");
+  throw new Error("Seedance konnte die Videoerstellung nicht abschliessen.");
 }
 
 async function completeExtensionWithOperationRecovery(
@@ -284,34 +364,60 @@ async function completeExtensionWithOperationRecovery(
   totalExtensions: number,
 ): Promise<string> {
   for (let attempt = 0; attempt <= PROVIDER_OPERATION_RESTART_DELAYS_MS.length; attempt += 1) {
-    const operationName = await startExtensionWithProviderRetry(
+    using webhook = createWebhook();
+
+    const started = await startExtensionWithProviderRetry(
       jobId,
       previousVideoUri,
       prompt,
       aspectRatio,
       chapterNumber,
       extensionNumber,
+      webhook.url,
     );
-    const result = await waitForOperation(
-      jobId,
-      operationName,
-      chapterNumber,
-      extensionNumber,
-      totalExtensions,
-    );
-    if (result.completed) return result.videoUri;
+
+    let result: WebhookOperationResult;
+
+    if (started.reusedExistingOperation) {
+      result = await waitForExistingSeedanceOperation(
+        jobId,
+        started.operationName,
+        chapterNumber,
+        extensionNumber,
+        totalExtensions,
+      );
+    } else {
+      const request = await webhook;
+      const payload = await request.json();
+
+      result = await handleSeedanceWebhookStep(
+        jobId,
+        started.operationName,
+        payload,
+        chapterNumber,
+        extensionNumber,
+        totalExtensions,
+      );
+    }
+
+    if (result.completed === true) return result.videoUri;
+
+    if (!result.restartAllowed) {
+      throw new Error(result.providerMessage);
+    }
 
     const retryDelayMs = PROVIDER_OPERATION_RESTART_DELAYS_MS[attempt];
     if (retryDelayMs === undefined) {
       throw new Error(
-        "Google Veo hat die Videofortsetzung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
+        "Seedance hat die Videofortsetzung wiederholt wegen eines internen Serverfehlers beendet. Der bezahlte Auftrag bleibt gespeichert.",
       );
     }
+
     await scheduleOperationRestartStep(jobId, retryDelayMs, result.providerMessage);
     await sleep(`${Math.ceil(retryDelayMs / 1000)}s`);
   }
 
-  throw new Error("Google Veo konnte die Videofortsetzung nicht abschließen.");
+  throw new Error("Seedance konnte die Videofortsetzung nicht abschliessen.");
 }
 
 async function scheduleOperationRestartStep(
@@ -332,12 +438,12 @@ async function scheduleOperationRestartStep(
     retryCount: (job.retryCount ?? 0) + 1,
     nextAttemptAt,
     errorMessage:
-      "Google Veo hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
+      "Seedance hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
     currentOperationName: undefined,
     currentOperationType: undefined,
   });
 
-  console.warn("Restarting failed Veo operation after provider backoff", {
+  console.warn("Restarting failed Seedance operation after provider backoff", {
     jobId,
     retryDelayMs,
     providerMessage,
@@ -731,12 +837,13 @@ async function startOpeningVideoStep(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  webhookUrl: string,
   plannedRetryDelayMs: number,
 ): Promise<ProviderStartResult> {
   "use step";
   if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !== "true") {
-  throw new Error("Seedance-Rendering ist deaktiviert.");
-}
+    throw new Error("Seedance-Rendering ist deaktiviert.");
+  }
   const { jobStore } = await import("@/lib/store");
   const { startVideoGeneration } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
@@ -747,13 +854,19 @@ async function startOpeningVideoStep(
     job.currentOperationName &&
     job.currentOperationType === operationType &&
     (operationType !== "chapter-opening" || job.currentChapter === chapterNumber)
-  ) return { started: true, operationName: job.currentOperationName };
+  ) {
+    return {
+      started: true,
+      operationName: job.currentOperationName,
+      reusedExistingOperation: true,
+    };
+  }
 
   let storedStory: Record<string, unknown> = {};
   try {
     storedStory = JSON.parse(job.prompt) as Record<string, unknown>;
   } catch {
-    // prepareRenderJobStep liefert bei ungültigem JSON bereits eine klare Fehlermeldung.
+    // prepareRenderJobStep liefert bei ungueltigem JSON bereits eine klare Fehlermeldung.
   }
   const viralStoryMode = storedStory.creationMode === "viral-story";
   const referenceImages = viralStoryMode
@@ -780,6 +893,7 @@ async function startOpeningVideoStep(
       referenceImage,
       referenceImages,
       maxAttempts: 1,
+      webhookUrl,
     });
   } catch (error) {
     const { getRetryableSeedanceStartError } = await import("@/lib/seedance");
@@ -792,8 +906,8 @@ async function startOpeningVideoStep(
     );
     const nextAttemptAt = Date.now() + retryAfterMs;
     const message = providerError.httpStatus === 429
-      ? "Das Google-Kontingent ist vorübergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
-      : "Google Veo ist vorübergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
+      ? "Das Seedance-Kontingent ist voruebergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
+      : "Seedance ist voruebergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
 
     await jobStore.pauseProvider({
       until: nextAttemptAt,
@@ -817,7 +931,7 @@ async function startOpeningVideoStep(
     };
   }
   const latest = await jobStore.get(jobId);
-  if (!latest) throw new Error("Render-Job ist nach dem Veo-Start verschwunden.");
+  if (!latest) throw new Error("Render-Job ist nach dem Seedance-Start verschwunden.");
   await jobStore.set(jobId, {
     ...latest,
     status: "processing",
@@ -830,7 +944,11 @@ async function startOpeningVideoStep(
     errorMessage: undefined,
   });
   await jobStore.clearProviderPause(jobId);
-  return { started: true, operationName };
+  return {
+    started: true,
+    operationName,
+    reusedExistingOperation: false,
+  };
 }
 startOpeningVideoStep.maxRetries = 0;
 
@@ -841,12 +959,13 @@ async function startExtensionVideoStep(
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
   extensionNumber: number,
+  webhookUrl: string,
   plannedRetryDelayMs: number,
 ): Promise<ProviderStartResult> {
   "use step";
   if (process.env.SEEDANCE_WORKFLOW_RENDER_ENABLED !== "true") {
-  throw new Error("Seedance-Rendering ist deaktiviert.");
-}
+    throw new Error("Seedance-Rendering ist deaktiviert.");
+  }
   const { jobStore } = await import("@/lib/store");
   const { startVideoExtension } = await import("@/lib/seedance");
   const job = await jobStore.get(jobId);
@@ -857,7 +976,13 @@ async function startExtensionVideoStep(
     job.currentOperationType === "extension" &&
     job.currentChapter === chapterNumber &&
     job.currentExtension === extensionNumber
-  ) return { started: true, operationName: job.currentOperationName };
+  ) {
+    return {
+      started: true,
+      operationName: job.currentOperationName,
+      reusedExistingOperation: true,
+    };
+  }
 
   let operationName: string;
   try {
@@ -865,6 +990,7 @@ async function startExtensionVideoStep(
       aspectRatio,
       extensionNumber,
       maxAttempts: 1,
+      webhookUrl,
     });
   } catch (error) {
     const { getRetryableSeedanceStartError } = await import("@/lib/seedance");
@@ -877,8 +1003,8 @@ async function startExtensionVideoStep(
     );
     const nextAttemptAt = Date.now() + retryAfterMs;
     const message = providerError.httpStatus === 429
-      ? "Das Google-Kontingent ist vorübergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
-      : "Google Veo ist vorübergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
+      ? "Das Seedance-Kontingent ist voruebergehend erreicht. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht."
+      : "Seedance ist voruebergehend ausgelastet. Dein bezahlter Auftrag bleibt gespeichert und wird automatisch erneut versucht.";
 
     await jobStore.pauseProvider({
       until: nextAttemptAt,
@@ -902,7 +1028,7 @@ async function startExtensionVideoStep(
     };
   }
   const latest = await jobStore.get(jobId);
-  if (!latest) throw new Error("Render-Job ist nach dem Veo-Extension-Start verschwunden.");
+  if (!latest) throw new Error("Render-Job ist nach dem Seedance-Extension-Start verschwunden.");
   await jobStore.set(jobId, {
     ...latest,
     status: "processing",
@@ -916,24 +1042,106 @@ async function startExtensionVideoStep(
     errorMessage: undefined,
   });
   await jobStore.clearProviderPause(jobId);
-  return { started: true, operationName };
+  return {
+    started: true,
+    operationName,
+    reusedExistingOperation: false,
+  };
 }
 startExtensionVideoStep.maxRetries = 0;
 
-async function pollVideoStep(
+async function handleSeedanceWebhookStep(
+  jobId: string,
+  operationName: string,
+  payload: unknown,
+  chapterNumber: number,
+  completedExtensions: number,
+  totalExtensions: number,
+): Promise<WebhookOperationResult> {
+  "use step";
+
+  const {
+    getRestartableSeedanceOperationError,
+    readSeedanceWebhookResult,
+  } = await import("@/lib/seedance");
+  const { jobStore } = await import("@/lib/store");
+
+  const job = await jobStore.get(jobId);
+  if (!job) {
+    throw new Error("Render-Job wurde beim Seedance-Webhook nicht gefunden.");
+  }
+
+  try {
+    const status = readSeedanceWebhookResult(operationName, payload);
+
+    if (!status.videoUri) {
+      throw new Error("Seedance hat den Auftrag abgeschlossen, aber keine Video-URL geliefert.");
+    }
+
+    const completedFraction = totalExtensions > 0
+      ? completedExtensions / Math.max(1, totalExtensions)
+      : chapterNumber / Math.max(1, job.totalChapters ?? 1);
+    const progress = Math.min(88, 5 + Math.round(completedFraction * 80));
+
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      progressPercent: Math.max(job.progressPercent ?? 0, progress),
+      currentChapter: chapterNumber,
+      lastProviderPollAt: Date.now(),
+      videoUri: status.videoUri,
+      currentOperationName: undefined,
+      currentOperationType: undefined,
+      errorMessage: undefined,
+    });
+
+    return { completed: true, videoUri: status.videoUri };
+  } catch (error) {
+    const restartableFailure = getRestartableSeedanceOperationError(error);
+    if (!restartableFailure) throw error;
+
+    await jobStore.set(jobId, {
+      ...job,
+      status: "processing",
+      renderStage: "waiting-provider",
+      lastProviderPollAt: Date.now(),
+      currentOperationName: undefined,
+      currentOperationType: undefined,
+      errorMessage:
+        "Seedance hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
+    });
+
+    return {
+      completed: false,
+      providerMessage: restartableFailure.message,
+      restartAllowed: true,
+    };
+  }
+}
+handleSeedanceWebhookStep.maxRetries = 0;
+
+async function recoverExistingSeedanceOperationStep(
   jobId: string,
   operationName: string,
   chapterNumber: number,
   completedExtensions: number,
   totalExtensions: number,
-): Promise<PollResult> {
+): Promise<WebhookOperationResult> {
   "use step";
-  const { checkVideoStatus, getRestartableSeedanceOperationError } = await import("@/lib/seedance");
-  const { jobStore } = await import("@/lib/store");
-  const job = await jobStore.get(jobId);
-  if (!job) throw new Error("Render-Job wurde beim Statusabruf nicht gefunden.");
 
-  let status: PollResult;
+  const {
+    checkVideoStatus,
+    getRestartableSeedanceOperationError,
+  } = await import("@/lib/seedance");
+  const { jobStore } = await import("@/lib/store");
+
+  const job = await jobStore.get(jobId);
+  if (!job) {
+    throw new Error("Render-Job wurde bei der Seedance-Wiederaufnahme nicht gefunden.");
+  }
+
+  let status;
+
   try {
     status = await checkVideoStatus(operationName);
   } catch (error) {
@@ -948,12 +1156,28 @@ async function pollVideoStep(
       currentOperationName: undefined,
       currentOperationType: undefined,
       errorMessage:
-        "Google Veo hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
+        "Seedance hatte einen internen Serverfehler. Dein bezahlter Auftrag wird automatisch neu gestartet.",
     });
+
     return {
-      done: false,
-      restartOperation: true,
+      completed: false,
       providerMessage: restartableFailure.message,
+      restartAllowed: true,
+    };
+  }
+
+  if (!status.done || !status.videoUri) {
+    await jobStore.set(jobId, {
+      ...job,
+      lastProviderPollAt: Date.now(),
+      currentOperationName: operationName,
+    });
+
+    return {
+      completed: false,
+      providerMessage:
+        "Die bereits gestartete Seedance-Operation laeuft noch und wird nicht doppelt gestartet.",
+      restartAllowed: false,
     };
   }
 
@@ -961,38 +1185,22 @@ async function pollVideoStep(
     ? completedExtensions / Math.max(1, totalExtensions)
     : chapterNumber / Math.max(1, job.totalChapters ?? 1);
   const progress = Math.min(88, 5 + Math.round(completedFraction * 80));
+
   await jobStore.set(jobId, {
     ...job,
+    status: "processing",
     progressPercent: Math.max(job.progressPercent ?? 0, progress),
     currentChapter: chapterNumber,
     lastProviderPollAt: Date.now(),
-    videoUri: status.done && status.videoUri ? status.videoUri : job.videoUri,
-    currentOperationName: status.done ? undefined : operationName,
-    currentOperationType: status.done ? undefined : job.currentOperationType,
+    videoUri: status.videoUri,
+    currentOperationName: undefined,
+    currentOperationType: undefined,
+    errorMessage: undefined,
   });
-  return { done: status.done, videoUri: status.videoUri, mimeType: status.mimeType };
-}
 
-async function waitForOperation(
-  jobId: string,
-  operationName: string,
-  chapterNumber: number,
-  completedExtensions: number,
-  totalExtensions: number,
-): Promise<OperationWaitResult> {
-  for (let poll = 0; poll < 180; poll += 1) {
-    await sleep("10s");
-    const status = await pollVideoStep(jobId, operationName, chapterNumber, completedExtensions, totalExtensions);
-    if (status.restartOperation) {
-      return {
-        completed: false,
-        providerMessage: status.providerMessage || "Interner Google-Veo-Serverfehler.",
-      };
-    }
-    if (status.done && status.videoUri) return { completed: true, videoUri: status.videoUri };
-  }
-  throw new Error("Zeitüberschreitung nach 30 Minuten bei der Veo-Generierung.");
+  return { completed: true, videoUri: status.videoUri };
 }
+recoverExistingSeedanceOperationStep.maxRetries = 0;
 
 async function recordChapterStep(
   jobId: string,
