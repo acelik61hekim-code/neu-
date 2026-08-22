@@ -71,119 +71,224 @@ async function withTemp<T>(run: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-async function saveWebStream(stream: ReadableStream<Uint8Array>, destination: string) {
-  await pipeline(Readable.fromWeb(stream as never), createWriteStream(destination));
+async function saveWebStream(
+  stream: ReadableStream<Uint8Array>,
+  destination: string,
+) {
+  await pipeline(
+    Readable.fromWeb(stream as never),
+    createWriteStream(destination),
+  );
 }
 
 async function download(source: string, destination: string) {
   if (source.startsWith("local:")) {
-    await pipeline(createReadStream(resolveLocalVideoPath(source)), createWriteStream(destination));
+    await pipeline(
+      createReadStream(resolveLocalVideoPath(source)),
+      createWriteStream(destination),
+    );
     return;
   }
 
   if (source.startsWith("blob:")) {
-    const result = await get(source.slice("blob:".length), { access: "private" });
-    if (!result?.stream) throw new Error("Private Blob konnte nicht gelesen werden.");
-    await saveWebStream(result.stream, destination);
+    const result = await get(
+      source.slice("blob:".length),
+      { access: "private" },
+    );
+
+    if (!result?.stream) {
+      throw new Error("Private Blob konnte nicht gelesen werden.");
+    }
+
+    await saveWebStream(
+      result.stream,
+      destination,
+    );
     return;
   }
 
   const url = new URL(source);
 
-const isGoogleVideo =
-  url.hostname ===
-  "generativelanguage.googleapis.com";
+  const isGoogleVideo =
+    url.hostname ===
+    "generativelanguage.googleapis.com";
 
-const apiKey =
-  isGoogleVideo
-    ? process.env.GEMINI_API_KEY
-    : undefined;
+  const apiKey =
+    isGoogleVideo
+      ? process.env.GEMINI_API_KEY
+      : undefined;
 
-if (
-  apiKey &&
-  !url.searchParams.has("key")
-) {
-  url.searchParams.set(
-    "key",
-    apiKey,
+  if (
+    apiKey &&
+    !url.searchParams.has("key")
+  ) {
+    url.searchParams.set(
+      "key",
+      apiKey,
+    );
+  }
+
+  const response = await fetch(
+    url,
+    {
+      headers:
+        apiKey
+          ? {
+              "x-goog-api-key":
+                apiKey,
+            }
+          : undefined,
+
+      cache: "no-store",
+    },
+  );
+
+  if (!response.ok || !response.body) {
+    throw new Error(
+      `Video-Download fehlgeschlagen (HTTP ${response.status}).`,
+    );
+  }
+
+  await saveWebStream(
+    response.body,
+    destination,
   );
 }
 
-const response = await fetch(
-  url,
-  {
-    headers:
-      apiKey
-        ? {
-            "x-goog-api-key":
-              apiKey,
-          }
-        : undefined,
-
-    cache: "no-store",
-  },
-);
-  if (!response.ok || !response.body) {
-    throw new Error(`Video-Download fehlgeschlagen (HTTP ${response.status}).`);
-  }
-  await saveWebStream(response.body, destination);
-}
-
-async function upload(pathname: string, filename: string) {
+async function upload(
+  pathname: string,
+  filename: string,
+) {
   const hasBlobCredentials = Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
-      (process.env.VERCEL_OIDC_TOKEN && process.env.BLOB_STORE_ID),
+      (
+        process.env.VERCEL_OIDC_TOKEN &&
+        process.env.BLOB_STORE_ID
+      ),
   );
 
-  if (process.env.NODE_ENV === "development" && !hasBlobCredentials) {
-    const destination = resolveLocalVideoPath(pathname);
-    await mkdir(dirname(destination), { recursive: true });
-    await copyFile(filename, destination);
-    return { pathname: `local:${pathname}`, url: `local:${pathname}` };
+  if (
+    process.env.NODE_ENV === "development" &&
+    !hasBlobCredentials
+  ) {
+    const destination =
+      resolveLocalVideoPath(pathname);
+
+    await mkdir(
+      dirname(destination),
+      { recursive: true },
+    );
+
+    await copyFile(
+      filename,
+      destination,
+    );
+
+    return {
+      pathname: `local:${pathname}`,
+      url: `local:${pathname}`,
+    };
   }
 
-  const body = Readable.toWeb(createReadStream(filename)) as ReadableStream<Uint8Array>;
-  const blob = await put(pathname, body, {
-    access: "private",
-    contentType: "video/mp4",
-    multipart: true,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-  });
-  return { pathname: blob.pathname, url: blob.url };
+  const body =
+    Readable.toWeb(
+      createReadStream(filename),
+    ) as ReadableStream<Uint8Array>;
+
+  const blob = await put(
+    pathname,
+    body,
+    {
+      access: "private",
+      contentType: "video/mp4",
+      multipart: true,
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    },
+  );
+
+  return {
+    pathname: blob.pathname,
+    url: blob.url,
+  };
 }
 
-function escapeFilterPath(pathname: string): string {
+function escapeFilterPath(
+  pathname: string,
+): string {
   return pathname
     .replace(/\\/g, "/")
     .replace(/:/g, "\\:")
     .replace(/'/g, "\\'");
 }
 
-function wrapOverlayText(value: string): string {
+function wrapOverlayText(
+  value: string,
+): string {
   const lines: string[] = [];
-  for (const requestedLine of value.replace(/\r/g, "").split("\n")) {
-    const words = requestedLine.trim().split(/\s+/).filter(Boolean);
+
+  for (
+    const requestedLine of
+    value.replace(/\r/g, "").split("\n")
+  ) {
+    const words =
+      requestedLine
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
     let current = "";
+
     for (const word of words) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (candidate.length > 30 && current) {
+      const candidate =
+        current
+          ? `${current} ${word}`
+          : word;
+
+      if (
+        candidate.length > 30 &&
+        current
+      ) {
         lines.push(current);
         current = word;
       } else {
         current = candidate;
       }
     }
-    if (current) lines.push(current);
+
+    if (current) {
+      lines.push(current);
+    }
   }
-  return lines.slice(0, 4).join("\n");
+
+  return lines
+    .slice(0, 4)
+    .join("\n");
 }
 
-function readDurationFromFfmpegOutput(value: string): number | undefined {
-  const match = value.match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i);
-  if (!match) return undefined;
-  const duration = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-  return Number.isFinite(duration) && duration > 0 ? duration : undefined;
+function readDurationFromFfmpegOutput(
+  value: string,
+): number | undefined {
+  const match =
+    value.match(
+      /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/i,
+    );
+
+  if (!match) {
+    return undefined;
+  }
+
+  const duration =
+    Number(match[1]) * 3600 +
+    Number(match[2]) * 60 +
+    Number(match[3]);
+
+  return (
+    Number.isFinite(duration) &&
+    duration > 0
+  )
+    ? duration
+    : undefined;
 }
 
 async function inspectContainerDuration(
@@ -191,24 +296,53 @@ async function inspectContainerDuration(
   pathname: string,
 ): Promise<number | undefined> {
   try {
-    const result = await exec(binary, ["-hide_banner", "-i", pathname], {
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    return readDurationFromFfmpegOutput(`${result.stdout}\n${result.stderr}`);
+    const result = await exec(
+      binary,
+      [
+        "-hide_banner",
+        "-i",
+        pathname,
+      ],
+      {
+        maxBuffer:
+          4 * 1024 * 1024,
+      },
+    );
+
+    return readDurationFromFfmpegOutput(
+      `${result.stdout}\n${result.stderr}`,
+    );
   } catch (error) {
-    const details = error as { stdout?: string; stderr?: string };
-    return readDurationFromFfmpegOutput(`${details.stdout ?? ""}\n${details.stderr ?? ""}`);
+    const details =
+      error as {
+        stdout?: string;
+        stderr?: string;
+      };
+
+    return readDurationFromFfmpegOutput(
+      `${details.stdout ?? ""}\n${details.stderr ?? ""}`,
+    );
   }
 }
 
-function buildAtempoFilters(rate: number): string[] {
+function buildAtempoFilters(
+  rate: number,
+): string[] {
   const filters: string[] = [];
-  let remaining = Math.max(1, rate);
+  let remaining =
+    Math.max(1, rate);
+
   while (remaining > 2) {
     filters.push("atempo=2");
     remaining /= 2;
   }
-  if (remaining > 1.0005) filters.push(`atempo=${remaining.toFixed(5)}`);
+
+  if (remaining > 1.0005) {
+    filters.push(
+      `atempo=${remaining.toFixed(5)}`,
+    );
+  }
+
   return filters;
 }
 
@@ -216,85 +350,233 @@ async function generateNarration(
   dir: string,
   text: string,
   seconds: number,
-  language: VideoFinishingOptions["spokenLanguage"],
+  language:
+    VideoFinishingOptions["spokenLanguage"],
   options: {
     filename?: string;
     voiceName?: string;
     deliveryDirection?: string;
   } = {},
 ): Promise<GeneratedNarration> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Für das exakte Voice-over fehlt der Google-AI-Schlüssel.");
+  const apiKey =
+    process.env.GEMINI_API_KEY;
 
-  const languageDirection = language === "en"
-    ? "Speak natural English."
-    : language === "auto"
-      ? "Use the language of the supplied script."
-      : "Sprich natürliches, klares Hochdeutsch. Sprich KI als K-I aus.";
-  const maximumSeconds = Math.max(1.8, seconds - 0.5);
-  const voiceName = options.voiceName?.trim() || "Kore";
-  const deliveryDirection = options.deliveryDirection?.trim() ||
+  if (!apiKey) {
+    throw new Error(
+      "Für das exakte Voice-over fehlt der Google-AI-Schlüssel.",
+    );
+  }
+
+  const languageDirection =
+    language === "en"
+      ? "Speak natural English."
+      : language === "auto"
+        ? "Use the language of the supplied script."
+        : "Sprich natürliches, klares Hochdeutsch. Sprich KI als K-I aus.";
+
+  const maximumSeconds =
+    Math.max(
+      1.8,
+      seconds - 0.5,
+    );
+
+  const voiceName =
+    options.voiceName?.trim() ||
+    "Kore";
+
+  const deliveryDirection =
+    options.deliveryDirection?.trim() ||
     "Use a professional, warm and confident studio voice.";
-  const client = new GoogleGenAI({ apiKey });
+
+  const client =
+    new GoogleGenAI({
+      apiKey,
+    });
+
   let chunks: Buffer[] = [];
   let mimeType = "audio/l16";
   let sampleRate = 24_000;
   let channels = 1;
   let lastError: unknown;
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
+
+  for (
+    let attempt = 1;
+    attempt <= 3;
+    attempt += 1
+  ) {
     try {
       chunks = [];
       mimeType = "audio/l16";
       sampleRate = 24_000;
       channels = 1;
-      const stream = await client.interactions.create({
-        model: "gemini-3.1-flash-tts-preview",
-        input: [
-          "Synthesize the following exact spoken line as studio-quality speech.",
-          languageDirection,
-          "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
-          `${deliveryDirection} Finish naturally within ${maximumSeconds.toFixed(1)} seconds.`,
-          "SPOKEN SCRIPT:",
-          text,
-        ].join("\n"),
-        response_format: { type: "audio" },
-        generation_config: { speech_config: [{ voice: voiceName }] },
-        stream: true,
-      });
 
-      for await (const event of stream) {
-        if (event.event_type !== "step.delta" || event.delta.type !== "audio") continue;
-        if (event.delta.mime_type) mimeType = event.delta.mime_type;
-        if (event.delta.sample_rate) sampleRate = event.delta.sample_rate;
-        if (event.delta.channels) channels = event.delta.channels;
-        if (event.delta.data) chunks.push(Buffer.from(event.delta.data, "base64"));
+      const stream =
+        await client.interactions.create({
+          model:
+            "gemini-3.1-flash-tts-preview",
+
+          input: [
+            "Synthesize the following exact spoken line as studio-quality speech.",
+            languageDirection,
+            "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
+            `${deliveryDirection} Finish naturally within ${maximumSeconds.toFixed(1)} seconds.`,
+            "SPOKEN SCRIPT:",
+            text,
+          ].join("\n"),
+
+          response_format: {
+            type: "audio",
+          },
+
+          generation_config: {
+            speech_config: [
+              {
+                voice:
+                  voiceName,
+              },
+            ],
+          },
+
+          stream: true,
+        });
+
+      for await (
+        const event of stream
+      ) {
+        if (
+          event.event_type !==
+            "step.delta" ||
+          event.delta.type !==
+            "audio"
+        ) {
+          continue;
+        }
+
+        if (
+          event.delta.mime_type
+        ) {
+          mimeType =
+            event.delta.mime_type;
+        }
+
+        if (
+          event.delta.sample_rate
+        ) {
+          sampleRate =
+            event.delta.sample_rate;
+        }
+
+        if (
+          event.delta.channels
+        ) {
+          channels =
+            event.delta.channels;
+        }
+
+        if (
+          event.delta.data
+        ) {
+          chunks.push(
+            Buffer.from(
+              event.delta.data,
+              "base64",
+            ),
+          );
+        }
       }
-      if (chunks.length === 0) throw new Error("Die Sprach-KI hat keine Tonspur zurückgegeben.");
+
+      if (
+        chunks.length === 0
+      ) {
+        throw new Error(
+          "Die Sprach-KI hat keine Tonspur zurückgegeben.",
+        );
+      }
+
       lastError = undefined;
       break;
     } catch (error) {
       lastError = error;
     }
   }
-  if (lastError || chunks.length === 0) {
+
+  if (
+    lastError ||
+    chunks.length === 0
+  ) {
     throw lastError instanceof Error
       ? lastError
-      : new Error("Die Sprach-KI hat keine Tonspur zurückgegeben.");
+      : new Error(
+          "Die Sprach-KI hat keine Tonspur zurückgegeben.",
+        );
   }
 
-  const extension = mimeType.includes("wav") ? "wav" : mimeType.includes("mp3") ? "mp3" : "pcm";
-  const filename = (options.filename || "voiceover").replace(/[^a-z0-9-]/gi, "-");
-  const pathname = join(dir, `${filename}.${extension}`);
-  const audio = Buffer.concat(chunks);
-  await writeFile(pathname, audio);
-  const isRawPcm = mimeType.includes("l16") || extension === "pcm";
-  const durationSeconds = isRawPcm
-    ? audio.length / Math.max(1, sampleRate * channels * 2)
-    : await inspectContainerDuration(ffmpegPath as string, pathname);
-  if (!durationSeconds || !Number.isFinite(durationSeconds)) {
-    throw new Error("Die Länge des erzeugten Voice-overs konnte nicht geprüft werden.");
+  const extension =
+    mimeType.includes("wav")
+      ? "wav"
+      : mimeType.includes("mp3")
+        ? "mp3"
+        : "pcm";
+
+  const filename =
+    (
+      options.filename ||
+      "voiceover"
+    ).replace(
+      /[^a-z0-9-]/gi,
+      "-",
+    );
+
+  const pathname =
+    join(
+      dir,
+      `${filename}.${extension}`,
+    );
+
+  const audio =
+    Buffer.concat(chunks);
+
+  await writeFile(
+    pathname,
+    audio,
+  );
+
+  const isRawPcm =
+    mimeType.includes("l16") ||
+    extension === "pcm";
+
+  const durationSeconds =
+    isRawPcm
+      ? audio.length /
+        Math.max(
+          1,
+          sampleRate *
+            channels *
+            2,
+        )
+      : await inspectContainerDuration(
+          ffmpegPath as string,
+          pathname,
+        );
+
+  if (
+    !durationSeconds ||
+    !Number.isFinite(
+      durationSeconds,
+    )
+  ) {
+    throw new Error(
+      "Die Länge des erzeugten Voice-overs konnte nicht geprüft werden.",
+    );
   }
-  return { pathname, mimeType, sampleRate, channels, durationSeconds };
+
+  return {
+    pathname,
+    mimeType,
+    sampleRate,
+    channels,
+    durationSeconds,
+  };
 }
 
 async function finishVideo(
@@ -302,264 +584,712 @@ async function finishVideo(
   output: string,
   dir: string,
   seconds: number,
-  options: VideoFinishingOptions = {},
+  options:
+    VideoFinishingOptions = {},
 ): Promise<void> {
   const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
 
-  const voiceoverText = options.voiceoverText?.trim() ?? "";
-  const dialogueCues = (options.dialogueCues ?? [])
-    .filter((cue) =>
-      Number.isFinite(cue.startSeconds) &&
-      Number.isFinite(cue.maximumDurationSeconds) &&
-      cue.startSeconds >= 0 &&
-      cue.maximumDurationSeconds >= 1 &&
-      Boolean(cue.speaker.trim()) &&
-      Boolean(cue.text.trim()) &&
-      Boolean(cue.voiceName.trim()),
+  if (!binary) {
+    throw new Error(
+      "ffmpeg-static ist auf dieser Plattform nicht verfügbar.",
+    );
+  }
+
+  const voiceoverText =
+    options.voiceoverText?.trim() ??
+    "";
+
+  const dialogueCues =
+    (
+      options.dialogueCues ??
+      []
     )
-    .slice(0, 24);
-  const closingText = options.closingText?.trim() ?? "";
-  const args: string[] = ["-y", "-i", input];
-  const sourceDuration = await inspectContainerDuration(binary, input);
-  let narration: GeneratedNarration | undefined;
-  let narrationInputIndex: number | undefined;
-  const generatedDialogue: Array<{
-    cue: DialogueCue;
-    audio: GeneratedNarration;
-    inputIndex: number;
-  }> = [];
+      .filter(
+        (cue) =>
+          Number.isFinite(
+            cue.startSeconds,
+          ) &&
+          Number.isFinite(
+            cue.maximumDurationSeconds,
+          ) &&
+          cue.startSeconds >= 0 &&
+          cue.maximumDurationSeconds >=
+            1 &&
+          Boolean(
+            cue.speaker.trim(),
+          ) &&
+          Boolean(
+            cue.text.trim(),
+          ) &&
+          Boolean(
+            cue.voiceName.trim(),
+          ),
+      )
+      .slice(0, 24);
+
+  const closingText =
+    options.closingText?.trim() ??
+    "";
+
+  const args: string[] = [
+    "-y",
+    "-i",
+    input,
+  ];
+
+  const sourceDuration =
+    await inspectContainerDuration(
+      binary,
+      input,
+    );
+
+  let narration:
+    | GeneratedNarration
+    | undefined;
+
+  let narrationInputIndex:
+    | number
+    | undefined;
+
+  const generatedDialogue:
+    Array<{
+      cue: DialogueCue;
+      audio: GeneratedNarration;
+      inputIndex: number;
+    }> = [];
+
   let nextInputIndex = 1;
 
-  function appendAudioInput(audio: GeneratedNarration): number {
-    const inputIndex = nextInputIndex;
+  function appendAudioInput(
+    audio: GeneratedNarration,
+  ): number {
+    const inputIndex =
+      nextInputIndex;
+
     nextInputIndex += 1;
-    if (audio.mimeType.includes("l16") || audio.pathname.endsWith(".pcm")) {
+
+    if (
+      audio.mimeType.includes(
+        "l16",
+      ) ||
+      audio.pathname.endsWith(
+        ".pcm",
+      )
+    ) {
       args.push(
-        "-f", "s16le",
-        "-ar", String(audio.sampleRate),
-        "-ac", String(audio.channels),
-        "-i", audio.pathname,
+        "-f",
+        "s16le",
+        "-ar",
+        String(
+          audio.sampleRate,
+        ),
+        "-ac",
+        String(
+          audio.channels,
+        ),
+        "-i",
+        audio.pathname,
       );
     } else {
-      args.push("-i", audio.pathname);
+      args.push(
+        "-i",
+        audio.pathname,
+      );
     }
+
     return inputIndex;
   }
 
   if (voiceoverText) {
-    narration = await generateNarration(
-      dir,
-      voiceoverText,
-      seconds,
-      options.spokenLanguage,
-    );
-    narrationInputIndex = appendAudioInput(narration);
+    narration =
+      await generateNarration(
+        dir,
+        voiceoverText,
+        seconds,
+        options.spokenLanguage,
+      );
+
+    narrationInputIndex =
+      appendAudioInput(
+        narration,
+      );
   }
 
-  for (let index = 0; index < dialogueCues.length; index += 1) {
-    const cue = dialogueCues[index];
-    const audio = await generateNarration(
-      dir,
-      cue.text,
-      cue.maximumDurationSeconds,
-      options.spokenLanguage,
-      {
-        filename: `dialogue-${index + 1}`,
-        voiceName: cue.voiceName,
-        deliveryDirection: [
-          `The visible character ${cue.speaker} is speaking.`,
-          cue.voiceDirection,
-          "Keep this character's vocal identity consistent with every other line assigned to the same voice.",
-        ].join(" "),
-      },
-    );
+  for (
+    let index = 0;
+    index <
+    dialogueCues.length;
+    index += 1
+  ) {
+    const cue =
+      dialogueCues[index];
+
+    const audio =
+      await generateNarration(
+        dir,
+        cue.text,
+        cue.maximumDurationSeconds,
+        options.spokenLanguage,
+        {
+          filename:
+            `dialogue-${index + 1}`,
+
+          voiceName:
+            cue.voiceName,
+
+          deliveryDirection:
+            [
+              `The visible character ${cue.speaker} is speaking.`,
+              cue.voiceDirection,
+              "Keep this character's vocal identity consistent with every other line assigned to the same voice.",
+            ].join(" "),
+        },
+      );
+
     generatedDialogue.push({
       cue,
       audio,
-      inputIndex: appendAudioInput(audio),
+      inputIndex:
+        appendAudioInput(
+          audio,
+        ),
     });
   }
 
-  const maximumOutputSeconds = seconds + MAX_FINISHING_GRACE_SECONDS;
-  const naturalVideoEnd = Math.min(maximumOutputSeconds, Math.max(seconds, sourceDuration ?? seconds));
-  const naturalNarrationEnd = narration
-    ? NARRATION_START_DELAY_SECONDS + narration.durationSeconds + NARRATION_TAIL_SECONDS
-    : seconds;
-  const naturalDialogueEnd = generatedDialogue.reduce(
-    (latest, item) => Math.max(
-      latest,
-      item.cue.startSeconds + Math.min(
-        item.audio.durationSeconds,
-        item.cue.maximumDurationSeconds,
-      ) + NARRATION_TAIL_SECONDS,
-    ),
-    seconds,
-  );
-  const outputSeconds = Math.min(
-    maximumOutputSeconds,
-    Math.max(naturalVideoEnd, naturalNarrationEnd, naturalDialogueEnd),
-  );
-  const availableNarrationSeconds = Math.max(
-    1,
-    outputSeconds - NARRATION_START_DELAY_SECONDS - NARRATION_TAIL_SECONDS,
-  );
-  const narrationTempo = narration
-    ? Math.max(1, narration.durationSeconds / availableNarrationSeconds)
-    : 1;
+  const maximumOutputSeconds =
+    seconds +
+    MAX_FINISHING_GRACE_SECONDS;
 
-  const filters: string[] = [];
-  let videoMap = "0:v:0";
-  let audioMap = "0:a:0?";
-  const needsVideoPadding = outputSeconds > (sourceDuration ?? seconds) + 0.02;
-  if (closingText || needsVideoPadding || outputSeconds > seconds + 0.02) {
-    const videoFilters: string[] = [];
-    if (needsVideoPadding) {
+  const naturalVideoEnd =
+    Math.min(
+      maximumOutputSeconds,
+      Math.max(
+        seconds,
+        sourceDuration ??
+          seconds,
+      ),
+    );
+
+  const naturalNarrationEnd =
+    narration
+      ? NARRATION_START_DELAY_SECONDS +
+        narration.durationSeconds +
+        NARRATION_TAIL_SECONDS
+      : seconds;
+
+  const naturalDialogueEnd =
+    generatedDialogue.reduce(
+      (
+        latest,
+        item,
+      ) =>
+        Math.max(
+          latest,
+
+          item.cue.startSeconds +
+            Math.min(
+              item.audio
+                .durationSeconds,
+
+              item.cue
+                .maximumDurationSeconds,
+            ) +
+            NARRATION_TAIL_SECONDS,
+        ),
+
+      seconds,
+    );
+
+  const outputSeconds =
+    Math.min(
+      maximumOutputSeconds,
+
+      Math.max(
+        naturalVideoEnd,
+        naturalNarrationEnd,
+        naturalDialogueEnd,
+      ),
+    );
+
+  const availableNarrationSeconds =
+    Math.max(
+      1,
+
+      outputSeconds -
+        NARRATION_START_DELAY_SECONDS -
+        NARRATION_TAIL_SECONDS,
+    );
+
+  const narrationTempo =
+    narration
+      ? Math.max(
+          1,
+
+          narration.durationSeconds /
+            availableNarrationSeconds,
+        )
+      : 1;
+
+  const filters:
+    string[] = [];
+
+  let videoMap =
+    "0:v:0";
+
+  let audioMap =
+    "0:a:0?";
+
+  const needsVideoPadding =
+    outputSeconds >
+    (
+      sourceDuration ??
+      seconds
+    ) +
+      0.02;
+
+  if (
+    closingText ||
+    needsVideoPadding ||
+    outputSeconds >
+      seconds + 0.02
+  ) {
+    const videoFilters:
+      string[] = [];
+
+    if (
+      needsVideoPadding
+    ) {
       videoFilters.push(
         `tpad=stop_mode=clone:stop_duration=${MAX_FINISHING_GRACE_SECONDS}`,
       );
     }
-    const textFile = join(dir, "closing-text.txt");
+
+    const textFile =
+      join(
+        dir,
+        "closing-text.txt",
+      );
+
     if (closingText) {
-      await writeFile(textFile, wrapOverlayText(closingText), "utf8");
-      const startSecond = Math.max(0, outputSeconds - 6);
+      await writeFile(
+        textFile,
+        wrapOverlayText(
+          closingText,
+        ),
+        "utf8",
+      );
+
+      const startSecond =
+        Math.max(
+          0,
+          outputSeconds - 6,
+        );
+
       videoFilters.push(
         `drawbox=x=w*0.04:y=h*0.64:w=w*0.92:h=h*0.30:color=black@0.84:t=fill:enable='between(t,${startSecond},${outputSeconds})'`,
+
         `drawtext=font='Sans':textfile='${escapeFilterPath(textFile)}':fontcolor=white:fontsize=h/24:line_spacing=18:x=(w-text_w)/2:y=h*0.72:enable='between(t,${startSecond},${outputSeconds})'`,
       );
     }
-    videoFilters.push(`trim=duration=${outputSeconds}`, "setpts=PTS-STARTPTS", "format=yuv420p");
-    filters.push(`[0:v]${videoFilters.join(",")}[v]`);
+
+    videoFilters.push(
+      `trim=duration=${outputSeconds}`,
+      "setpts=PTS-STARTPTS",
+      "format=yuv420p",
+    );
+
+    filters.push(
+      `[0:v]${videoFilters.join(",")}[v]`,
+    );
+
     videoMap = "[v]";
   }
-  if (narration || generatedDialogue.length > 0) {
-    const mixInputs = ["[background]"];
+
+  if (
+    narration ||
+    generatedDialogue.length >
+      0
+  ) {
+    const mixInputs = [
+      "[background]",
+    ];
+
     filters.push(
       `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
     );
 
-    if (narration && narrationInputIndex !== undefined) {
-    const voiceFilters = [
-      ...buildAtempoFilters(narrationTempo),
-      "volume=1.30",
-      "highpass=f=80",
-      `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
-      `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
-        `adelay=${Math.round(NARRATION_START_DELAY_SECONDS * 1000)}:all=1`,
-    ];
-    filters.push(
+    if (
+      narration &&
+      narrationInputIndex !==
+        undefined
+    ) {
+      const voiceFilters = [
+        ...buildAtempoFilters(
+          narrationTempo,
+        ),
+
+        "volume=1.30",
+        "highpass=f=80",
+
+        `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+
+        `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+
+        `adelay=${Math.round(
+          NARRATION_START_DELAY_SECONDS *
+            1000,
+        )}:all=1`,
+      ];
+
+      filters.push(
         `[${narrationInputIndex}:a]${voiceFilters.join(",")}[voiceover]`,
-    );
-      mixInputs.push("[voiceover]");
+      );
+
+      mixInputs.push(
+        "[voiceover]",
+      );
     }
 
-    generatedDialogue.forEach((item, index) => {
-      const dialogueTempo = Math.max(
-        1,
-        item.audio.durationSeconds / item.cue.maximumDurationSeconds,
-      );
-      const label = `dialogue${index}`;
-      const dialogueFilters = [
-        ...buildAtempoFilters(dialogueTempo),
-        "volume=1.36",
-        "highpass=f=80",
-        `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
-        `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
-        `adelay=${Math.round(item.cue.startSeconds * 1000)}:all=1`,
-      ];
-      filters.push(
-        `[${item.inputIndex}:a]${dialogueFilters.join(",")}[${label}]`,
-      );
-      mixInputs.push(`[${label}]`);
-    });
+    generatedDialogue.forEach(
+      (
+        item,
+        index,
+      ) => {
+        const dialogueTempo =
+          Math.max(
+            1,
+
+            item.audio
+              .durationSeconds /
+              item.cue
+                .maximumDurationSeconds,
+          );
+
+        const label =
+          `dialogue${index}`;
+
+        const dialogueFilters =
+          [
+            ...buildAtempoFilters(
+              dialogueTempo,
+            ),
+
+            "volume=1.36",
+            "highpass=f=80",
+
+            `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+
+            `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+
+            `adelay=${Math.round(
+              item.cue
+                .startSeconds *
+                1000,
+            )}:all=1`,
+          ];
+
+        filters.push(
+          `[${item.inputIndex}:a]${dialogueFilters.join(",")}[${label}]`,
+        );
+
+        mixInputs.push(
+          `[${label}]`,
+        );
+      },
+    );
 
     filters.push(
       `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
     );
+
     audioMap = "[a]";
   }
 
-  if (filters.length > 0) args.push("-filter_complex", filters.join(";"));
+  if (
+    filters.length > 0
+  ) {
+    args.push(
+      "-filter_complex",
+      filters.join(";"),
+    );
+  }
+
   args.push(
-    "-map", videoMap,
-    "-map", audioMap,
-    "-t", String(outputSeconds),
-    "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-    "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
-    "-movflags", "+faststart", output,
+    "-map",
+    videoMap,
+
+    "-map",
+    audioMap,
+
+    "-t",
+    String(outputSeconds),
+
+    "-c:v",
+    "libx264",
+
+    "-preset",
+    "fast",
+
+    "-crf",
+    "20",
+
+    "-c:a",
+    "aac",
+
+    "-b:a",
+    "192k",
+
+    "-ar",
+    "48000",
+
+    "-movflags",
+    "+faststart",
+
+    output,
   );
-  await exec(binary, args, { maxBuffer: 32 * 1024 * 1024 });
+
+  await exec(
+    binary,
+    args,
+    {
+      maxBuffer:
+        32 * 1024 * 1024,
+    },
+  );
 }
 
-async function copyAndStore(source: string, pathname: string) {
-  return withTemp(async (dir) => {
-    const input = join(dir, "input.mp4");
-    await download(source, input);
-    return upload(pathname, input);
-  });
+async function copyAndStore(
+  source: string,
+  pathname: string,
+) {
+  return withTemp(
+    async (dir) => {
+      const input =
+        join(
+          dir,
+          "input.mp4",
+        );
+
+      await download(
+        source,
+        input,
+      );
+
+      return upload(
+        pathname,
+        input,
+      );
+    },
+  );
 }
 
 export async function trimAndStore(
   source: string,
   seconds: number,
   pathname: string,
-  finishing: VideoFinishingOptions = {},
+  finishing:
+    VideoFinishingOptions = {},
 ) {
   // Veo opening videos are already exactly 8 seconds. Avoid an unnecessary
   // native FFmpeg process and persist the provider file directly in Blob.
   if (
     seconds === 8 &&
     !finishing.voiceoverText &&
-    !finishing.dialogueCues?.length &&
+    !finishing.dialogueCues
+      ?.length &&
     !finishing.closingText
   ) {
-    return copyAndStore(source, pathname);
+    return copyAndStore(
+      source,
+      pathname,
+    );
   }
 
-  const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
-  return withTemp(async (dir) => {
-    const input = join(dir, "input.mp4");
-    const output = join(dir, "output.mp4");
-    await download(source, input);
-    await finishVideo(input, output, dir, seconds, finishing);
-    return upload(pathname, output);
-  });
+  const binary =
+    ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "ffmpeg-static ist auf dieser Plattform nicht verfügbar.",
+    );
+  }
+
+  return withTemp(
+    async (dir) => {
+      const input =
+        join(
+          dir,
+          "input.mp4",
+        );
+
+      const output =
+        join(
+          dir,
+          "output.mp4",
+        );
+
+      await download(
+        source,
+        input,
+      );
+
+      await finishVideo(
+        input,
+        output,
+        dir,
+        seconds,
+        finishing,
+      );
+
+      return upload(
+        pathname,
+        output,
+      );
+    },
+  );
 }
 
 export async function mergeAndStore(
   sources: string[],
   seconds: number,
   pathname: string,
-  finishing: VideoFinishingOptions = {},
+  finishing:
+    VideoFinishingOptions = {},
 ) {
-  const binary = ffmpegPath;
-  if (!binary) throw new Error("ffmpeg-static ist auf dieser Plattform nicht verfügbar.");
-  if (sources.length === 0) throw new Error("Für das Zusammenfügen fehlen Kapitelvideos.");
-  return withTemp(async (dir) => {
-    const files: string[] = [];
-    for (let index = 0; index < sources.length; index += 1) {
-      const file = join(dir, `chapter-${index + 1}.mp4`);
-      await download(sources[index], file);
-      files.push(file);
-    }
-    const list = join(dir, "concat.txt");
-    await writeFile(
-      list,
-      files.map((file) => `file '${file.replace(/'/g, "'\\''")}'`).join("\n"),
-      "utf8",
+  const binary =
+    ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "ffmpeg-static ist auf dieser Plattform nicht verfügbar.",
     );
-    const output = join(dir, "output.mp4");
-    const merged = join(dir, "merged.mp4");
-    await exec(
-      binary,
-      [
-        "-y", "-f", "concat", "-safe", "0", "-i", list,
-        "-c", "copy", merged,
-      ],
-      { maxBuffer: 32 * 1024 * 1024 },
+  }
+
+  if (
+    sources.length === 0
+  ) {
+    throw new Error(
+      "Für das Zusammenfügen fehlen Kapitelvideos.",
     );
-    await finishVideo(merged, output, dir, seconds, finishing);
-    return upload(pathname, output);
-  });
+  }
+
+  return withTemp(
+    async (dir) => {
+      const files:
+        string[] = [];
+
+      for (
+        let index = 0;
+        index <
+        sources.length;
+        index += 1
+      ) {
+        const file =
+          join(
+            dir,
+            `chapter-${index + 1}.mp4`,
+          );
+
+        await download(
+          sources[index],
+          file,
+        );
+
+        files.push(file);
+      }
+
+      const list =
+        join(
+          dir,
+          "concat.txt",
+        );
+
+      await writeFile(
+        list,
+
+        files
+          .map(
+            (file) =>
+              `file '${file.replace(/'/g, "'\\''")}'`,
+          )
+          .join("\n"),
+
+        "utf8",
+      );
+
+      const output =
+        join(
+          dir,
+          "output.mp4",
+        );
+
+      const merged =
+        join(
+          dir,
+          "merged.mp4",
+        );
+
+      /*
+       * Seedance erstellt jeden Abschnitt als eigenständige Videodatei.
+       * Deshalb kodieren wir das zusammengefügte Material bewusst auf
+       * ein einheitliches H.264/AAC-Format neu, statt die Streams mit
+       * "-c copy" unverändert aneinanderzuhängen.
+       */
+      await exec(
+        binary,
+        [
+          "-y",
+
+          "-f",
+          "concat",
+
+          "-safe",
+          "0",
+
+          "-i",
+          list,
+
+          "-c:v",
+          "libx264",
+
+          "-preset",
+          "fast",
+
+          "-crf",
+          "18",
+
+          "-c:a",
+          "aac",
+
+          "-b:a",
+          "192k",
+
+          "-ar",
+          "48000",
+
+          "-movflags",
+          "+faststart",
+
+          merged,
+        ],
+        {
+          maxBuffer:
+            32 * 1024 * 1024,
+        },
+      );
+
+      await finishVideo(
+        merged,
+        output,
+        dir,
+        seconds,
+        finishing,
+      );
+
+      return upload(
+        pathname,
+        output,
+      );
+    },
+  );
 }
