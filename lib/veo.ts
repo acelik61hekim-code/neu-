@@ -6,6 +6,7 @@ import type {
   VideoEditingStyle,
   VideoGenerationStrategy,
 } from "@/types/story";
+
 import {
   buildStudioAdvertisementDirection,
   isStudioWebsiteAdvertisement,
@@ -23,8 +24,18 @@ const VIDEO_MODEL =
 const TEXT_MODEL =
   "gemini-3.5-flash-lite";
 
+/*
+ * 8 Sekunden bleiben ausschließlich für alte Aufträge.
+ *
+ * Neue freigegebene Seedance-Aufträge:
+ * 15 / 30 / 60 / 120 Sekunden.
+ *
+ * 180–300 Sekunden bleiben für spätere Freischaltung
+ * vorbereitet.
+ */
 const SUPPORTED_VIDEO_DURATIONS = [
   8,
+  15,
   30,
   60,
   120,
@@ -58,10 +69,11 @@ type PredictLongRunningResponse =
     done?: boolean;
   };
 
-const SAFELY_RETRYABLE_PROVIDER_START_STATUSES = new Set([
-  429,
-  503,
-]);
+const SAFELY_RETRYABLE_PROVIDER_START_STATUSES =
+  new Set([
+    429,
+    503,
+  ]);
 
 export class VeoProviderStartError extends Error {
   readonly provider = "google-veo";
@@ -72,22 +84,46 @@ export class VeoProviderStartError extends Error {
 
   constructor(
     message: string,
-    options: { httpStatus: number; retryAfterMs?: number },
+    options: {
+      httpStatus: number;
+      retryAfterMs?: number;
+    },
   ) {
     super(message);
-    this.name = "VeoProviderStartError";
-    this.httpStatus = options.httpStatus;
-    this.safeToRetry = SAFELY_RETRYABLE_PROVIDER_START_STATUSES.has(options.httpStatus);
-    this.retryAfterMs = options.retryAfterMs;
+
+    this.name =
+      "VeoProviderStartError";
+
+    this.httpStatus =
+      options.httpStatus;
+
+    this.safeToRetry =
+      SAFELY_RETRYABLE_PROVIDER_START_STATUSES.has(
+        options.httpStatus,
+      );
+
+    this.retryAfterMs =
+      options.retryAfterMs;
   }
 }
 
 export function getRetryableVeoStartError(
   error: unknown,
-): { message: string; httpStatus: number; retryAfterMs?: number } | null {
-  if (typeof error !== "object" || error === null) return null;
+): {
+  message: string;
+  httpStatus: number;
+  retryAfterMs?: number;
+} | null {
+  if (
+    typeof error !== "object" ||
+    error === null
+  ) {
+    return null;
+  }
 
-  const candidate = error as Partial<VeoProviderStartError>;
+  const candidate =
+    error as Partial<VeoProviderStartError>;
+
   if (
     candidate.provider !== "google-veo" ||
     candidate.phase !== "start" ||
@@ -98,52 +134,98 @@ export function getRetryableVeoStartError(
   }
 
   return {
-    message: typeof candidate.message === "string" ? candidate.message : "Google Veo ist vorübergehend nicht verfügbar.",
-    httpStatus: candidate.httpStatus,
-    retryAfterMs: typeof candidate.retryAfterMs === "number" ? candidate.retryAfterMs : undefined,
+    message:
+      typeof candidate.message === "string"
+        ? candidate.message
+        : "Google Veo ist vorübergehend nicht verfügbar.",
+
+    httpStatus:
+      candidate.httpStatus,
+
+    retryAfterMs:
+      typeof candidate.retryAfterMs === "number"
+        ? candidate.retryAfterMs
+        : undefined,
   };
 }
 
-const RESTARTABLE_OPERATION_STATUSES = new Set([
-  "INTERNAL",
-  "UNAVAILABLE",
-]);
+const RESTARTABLE_OPERATION_STATUSES =
+  new Set([
+    "INTERNAL",
+    "UNAVAILABLE",
+  ]);
 
-const RESTARTABLE_OPERATION_CODES = new Set([
-  13,
-  14,
-  500,
-  503,
-]);
+const RESTARTABLE_OPERATION_CODES =
+  new Set([
+    13,
+    14,
+    500,
+    503,
+  ]);
 
 export class VeoProviderOperationError extends Error {
   readonly provider = "google-veo";
   readonly phase = "operation";
+
   readonly providerStatus?: string;
   readonly providerCode?: number;
+
   readonly safeToRestart: boolean;
 
   constructor(
     message: string,
-    options: { providerStatus?: string; providerCode?: number },
+    options: {
+      providerStatus?: string;
+      providerCode?: number;
+    },
   ) {
     super(message);
-    this.name = "VeoProviderOperationError";
-    this.providerStatus = options.providerStatus;
-    this.providerCode = options.providerCode;
+
+    this.name =
+      "VeoProviderOperationError";
+
+    this.providerStatus =
+      options.providerStatus;
+
+    this.providerCode =
+      options.providerCode;
+
     this.safeToRestart =
-      (typeof options.providerStatus === "string" && RESTARTABLE_OPERATION_STATUSES.has(options.providerStatus)) ||
-      (typeof options.providerCode === "number" && RESTARTABLE_OPERATION_CODES.has(options.providerCode)) ||
-      /internal server issue|try again in a few minutes|temporarily unavailable/i.test(message);
+      (
+        typeof options.providerStatus ===
+          "string" &&
+        RESTARTABLE_OPERATION_STATUSES.has(
+          options.providerStatus,
+        )
+      ) ||
+      (
+        typeof options.providerCode ===
+          "number" &&
+        RESTARTABLE_OPERATION_CODES.has(
+          options.providerCode,
+        )
+      ) ||
+      /internal server issue|try again in a few minutes|temporarily unavailable/i.test(
+        message,
+      );
   }
 }
 
 export function getRestartableVeoOperationError(
   error: unknown,
-): { message: string } | null {
-  if (typeof error !== "object" || error === null) return null;
+): {
+  message: string;
+} | null {
+  if (
+    typeof error !== "object" ||
+    error === null
+  ) {
+    return null;
+  }
 
-  const candidate = error as Partial<VeoProviderOperationError>;
+  const candidate =
+    error as Partial<VeoProviderOperationError>;
+
   if (
     candidate.provider !== "google-veo" ||
     candidate.phase !== "operation" ||
@@ -153,9 +235,10 @@ export function getRestartableVeoOperationError(
   }
 
   return {
-    message: typeof candidate.message === "string"
-      ? candidate.message
-      : "Google Veo hat die laufende Generierung wegen eines internen Serverfehlers beendet.",
+    message:
+      typeof candidate.message === "string"
+        ? candidate.message
+        : "Google Veo hat die laufende Generierung wegen eines internen Serverfehlers beendet.",
   };
 }
 
@@ -182,21 +265,28 @@ type VideoOperationResponse =
             mimeType?: string;
           };
         }>;
+
         generatedVideos?: Array<{
-          video?: {
-            uri?: string;
-            mimeType?: string;
-          } | string;
+          video?:
+            | {
+                uri?: string;
+                mimeType?: string;
+              }
+            | string;
         }>;
+
         raiMediaFilteredCount?: number;
         raiMediaFilteredReasons?: string[];
         raiErrorMessage?: string;
       };
+
       generatedVideos?: Array<{
-        video?: {
-          uri?: string;
-          mimeType?: string;
-        } | string;
+        video?:
+          | {
+              uri?: string;
+              mimeType?: string;
+            }
+          | string;
       }>;
     };
   };
@@ -206,22 +296,23 @@ export type VeoGenerationOptions = {
 
   referenceImage?: {
     data: string;
-    mimeType: "image/jpeg" | "image/png" | "image/webp";
+    mimeType:
+      | "image/jpeg"
+      | "image/png"
+      | "image/webp";
   };
 
   referenceImages?: Array<{
     data: string;
-    mimeType: "image/jpeg" | "image/png" | "image/webp";
+    mimeType:
+      | "image/jpeg"
+      | "image/png"
+      | "image/webp";
   }>;
 
   /*
-   * Standard bleibt 4 Versuche, damit bestehende Aufrufe
-   * unverändert funktionieren.
-   *
-   * Durable Workflow-Steps setzen später maxAttempts: 1,
-   * damit ein kostenpflichtiger Provider-Start nicht
-   * innerhalb derselben Step-Ausführung mehrfach
-   * ausgelöst werden kann.
+   * Standard bleibt 4 Versuche, damit bestehende
+   * Legacy-Aufrufe unverändert funktionieren.
    */
   maxAttempts?: number;
 };
@@ -230,18 +321,15 @@ export type VeoExtensionOptions = {
   aspectRatio?: VideoAspectRatio;
   extensionNumber?: number;
 
-  /*
-   * Gleiche Regel für Extensions:
-   * normale/alte Aufrufe behalten 4 Versuche,
-   * Workflow-Start-Steps können exakt 1 Versuch wählen.
-   */
   maxAttempts?: number;
 };
 
 export type VeoVideoStatus = {
   done: boolean;
+
   videoUrl?: string;
   videoUri?: string;
+
   mimeType?: string;
 };
 
@@ -250,63 +338,159 @@ export type WaitForVideoOptions = {
   timeoutMs?: number;
 };
 
+/*
+ * =========================================================
+ * LEGACY VEO OPENING REQUEST
+ * =========================================================
+ *
+ * Wichtig:
+ * Das hier ist weiterhin die alte Google-Veo-Funktion.
+ *
+ * Deshalb bleibt die echte Veo-Anforderung bei
+ * durationSeconds: 8.
+ *
+ * Die neue Seedance-Pipeline läuft über lib/seedance.ts
+ * und verwendet dort 15 Sekunden.
+ */
 export function buildOpeningVideoRequestBody(
   prompt: string,
-  options: Pick<VeoGenerationOptions, "aspectRatio" | "referenceImage" | "referenceImages"> = {},
+  options: Pick<
+    VeoGenerationOptions,
+    | "aspectRatio"
+    | "referenceImage"
+    | "referenceImages"
+  > = {},
 ): Record<string, unknown> {
-  const cleanedPrompt = prompt.trim();
-  if (!cleanedPrompt) throw new Error("Für die Videogenerierung fehlt der Prompt.");
+  const cleanedPrompt =
+    prompt.trim();
 
-  const instance: Record<string, unknown> = { prompt: cleanedPrompt };
-  if (options.referenceImage && options.referenceImages?.length) {
-    throw new Error("Veo kann nicht gleichzeitig ein Startbild und Asset-Referenzbilder verwenden.");
+  if (!cleanedPrompt) {
+    throw new Error(
+      "Für die Videogenerierung fehlt der Prompt.",
+    );
   }
+
+  const instance:
+    Record<string, unknown> = {
+      prompt: cleanedPrompt,
+    };
+
+  if (
+    options.referenceImage &&
+    options.referenceImages?.length
+  ) {
+    throw new Error(
+      "Veo kann nicht gleichzeitig ein Startbild und Asset-Referenzbilder verwenden.",
+    );
+  }
+
   if (options.referenceImage) {
-    const { data, mimeType } = options.referenceImage;
-    if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-      throw new Error("Die Veo-Bildreferenz ist ungültig.");
+    const {
+      data,
+      mimeType,
+    } =
+      options.referenceImage;
+
+    if (
+      !data ||
+      ![
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+      ].includes(mimeType)
+    ) {
+      throw new Error(
+        "Die Veo-Bildreferenz ist ungültig.",
+      );
     }
 
-    // predictLongRunning erwartet Bildbytes direkt im Image-Objekt.
-    // inlineData gehört zu anderen Gemini-Endpunkten und wird von diesem
-    // Veo-Modell mit HTTP 400 abgelehnt.
     instance.image = {
-      bytesBase64Encoded: data,
+      bytesBase64Encoded:
+        data,
+
       mimeType,
     };
   }
 
-  if (options.referenceImages?.length) {
-    if (options.referenceImages.length > 3) {
-      throw new Error("Veo erlaubt höchstens drei Asset-Referenzbilder.");
+  if (
+    options.referenceImages?.length
+  ) {
+    if (
+      options.referenceImages.length > 3
+    ) {
+      throw new Error(
+        "Veo erlaubt höchstens drei Asset-Referenzbilder.",
+      );
     }
 
-    instance.referenceImages = options.referenceImages.map(({ data, mimeType }) => {
-      if (!data || !["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        throw new Error("Eine Veo-Asset-Referenz ist ungültig.");
-      }
-
-      return {
-        referenceType: "asset",
-        image: {
-          bytesBase64Encoded: data,
+    instance.referenceImages =
+      options.referenceImages.map(
+        ({
+          data,
           mimeType,
+        }) => {
+          if (
+            !data ||
+            ![
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+            ].includes(
+              mimeType,
+            )
+          ) {
+            throw new Error(
+              "Eine Veo-Asset-Referenz ist ungültig.",
+            );
+          }
+
+          return {
+            referenceType:
+              "asset",
+
+            image: {
+              bytesBase64Encoded:
+                data,
+
+              mimeType,
+            },
+          };
         },
-      };
-    });
+      );
   }
 
-  const requestBody: Record<string, unknown> = { instances: [instance] };
-  if (options.aspectRatio !== undefined) {
-    if (!isVideoAspectRatio(options.aspectRatio)) {
-      throw new Error('Ungültiges Veo-Bildformat. Erlaubt sind "9:16" oder "16:9".');
+  const requestBody:
+    Record<string, unknown> = {
+      instances: [
+        instance,
+      ],
+    };
+
+  if (
+    options.aspectRatio !==
+    undefined
+  ) {
+    if (
+      !isVideoAspectRatio(
+        options.aspectRatio,
+      )
+    ) {
+      throw new Error(
+        'Ungültiges Veo-Bildformat. Erlaubt sind "9:16" oder "16:9".',
+      );
     }
+
     requestBody.parameters = {
-      aspectRatio: options.aspectRatio,
+      aspectRatio:
+        options.aspectRatio,
+
       durationSeconds: 8,
-      resolution: "720p",
+
+      resolution:
+        "720p",
     };
   }
+
   return requestBody;
 }
 
@@ -362,7 +546,9 @@ function isVideoDurationSeconds(
 function normalizeAspectRatio(
   value: unknown,
 ): VideoAspectRatio {
-  return isVideoAspectRatio(value)
+  return isVideoAspectRatio(
+    value,
+  )
     ? value
     : "9:16";
 }
@@ -393,11 +579,15 @@ async function readJsonSafely<T>(
 }
 
 function getGoogleErrorMessage(
-  payload: GoogleApiError | null,
+  payload:
+    | GoogleApiError
+    | null,
+
   fallback: string,
 ): string {
   return (
-    payload?.error?.message ||
+    payload?.error
+      ?.message ||
     fallback
   );
 }
@@ -406,26 +596,76 @@ function createRetryDelay(
   attempt: number,
 ): number {
   return (
-    10000 * attempt
+    10000 *
+    attempt
   );
 }
 
-function parseRetryAfterMs(value: string | null): number | undefined {
-  if (!value) return undefined;
-
-  const seconds = Number(value);
-  if (Number.isFinite(seconds) && seconds >= 0) {
-    return Math.max(1000, Math.round(seconds * 1000));
+function parseRetryAfterMs(
+  value: string | null,
+): number | undefined {
+  if (!value) {
+    return undefined;
   }
 
-  const date = Date.parse(value);
-  if (Number.isFinite(date)) {
-    return Math.max(1000, date - Date.now());
+  const seconds =
+    Number(value);
+
+  if (
+    Number.isFinite(
+      seconds,
+    ) &&
+    seconds >= 0
+  ) {
+    return Math.max(
+      1000,
+      Math.round(
+        seconds * 1000,
+      ),
+    );
+  }
+
+  const date =
+    Date.parse(value);
+
+  if (
+    Number.isFinite(
+      date,
+    )
+  ) {
+    return Math.max(
+      1000,
+      date - Date.now(),
+    );
   }
 
   return undefined;
 }
 
+/*
+ * =========================================================
+ * SEEDANCE DURATION PLAN
+ * =========================================================
+ *
+ * Dieser Helper wird von der aktiven Render-Pipeline
+ * für die Dauerplanung verwendet.
+ *
+ * Neue Architektur:
+ *
+ * 15 s:
+ *   1 x 15 Sekunden
+ *
+ * 30 s:
+ *   2 x 15 Sekunden
+ *
+ * 60 s:
+ *   4 x 15 Sekunden
+ *
+ * 120 s:
+ *   8 x 15 Sekunden
+ *
+ * 8 Sekunden bleiben ausschließlich für Legacy-Aufträge.
+ */
 function generatedLengthForSingleChain(
   targetDurationSeconds:
     VideoDurationSeconds,
@@ -433,8 +673,13 @@ function generatedLengthForSingleChain(
   extensionCount: number;
   generatedDurationSeconds: number;
 } {
+  /*
+   * Bereits bestehende alte 8-Sekunden-Jobs
+   * dürfen weiterhin korrekt gelesen werden.
+   */
   if (
-    targetDurationSeconds === 8
+    targetDurationSeconds ===
+    8
   ) {
     return {
       extensionCount: 0,
@@ -442,20 +687,36 @@ function generatedLengthForSingleChain(
     };
   }
 
+  /*
+   * Neue Seedance-Aufträge beginnen mit
+   * einem 15-Sekunden-Opening.
+   */
+  if (
+    targetDurationSeconds ===
+    15
+  ) {
+    return {
+      extensionCount: 0,
+      generatedDurationSeconds: 15,
+    };
+  }
+
   const extensionCount =
     Math.ceil(
       (
         targetDurationSeconds -
-        8
-      ) / 7,
+        15
+      ) /
+        15,
     );
 
   return {
     extensionCount,
 
     generatedDurationSeconds:
-      8 +
-      extensionCount * 7,
+      15 +
+      extensionCount *
+        15,
   };
 }
 
@@ -464,16 +725,15 @@ function generatedLengthForSingleChain(
  * VIDEO-DURATION PLAN
  * =========================================================
  *
- * 8 s:
- *   ein einzelner Veo-Auftrag
+ * Aktive Seedance-Struktur:
  *
- * 30�?"120 s:
- *   Opening 8 s + direkte 7-s-Extensions
+ * 15 s   -> 1 Clip
+ * 30 s   -> 2 Clips
+ * 60 s   -> 4 Clips
+ * 120 s  -> 8 Clips
  *
- * 180�?"300 s:
- *   mehrere Kapitel mit maximal 120 s Zielzeit.
- *
- * Das ist dieselbe Zeitarchitektur wie im Story Architect.
+ * 180–300 Sekunden werden weiterhin in
+ * maximal 120-Sekunden-Kapitel geteilt.
  */
 export function buildVideoDurationPlan(
   targetDurationSeconds:
@@ -485,7 +745,7 @@ export function buildVideoDurationPlan(
     )
   ) {
     throw new Error(
-      "Ungültige Videolänge. Erlaubt sind 8, 30, 60, 120, 180, 240 oder 300 Sekunden.",
+      "Ungültige Videolänge. Erlaubt sind 8 (Legacy), 15, 30, 60, 120, 180, 240 oder 300 Sekunden.",
     );
   }
 
@@ -502,8 +762,8 @@ export function buildVideoDurationPlan(
       targetDurationSeconds,
 
       generationStrategy:
-        targetDurationSeconds ===
-        8
+        targetDurationSeconds <=
+        15
           ? "single-shot"
           : "extension-chain",
 
@@ -520,7 +780,8 @@ export function buildVideoDurationPlan(
   }
 
   const chapterTargets:
-    VideoDurationSeconds[] = [];
+    VideoDurationSeconds[] =
+      [];
 
   let remaining =
     targetDurationSeconds;
@@ -584,14 +845,21 @@ export function buildVideoDurationPlan(
 }
 
 function normalizeProviderStartAttempts(
-  value: number | undefined,
+  value:
+    number |
+    undefined,
 ): number {
-  if (value === undefined) {
+  if (
+    value ===
+    undefined
+  ) {
     return 4;
   }
 
   if (
-    !Number.isInteger(value) ||
+    !Number.isInteger(
+      value,
+    ) ||
     value < 1 ||
     value > 4
   ) {
@@ -605,18 +873,8 @@ function normalizeProviderStartAttempts(
 
 /*
  * =========================================================
- * OPENING / STANDARD VIDEO
+ * LEGACY VEO OPENING
  * =========================================================
- *
- * Rückwärtskompatibel:
- *
- * startVideoGeneration(prompt)
- *
- * funktioniert weiterhin mit exakt derselben alten
- * Request-Struktur.
- *
- * Nur wenn aspectRatio explizit übergeben wird,
- * ergänzen wir parameters.aspectRatio.
  */
 export async function startVideoGeneration(
   prompt: string,
@@ -645,7 +903,11 @@ export async function startVideoGeneration(
     attempt <= maxAttempts;
     attempt += 1
   ) {
-    const requestBody = buildOpeningVideoRequestBody(cleanedPrompt, options);
+    const requestBody =
+      buildOpeningVideoRequestBody(
+        cleanedPrompt,
+        options,
+      );
 
     const response =
       await fetch(
@@ -712,8 +974,15 @@ export async function startVideoGeneration(
         `Veo-Anfrage fehlgeschlagen. HTTP ${response.status}.`,
       ),
       {
-        httpStatus: response.status,
-        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+        httpStatus:
+          response.status,
+
+        retryAfterMs:
+          parseRetryAfterMs(
+            response.headers.get(
+              "retry-after",
+            ),
+          ),
       },
     );
   }
@@ -789,8 +1058,11 @@ export async function checkVideoStatus(
     throw new VeoProviderOperationError(
       data.error.message,
       {
-        providerStatus: data.error.status,
-        providerCode: data.error.code,
+        providerStatus:
+          data.error.status,
+
+        providerCode:
+          data.error.code,
       },
     );
   }
@@ -816,18 +1088,26 @@ export async function checkVideoStatus(
       ?.video;
 
   const alternateVideoObject =
-    typeof alternateVideo === "object" && alternateVideo !== null
+    typeof alternateVideo ===
+      "object" &&
+    alternateVideo !== null
       ? alternateVideo
       : undefined;
 
   const videoUri =
     restVideo?.uri ??
     alternateVideoObject?.uri ??
-    (typeof alternateVideo === "string" ? alternateVideo : undefined);
+    (
+      typeof alternateVideo ===
+      "string"
+        ? alternateVideo
+        : undefined
+    );
 
   const mimeType =
     restVideo?.mimeType ??
-    alternateVideoObject?.mimeType ??
+    alternateVideoObject
+      ?.mimeType ??
     "video/mp4";
 
   if (
@@ -836,22 +1116,37 @@ export async function checkVideoStatus(
     const filterReasons =
       generateVideoResponse
         ?.raiMediaFilteredReasons
-        ?.filter((reason) => reason.trim().length > 0) ??
-      [];
+        ?.filter(
+          (reason) =>
+            reason.trim()
+              .length > 0,
+        ) ?? [];
+
     const filterMessage =
       generateVideoResponse
         ?.raiErrorMessage
         ?.trim();
 
     if (
-      filterReasons.length > 0 ||
-      (generateVideoResponse?.raiMediaFilteredCount ?? 0) > 0 ||
+      filterReasons.length >
+        0 ||
+      (
+        generateVideoResponse
+          ?.raiMediaFilteredCount ??
+        0
+      ) > 0 ||
       filterMessage
     ) {
       throw new Error(
         `Veo hat die Videoausgabe durch die Sicherheitspruefung verworfen: ${[
           ...filterReasons,
-          ...(filterMessage ? [filterMessage] : []),
+          ...(
+            filterMessage
+              ? [
+                  filterMessage,
+                ]
+              : []
+          ),
         ].join(" ") || "Kein Video wurde ausgegeben."}`,
       );
     }
@@ -861,11 +1156,6 @@ export async function checkVideoStatus(
     );
   }
 
-  /*
-   * Bestehende Consumer erwarten videoUrl inklusive key.
-   * Für die neue Extension-Pipeline geben wir zusätzlich
-   * die originale URI ohne angehängten Key zurück.
-   */
   const videoUrl =
     `${videoUri}${
       videoUri.includes("?")
@@ -877,8 +1167,10 @@ export async function checkVideoStatus(
 
   return {
     done: true,
+
     videoUrl,
     videoUri,
+
     mimeType,
   };
 }
@@ -891,7 +1183,9 @@ export async function waitForVideoCompletion(
   Required<
     Pick<
       VeoVideoStatus,
-      "done" | "videoUrl" | "videoUri"
+      | "done"
+      | "videoUrl"
+      | "videoUri"
     >
   > &
     Pick<
@@ -904,7 +1198,9 @@ export async function waitForVideoCompletion(
       10000,
 
     timeoutMs =
-      12 * 60 * 1000,
+      12 *
+      60 *
+      1000,
   } = options;
 
   const startedAt =
@@ -937,10 +1233,13 @@ export async function waitForVideoCompletion(
     ) {
       return {
         done: true,
+
         videoUrl:
           status.videoUrl,
+
         videoUri:
           status.videoUri,
+
         mimeType:
           status.mimeType,
       };
@@ -953,11 +1252,7 @@ export async function waitForVideoCompletion(
  * VEO GENERATED FILE RESOLUTION
  * =========================================================
  *
- * Für Extensions darf NICHT die Browser-Download-URL
- * als Videoquelle an Veo geschickt werden.
- *
- * Wir lesen zuerst die Gemini Files Resource und verwenden
- * anschlie�Yend ausschlie�Ylich file.uri.
+ * Nur Legacy-Veo.
  */
 function extractGeminiFileNameFromUri(
   videoUri: string,
@@ -1116,25 +1411,14 @@ async function resolveProcessedGeneratedVideoUri(
 
 /*
  * =========================================================
- * VEO EXTENSION
+ * LEGACY VEO EXTENSION
  * =========================================================
  *
- * Diese Request-Form folgt bewusst der bereits
- * funktionierenden Extension-Pipeline:
+ * Auch diese Funktion bleibt auf der alten
+ * Google-Veo-Struktur.
  *
- * instances: [{
- *   prompt,
- *   video: { uri: file.uri }
- * }]
- *
- * parameters: {
- *   aspectRatio
- * }
- *
- * KEIN inlineData
- * KEINE videoBytes
- * KEIN numberOfVideos
- * Explizit: 8 Sekunden und 720p; das Modell liefert genau ein Video
+ * Die aktive Seedance-Extension wird in
+ * lib/seedance.ts mit 15 Sekunden erzeugt.
  */
 export async function startVideoExtension(
   videoUri: string,
@@ -1219,8 +1503,15 @@ export async function startVideoExtension(
 
               parameters: {
                 aspectRatio,
-                durationSeconds: 8,
-                resolution: "720p",
+
+                /*
+                 * Legacy Veo bleibt bei 8 Sekunden.
+                 */
+                durationSeconds:
+                  8,
+
+                resolution:
+                  "720p",
               },
             }),
 
@@ -1269,8 +1560,15 @@ export async function startVideoExtension(
         `Google Veo Extension fehlgeschlagen. HTTP ${response.status}.`,
       ),
       {
-        httpStatus: response.status,
-        retryAfterMs: parseRetryAfterMs(response.headers.get("retry-after")),
+        httpStatus:
+          response.status,
+
+        retryAfterMs:
+          parseRetryAfterMs(
+            response.headers.get(
+              "retry-after",
+            ),
+          ),
       },
     );
   }
@@ -1284,13 +1582,8 @@ export async function startVideoExtension(
  * =========================================================
  * MOVIE CONTINUATION PROMPT
  * =========================================================
- *
- * Baut serverseitig denselben Continuity-Kontext auf,
- * den wir vorher temporär im Client hatten.
- *
- * editingStyle und aspectRatio stehen bereits im MoviePlan
- * und flie�Yen damit zusätzlich in jede Fortsetzung ein.
  */
+
 function createDialogueInstruction(
   continuation:
     MovieContinuation,
@@ -1324,7 +1617,8 @@ function createDialogueInstruction(
 
 function editingStyleInstruction(
   editingStyle:
-    VideoEditingStyle | undefined,
+    | VideoEditingStyle
+    | undefined,
 ): string {
   switch (
     editingStyle
@@ -1361,13 +1655,31 @@ function editingStyleInstruction(
   }
 }
 
-export function removeVisibleTextRenderingInstructions(value: string): string {
-  const visibleTextRequest = /\b(?:on[- ]screen|onscreen|screens?|text|letters?|words?|typography|caption|subtitle|title card|logo|watermark|url|website|domain|code)\b/i;
+export function removeVisibleTextRenderingInstructions(
+  value: string,
+): string {
+  const visibleTextRequest =
+    /\b(?:on[- ]screen|onscreen|screens?|text|letters?|words?|typography|caption|subtitle|title card|logo|watermark|url|website|domain|code)\b/i;
+
   return value
-    .replace(/\r/g, "")
-    .split(/\n+|(?<=[.!?])\s+/)
-    .map((part) => part.trim())
-    .filter((part) => part && !visibleTextRequest.test(part))
+    .replace(
+      /\r/g,
+      "",
+    )
+    .split(
+      /\n+|(?<=[.!?])\s+/,
+    )
+    .map(
+      (part) =>
+        part.trim(),
+    )
+    .filter(
+      (part) =>
+        part &&
+        !visibleTextRequest.test(
+          part,
+        ),
+    )
     .join(" ")
     .trim();
 }
@@ -1397,10 +1709,14 @@ export function buildMovieContinuationPrompt(
     );
 
   const preserveRequiredVisualInstructions =
-    (value: string) =>
+    (
+      value: string,
+    ) =>
       studioAdvertisement
         ? value.trim()
-        : removeVisibleTextRenderingInstructions(value);
+        : removeVisibleTextRenderingInstructions(
+            value,
+          );
 
   const characterIdentity =
     story.productionBible
@@ -1422,21 +1738,26 @@ export function buildMovieContinuationPrompt(
       )
       .join("\n");
 
-  const protectedOutputSecond = Math.min(
-    plan.generatedDurationSeconds,
-    plan.targetDurationSeconds + 2,
-  );
-
-  const visibleSeconds = Math.max(
-    0,
+  const protectedOutputSecond =
     Math.min(
-      continuation.durationSeconds,
-      protectedOutputSecond - continuation.startSecond,
-    ),
-  );
+      plan.generatedDurationSeconds,
+      plan.targetDurationSeconds +
+        2,
+    );
+
+  const visibleSeconds =
+    Math.max(
+      0,
+      Math.min(
+        continuation.durationSeconds,
+        protectedOutputSecond -
+          continuation.startSecond,
+      ),
+    );
 
   const finalTrimInstruction =
-    visibleSeconds < continuation.durationSeconds
+    visibleSeconds <
+    continuation.durationSeconds
       ? [
           "PROTECTED ENDING WINDOW (highest priority):",
           `The booked duration is approximately ${plan.targetDurationSeconds} seconds. The finishing pipeline may preserve footage through second ${protectedOutputSecond} so speech, gestures and movement can end naturally.`,
@@ -1445,16 +1766,18 @@ export function buildMovieContinuationPrompt(
         ].join("\n")
       : "";
 
-  const socialBoundaryDirection = plan.editingStyle === "social"
-    ? [
-        "SOCIAL TRANSITION RULE:",
-        "Match the source video's final frame for the first half-second, then advance to a clearly different, story-relevant visual beat with one motivated match cut, whip transition or object-led transition.",
-        "Do not repeat the previous composition for the whole extension. Add visibly new information while preserving the established color palette and production identity.",
-      ].join("\n")
-    : [
-        "BOUNDARY MATCH (highest priority): The first frames must match the source video's final frames exactly: subject position, scale, silhouette, pose, fold geometry, material, camera position, lens, background geometry, lighting and motion vector.",
-        "Continue the existing motion without a cut, jump, wipe, reframe, zoom reset, speed reset or time skip.",
-      ].join("\n");
+  const socialBoundaryDirection =
+    plan.editingStyle ===
+    "social"
+      ? [
+          "SOCIAL TRANSITION RULE:",
+          "Match the source video's final frame for the first half-second, then advance to a clearly different, story-relevant visual beat with one motivated match cut, whip transition or object-led transition.",
+          "Do not repeat the previous composition for the whole extension. Add visibly new information while preserving the established color palette and production identity.",
+        ].join("\n")
+      : [
+          "BOUNDARY MATCH (highest priority): The first frames must match the source video's final frames exactly: subject position, scale, silhouette, pose, fold geometry, material, camera position, lens, background geometry, lighting and motion vector.",
+          "Continue the existing motion without a cut, jump, wipe, reframe, zoom reset, speed reset or time skip.",
+        ].join("\n");
 
   return [
     preserveRequiredVisualInstructions(
@@ -1471,10 +1794,18 @@ export function buildMovieContinuationPrompt(
       plan.editingStyle,
     ),
     "",
-    `STORY BEAT: ${preserveRequiredVisualInstructions(continuation.storyBeat)}`,
-    `EMOTIONAL BEAT: ${preserveRequiredVisualInstructions(continuation.emotionalBeat)}`,
-    `ESCALATION PURPOSE: ${preserveRequiredVisualInstructions(continuation.escalationPurpose)}`,
-    `ACTION CONTINUATION: ${preserveRequiredVisualInstructions(continuation.actionContinuation)}`,
+    `STORY BEAT: ${preserveRequiredVisualInstructions(
+      continuation.storyBeat,
+    )}`,
+    `EMOTIONAL BEAT: ${preserveRequiredVisualInstructions(
+      continuation.emotionalBeat,
+    )}`,
+    `ESCALATION PURPOSE: ${preserveRequiredVisualInstructions(
+      continuation.escalationPurpose,
+    )}`,
+    `ACTION CONTINUATION: ${preserveRequiredVisualInstructions(
+      continuation.actionContinuation,
+    )}`,
     "",
     "CHARACTER CONTINUITY:",
     continuation
@@ -1543,8 +1874,11 @@ export function buildMovieContinuationPrompt(
  *
  * Nur für Rückwärtskompatibilität.
  *
- * Die neue MoviePlan-Pipeline soll für 30�?"120 s
- * Extensions und für 3�?"5 Minuten Chapters verwenden.
+ * Dieser alte Helper teilt weiterhin in ungefähr
+ * 8-Sekunden-Veo-Szenen.
+ *
+ * Die aktive Seedance-MoviePlan-Pipeline verwendet
+ * stattdessen die neue 15-Sekunden-Planung.
  */
 export async function splitIntoScenes(
   prompt: string,
@@ -1597,7 +1931,7 @@ export async function splitIntoScenes(
                 parts: [
                   {
                     text:
-                      `Teile diese Videoidee in genau ${sceneCount} aufeinanderfolgende, kurze Videoclip-Beschreibungen auf (je ca. 8 Sekunden). Idee: "${cleanedPrompt}". Gib NUR ein JSON-Array mit genau ${sceneCount} Strings zurück, jeder String ist eine bildhafte, eigenständige Beschreibung (Stil, Bewegung, Kameraführung) für einen KI-Videogenerator, die zusammen eine zusammenhängende Geschichte erzählen. Kein Text au�Yerhalb des JSON-Arrays.`,
+                      `Teile diese Videoidee in genau ${sceneCount} aufeinanderfolgende, kurze Videoclip-Beschreibungen auf (je ca. 8 Sekunden). Idee: "${cleanedPrompt}". Gib NUR ein JSON-Array mit genau ${sceneCount} Strings zurück, jeder String ist eine bildhafte, eigenständige Beschreibung (Stil, Bewegung, Kameraführung) für einen KI-Videogenerator, die zusammen eine zusammenhängende Geschichte erzählen. Kein Text außerhalb des JSON-Arrays.`,
                   },
                 ],
               },

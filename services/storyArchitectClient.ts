@@ -25,14 +25,24 @@ import type {
   VideoSpokenLanguage,
   VideoVoiceMode,
 } from "@/types/story";
+
 import {
   isVideoAudioStyle,
   isVideoSpokenLanguage,
   isVideoVoiceMode,
 } from "@/lib/audio-options";
 
+const SEEDANCE_CLIP_DURATION_SECONDS = 15;
+
+/*
+ * 8 Sekunden bleiben ausschließlich für alte,
+ * bereits gespeicherte Aufträge gültig.
+ *
+ * Neue Videolängen beginnen bei 15 Sekunden.
+ */
 const SUPPORTED_VIDEO_DURATIONS = [
   8,
+  15,
   30,
   60,
   120,
@@ -40,7 +50,6 @@ const SUPPORTED_VIDEO_DURATIONS = [
   240,
   300,
 ] as const satisfies readonly VideoDurationSeconds[];
-
 
 const SUPPORTED_ASPECT_RATIOS = [
   "9:16",
@@ -53,6 +62,22 @@ const SUPPORTED_EDITING_STYLES = [
   "cinematic",
   "music-video",
 ] as const satisfies readonly VideoEditingStyle[];
+
+type DurationPlan = {
+  targetDurationSeconds: VideoDurationSeconds;
+  generationStrategy: VideoGenerationStrategy;
+  extensionCount: number;
+  generatedDurationSeconds: number;
+  chapterTargets: VideoDurationSeconds[];
+};
+
+type StoryArchitectApiResponse = {
+  scenes?: unknown;
+  productionBible?: unknown;
+  moviePlan?: unknown;
+  generationModel?: unknown;
+  error?: string;
+};
 
 function isVideoAspectRatio(
   value: unknown,
@@ -76,14 +101,6 @@ function isVideoEditingStyle(
   );
 }
 
-type DurationPlan = {
-  targetDurationSeconds: VideoDurationSeconds;
-  generationStrategy: VideoGenerationStrategy;
-  extensionCount: number;
-  generatedDurationSeconds: number;
-  chapterTargets: VideoDurationSeconds[];
-};
-
 function isVideoDurationSeconds(
   value: unknown,
 ): value is VideoDurationSeconds {
@@ -93,6 +110,28 @@ function isVideoDurationSeconds(
       value as VideoDurationSeconds,
     )
   );
+}
+
+function getOpeningDurationSeconds(
+  targetDurationSeconds: VideoDurationSeconds,
+): number {
+  return targetDurationSeconds === 8
+    ? 8
+    : SEEDANCE_CLIP_DURATION_SECONDS;
+}
+
+function getContinuationDurationSeconds(
+  targetDurationSeconds: VideoDurationSeconds,
+): number {
+  /*
+   * Für einen 8-Sekunden-Legacy-Auftrag gibt es
+   * normalerweise keine Continuation.
+   *
+   * Die 7 bleibt nur für alte Daten kompatibel.
+   */
+  return targetDurationSeconds === 8
+    ? 7
+    : SEEDANCE_CLIP_DURATION_SECONDS;
 }
 
 function generatedLengthForSingleChain(
@@ -108,14 +147,21 @@ function generatedLengthForSingleChain(
     };
   }
 
+  if (targetDurationSeconds === 15) {
+    return {
+      extensionCount: 0,
+      generatedDurationSeconds: 15,
+    };
+  }
+
   const extensionCount = Math.ceil(
-    (targetDurationSeconds - 8) / 7,
+    (targetDurationSeconds - 15) / 15,
   );
 
   return {
     extensionCount,
     generatedDurationSeconds:
-      8 + extensionCount * 7,
+      15 + extensionCount * 15,
   };
 }
 
@@ -130,14 +176,18 @@ function buildDurationPlan(
 
     return {
       targetDurationSeconds,
+
       generationStrategy:
-        targetDurationSeconds === 8
+        targetDurationSeconds <= 15
           ? "single-shot"
           : "extension-chain",
+
       extensionCount:
         singleChain.extensionCount,
+
       generatedDurationSeconds:
         singleChain.generatedDurationSeconds,
+
       chapterTargets: [
         targetDurationSeconds,
       ],
@@ -156,14 +206,27 @@ function buildDurationPlan(
   }
 
   if (remaining > 0) {
+    if (
+      !isVideoDurationSeconds(
+        remaining,
+      )
+    ) {
+      throw new Error(
+        `Ungültige Restkapitellänge: ${remaining} Sekunden.`,
+      );
+    }
+
     chapterTargets.push(
-      remaining as VideoDurationSeconds,
+      remaining,
     );
   }
 
   const generatedDurationSeconds =
     chapterTargets.reduce(
-      (sum, chapterTarget) =>
+      (
+        sum,
+        chapterTarget,
+      ) =>
         sum +
         generatedLengthForSingleChain(
           chapterTarget,
@@ -173,21 +236,17 @@ function buildDurationPlan(
 
   return {
     targetDurationSeconds,
+
     generationStrategy:
       "chaptered",
+
     extensionCount: 0,
+
     generatedDurationSeconds,
+
     chapterTargets,
   };
 }
-
-type StoryArchitectApiResponse = {
-  scenes?: unknown;
-  productionBible?: unknown;
-  moviePlan?: unknown;
-  generationModel?: unknown;
-  error?: string;
-};
 
 function isNonEmptyString(
   value: unknown,
@@ -233,24 +292,48 @@ function isSceneDialogue(
   }
 
   return (
-    isNonEmptyString(dialogue.speaker) &&
-    isNonEmptyString(dialogue.text) &&
-    isNonEmptyString(dialogue.language) &&
+    isNonEmptyString(
+      dialogue.speaker,
+    ) &&
+    isNonEmptyString(
+      dialogue.text,
+    ) &&
+    isNonEmptyString(
+      dialogue.language,
+    ) &&
     isNonEmptyString(
       dialogue.voiceDirection,
     )
   );
 }
 
+function isDialogueTurns(
+  value: unknown,
+): boolean {
+  return (
+    value === undefined ||
+    (
+      Array.isArray(value) &&
+      value.length <= 3 &&
+      value.every(
+        isSceneDialogue,
+      )
+    )
+  );
+}
+
 /*
  * =========================================================
- * TEMPORÄRE ALTE SCENE-VALIDIERUNG
- *
- * Bleibt nur erhalten, solange ältere Komponenten
- * noch story.scenes verwenden.
+ * TEMPORÄRE SCENE-KOMPATIBILITÄT
  * =========================================================
+ *
+ * Alte Komponenten verwenden teilweise weiterhin
+ * story.scenes.
+ *
+ * Deshalb akzeptieren wir:
+ * - alte 8-Sekunden-Szenen
+ * - neue 15-Sekunden-Szenen
  */
-
 function isScene(
   value: unknown,
 ): value is Scene {
@@ -267,42 +350,83 @@ function isScene(
 
   return (
     typeof scene.id === "number" &&
-    isNonEmptyString(scene.title) &&
-    isNonEmptyString(scene.description) &&
-    isNonEmptyString(scene.location) &&
-    isNonEmptyString(scene.mood) &&
-    isNonEmptyString(scene.keyAction) &&
-    isNonEmptyString(scene.visualFocus) &&
-    isNonEmptyString(scene.startFrame) &&
-    isNonEmptyString(scene.endingFrame) &&
+
+    isNonEmptyString(
+      scene.title,
+    ) &&
+
+    isNonEmptyString(
+      scene.description,
+    ) &&
+
+    isNonEmptyString(
+      scene.location,
+    ) &&
+
+    isNonEmptyString(
+      scene.mood,
+    ) &&
+
+    isNonEmptyString(
+      scene.keyAction,
+    ) &&
+
+    isNonEmptyString(
+      scene.visualFocus,
+    ) &&
+
+    isNonEmptyString(
+      scene.startFrame,
+    ) &&
+
+    isNonEmptyString(
+      scene.endingFrame,
+    ) &&
+
     isNonEmptyString(
       scene.characterStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.characterStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.environmentStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.environmentStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.cameraStateAtStart,
     ) &&
+
     isNonEmptyString(
       scene.cameraStateAtEnd,
     ) &&
+
     isNonEmptyString(
       scene.lightingState,
     ) &&
+
     isString(
       scene.continuityNotes,
     ) &&
+
     isSceneDialogue(
       scene.dialogue,
     ) &&
-    scene.durationSeconds === 8
+
+    isDialogueTurns(
+      scene.dialogueTurns,
+    ) &&
+
+    (
+      scene.durationSeconds === 8 ||
+      scene.durationSeconds === 15
+    )
   );
 }
 
@@ -330,36 +454,47 @@ function isCharacterBibleEntry(
     isNonEmptyString(
       character.id,
     ) &&
+
     isNonEmptyString(
       character.name,
     ) &&
+
     isNonEmptyString(
       character.role,
     ) &&
+
     isNonEmptyString(
       character.fixedAppearance,
     ) &&
+
     isNonEmptyString(
       character.faceIdentity,
     ) &&
+
     isNonEmptyString(
       character.hair,
     ) &&
+
     isNonEmptyString(
       character.eyes,
     ) &&
+
     isNonEmptyString(
       character.bodyType,
     ) &&
+
     isNonEmptyString(
       character.clothing,
     ) &&
+
     isString(
       character.accessories,
     ) &&
+
     isNonEmptyString(
       character.movementStyle,
     ) &&
+
     isNonEmptyString(
       character.voiceIdentity,
     )
@@ -384,18 +519,23 @@ function isVisualBible(
     isNonEmptyString(
       bible.visualStyle,
     ) &&
+
     isNonEmptyString(
       bible.colorGrade,
     ) &&
+
     isNonEmptyString(
       bible.lightingStyle,
     ) &&
+
     isNonEmptyString(
       bible.realismLevel,
     ) &&
+
     isNonEmptyString(
       bible.environmentRules,
     ) &&
+
     isNonEmptyString(
       bible.continuityRules,
     )
@@ -420,18 +560,23 @@ function isCameraBible(
     isNonEmptyString(
       bible.cameraStyle,
     ) &&
+
     isNonEmptyString(
       bible.lensStyle,
     ) &&
+
     isNonEmptyString(
       bible.frameRate,
     ) &&
+
     isNonEmptyString(
       bible.motionStyle,
     ) &&
+
     isNonEmptyString(
       bible.compositionRules,
     ) &&
+
     isNonEmptyString(
       bible.transitionRules,
     )
@@ -456,15 +601,19 @@ function isAudioBible(
     isNonEmptyString(
       bible.dialogueLanguage,
     ) &&
+
     isNonEmptyString(
       bible.ambienceStyle,
     ) &&
+
     isNonEmptyString(
       bible.musicStyle,
     ) &&
+
     isNonEmptyString(
       bible.soundContinuityRules,
     ) &&
+
     isNonEmptyString(
       bible.dialogueRules,
     )
@@ -489,21 +638,27 @@ function isViralBible(
     isNonEmptyString(
       bible.hookStrategy,
     ) &&
+
     isNonEmptyString(
       bible.retentionStrategy,
     ) &&
+
     isNonEmptyString(
       bible.escalationStrategy,
     ) &&
+
     isNonEmptyString(
       bible.emotionalArc,
     ) &&
+
     isNonEmptyString(
       bible.payoffStrategy,
     ) &&
+
     isNonEmptyString(
       bible.cliffhangerStrategy,
     ) &&
+
     isNonEmptyString(
       bible.pacingRules,
     )
@@ -528,15 +683,19 @@ function isPerformanceBible(
     isNonEmptyString(
       bible.actingStyle,
     ) &&
+
     isNonEmptyString(
       bible.facialExpressionStyle,
     ) &&
+
     isNonEmptyString(
       bible.bodyLanguageStyle,
     ) &&
+
     isNonEmptyString(
       bible.dialogueDeliveryStyle,
     ) &&
+
     isNonEmptyString(
       bible.realismRules,
     )
@@ -561,18 +720,23 @@ function isLightingBible(
     isNonEmptyString(
       bible.primaryLightingStyle,
     ) &&
+
     isNonEmptyString(
       bible.lightDirection,
     ) &&
+
     isNonEmptyString(
       bible.contrastStyle,
     ) &&
+
     isNonEmptyString(
       bible.exposureStyle,
     ) &&
+
     isNonEmptyString(
       bible.practicalLights,
     ) &&
+
     isNonEmptyString(
       bible.continuityRules,
     )
@@ -597,25 +761,34 @@ function isProductionBible(
     Array.isArray(
       bible.characterBible,
     ) &&
-    bible.characterBible.length > 0 &&
+
+    bible.characterBible.length >
+      0 &&
+
     bible.characterBible.every(
       isCharacterBibleEntry,
     ) &&
+
     isVisualBible(
       bible.visualBible,
     ) &&
+
     isCameraBible(
       bible.cameraBible,
     ) &&
+
     isAudioBible(
       bible.audioBible,
     ) &&
+
     isViralBible(
       bible.viralBible,
     ) &&
+
     isPerformanceBible(
       bible.performanceBible,
     ) &&
+
     isLightingBible(
       bible.lightingBible,
     )
@@ -630,6 +803,8 @@ function isProductionBible(
 
 function isMovieOpening(
   value: unknown,
+  targetDurationSeconds:
+    VideoDurationSeconds,
 ): value is MovieOpening {
   if (
     typeof value !== "object" ||
@@ -642,56 +817,88 @@ function isMovieOpening(
   const opening =
     value as Partial<MovieOpening>;
 
+  const expectedDuration =
+    getOpeningDurationSeconds(
+      targetDurationSeconds,
+    );
+
   return (
-    opening.id === "opening" &&
-    opening.startSecond === 0 &&
-    opening.endSecond === 8 &&
-    opening.durationSeconds === 8 &&
+    opening.id ===
+      "opening" &&
+
+    opening.startSecond ===
+      0 &&
+
+    opening.endSecond ===
+      expectedDuration &&
+
+    opening.durationSeconds ===
+      expectedDuration &&
+
     isNonEmptyString(
       opening.title,
     ) &&
+
     isNonEmptyString(
       opening.storyBeat,
     ) &&
+
     isNonEmptyString(
       opening.hook,
     ) &&
+
     isNonEmptyString(
       opening.emotionalBeat,
     ) &&
+
     isNonEmptyString(
       opening.action,
     ) &&
+
     isNonEmptyString(
       opening.location,
     ) &&
+
     isNonEmptyString(
       opening.characterState,
     ) &&
+
     isNonEmptyString(
       opening.environmentState,
     ) &&
+
     isNonEmptyString(
       opening.cameraPlan,
     ) &&
+
     isNonEmptyString(
       opening.lightingPlan,
     ) &&
+
     isNonEmptyString(
       opening.performancePlan,
     ) &&
+
     isNonEmptyString(
       opening.audioPlan,
     ) &&
+
     isSceneDialogue(
       opening.dialogue,
     ) &&
+
+    isDialogueTurns(
+      opening.dialogueTurns,
+    ) &&
+
     isNonEmptyString(
       opening.veoPrompt,
     ) &&
+
     isNonEmptyString(
       opening.audioPrompt,
     ) &&
+
     isNonEmptyString(
       opening.negativePrompt,
     )
@@ -701,6 +908,8 @@ function isMovieOpening(
 function isMovieContinuation(
   value: unknown,
   index: number,
+  targetDurationSeconds:
+    VideoDurationSeconds,
 ): value is MovieContinuation {
   if (
     typeof value !== "object" ||
@@ -716,61 +925,97 @@ function isMovieContinuation(
   const expectedExtensionNumber =
     index + 1;
 
+  const openingDuration =
+    getOpeningDurationSeconds(
+      targetDurationSeconds,
+    );
+
+  const continuationDuration =
+    getContinuationDurationSeconds(
+      targetDurationSeconds,
+    );
+
   const expectedStartSecond =
-    8 + index * 7;
+    openingDuration +
+    index *
+      continuationDuration;
 
   const expectedEndSecond =
-    expectedStartSecond + 7;
+    expectedStartSecond +
+    continuationDuration;
 
   return (
     continuation.id ===
       expectedExtensionNumber &&
+
     continuation.extensionNumber ===
       expectedExtensionNumber &&
+
     continuation.startSecond ===
       expectedStartSecond &&
+
     continuation.endSecond ===
       expectedEndSecond &&
-    continuation.durationSeconds === 7 &&
+
+    continuation.durationSeconds ===
+      continuationDuration &&
+
     isNonEmptyString(
       continuation.title,
     ) &&
+
     isNonEmptyString(
       continuation.storyBeat,
     ) &&
+
     isNonEmptyString(
       continuation.emotionalBeat,
     ) &&
+
     isNonEmptyString(
       continuation.escalationPurpose,
     ) &&
+
     isNonEmptyString(
       continuation.actionContinuation,
     ) &&
+
     isNonEmptyString(
       continuation.characterContinuity,
     ) &&
+
     isNonEmptyString(
       continuation.environmentContinuity,
     ) &&
+
     isNonEmptyString(
       continuation.cameraContinuation,
     ) &&
+
     isNonEmptyString(
       continuation.lightingContinuation,
     ) &&
+
     isNonEmptyString(
       continuation.performanceContinuation,
     ) &&
+
     isNonEmptyString(
       continuation.audioContinuation,
     ) &&
+
     isSceneDialogue(
       continuation.dialogue,
     ) &&
+
+    isDialogueTurns(
+      continuation.dialogueTurns,
+    ) &&
+
     isNonEmptyString(
       continuation.continuationPrompt,
     ) &&
+
     (
       continuation.audioPrompt ===
         undefined ||
@@ -778,6 +1023,7 @@ function isMovieContinuation(
         continuation.audioPrompt,
       )
     ) &&
+
     (
       continuation.negativePrompt ===
         undefined ||
@@ -791,7 +1037,8 @@ function isMovieContinuation(
 function isVideoChapter(
   value: unknown,
   index: number,
-  expectedTargets: VideoDurationSeconds[],
+  expectedTargets:
+    VideoDurationSeconds[],
 ): value is VideoChapter {
   if (
     typeof value !== "object" ||
@@ -807,16 +1054,26 @@ function isVideoChapter(
   const expectedTarget =
     expectedTargets[index];
 
-  if (expectedTarget === undefined) {
+  if (
+    expectedTarget ===
+    undefined
+  ) {
     return false;
   }
 
   const expectedStart =
     expectedTargets
-      .slice(0, index)
+      .slice(
+        0,
+        index,
+      )
       .reduce(
-        (sum, duration) =>
-          sum + duration,
+        (
+          sum,
+          duration,
+        ) =>
+          sum +
+          duration,
         0,
       );
 
@@ -825,19 +1082,26 @@ function isVideoChapter(
     expectedTarget;
 
   return (
-    chapter.id === index + 1 &&
+    chapter.id ===
+      index + 1 &&
+
     chapter.startSecond ===
       expectedStart &&
+
     chapter.endSecond ===
       expectedEnd &&
+
     chapter.targetDurationSeconds ===
       expectedTarget &&
+
     isNonEmptyString(
       chapter.title,
     ) &&
+
     isNonEmptyString(
       chapter.storyGoal,
     ) &&
+
     isNonEmptyString(
       chapter.visualGoal,
     )
@@ -866,26 +1130,37 @@ function isMoviePlan(
     return false;
   }
 
+  const targetDurationSeconds =
+    plan.targetDurationSeconds;
+
   const expected =
     buildDurationPlan(
-      plan.targetDurationSeconds,
+      targetDurationSeconds,
     );
 
   if (
     plan.generatedDurationSeconds !==
       expected.generatedDurationSeconds ||
+
     !isVideoAspectRatio(
       plan.aspectRatio,
     ) ||
+
     !isVideoEditingStyle(
       plan.editingStyle,
     ) ||
-    plan.provider !== "auto" ||
+
+    plan.provider !==
+      "auto" ||
+
     plan.generationStrategy !==
       expected.generationStrategy ||
+
     !isMovieOpening(
       plan.opening,
+      targetDurationSeconds,
     ) ||
+
     !Array.isArray(
       plan.continuations,
     )
@@ -898,12 +1173,21 @@ function isMoviePlan(
     "chaptered"
   ) {
     if (
-      plan.continuations.length !== 0 ||
-      !Array.isArray(plan.chapters) ||
+      plan.continuations.length !==
+        0 ||
+
+      !Array.isArray(
+        plan.chapters,
+      ) ||
+
       plan.chapters.length !==
         expected.chapterTargets.length ||
+
       !plan.chapters.every(
-        (chapter, index) =>
+        (
+          chapter,
+          index,
+        ) =>
           isVideoChapter(
             chapter,
             index,
@@ -917,11 +1201,16 @@ function isMoviePlan(
     if (
       plan.continuations.length !==
         expected.extensionCount ||
+
       !plan.continuations.every(
-        (continuation, index) =>
+        (
+          continuation,
+          index,
+        ) =>
           isMovieContinuation(
             continuation,
             index,
+            targetDurationSeconds,
           ),
       )
     ) {
@@ -933,27 +1222,35 @@ function isMoviePlan(
     isNonEmptyString(
       plan.endingStrategy,
     ) &&
+
     isNonEmptyString(
       plan.finalPayoff,
     ) &&
+
     isNonEmptyString(
       plan.finalCliffhanger,
     ) &&
+
     isNonEmptyString(
       plan.characterContinuityRules,
     ) &&
+
     isNonEmptyString(
       plan.visualContinuityRules,
     ) &&
+
     isNonEmptyString(
       plan.cameraContinuityRules,
     ) &&
+
     isNonEmptyString(
       plan.lightingContinuityRules,
     ) &&
+
     isNonEmptyString(
       plan.audioContinuityRules,
     ) &&
+
     isNonEmptyString(
       plan.storyContinuityRules,
     )
@@ -989,50 +1286,57 @@ function createLocationId(
 }
 
 function createProductionMemory(
-  productionBible: ProductionBible,
-  moviePlan: MoviePlan,
+  productionBible:
+    ProductionBible,
+
+  moviePlan:
+    MoviePlan,
 ): ProductionMemory {
   const opening =
     moviePlan.opening;
 
   return {
     characters:
-      productionBible.characterBible.map(
-        (character) => ({
-          characterId:
-            character.id,
+      productionBible
+        .characterBible
+        .map(
+          (
+            character,
+          ) => ({
+            characterId:
+              character.id,
 
-          name:
-            character.name,
+            name:
+              character.name,
 
-          faceIdentity:
-            character.faceIdentity,
+            faceIdentity:
+              character.faceIdentity,
 
-          hair:
-            character.hair,
+            hair:
+              character.hair,
 
-          eyes:
-            character.eyes,
+            eyes:
+              character.eyes,
 
-          bodyType:
-            character.bodyType,
+            bodyType:
+              character.bodyType,
 
-          clothing:
-            character.clothing,
+            clothing:
+              character.clothing,
 
-          accessories:
-            character.accessories,
+            accessories:
+              character.accessories,
 
-          movementStyle:
-            character.movementStyle,
+            movementStyle:
+              character.movementStyle,
 
-          voiceIdentity:
-            character.voiceIdentity,
+            voiceIdentity:
+              character.voiceIdentity,
 
-          visibleInSceneIds:
-            [],
-        }),
-      ),
+            visibleInSceneIds:
+              [],
+          }),
+        ),
 
     locations: [
       {
@@ -1070,10 +1374,10 @@ function createProductionMemory(
     props: [],
 
     /*
-     * Alte Pipeline:
-     * Noch keine klassische Szene wurde gerendert.
+     * Alte Scene-Pipeline.
      */
-    sceneContinuity: [],
+    sceneContinuity:
+      [],
 
     currentSceneId:
       undefined,
@@ -1082,9 +1386,10 @@ function createProductionMemory(
       undefined,
 
     /*
-     * Neue Veo-Extension-Pipeline.
+     * Neue Seedance-15-Sekunden-Pipeline.
      */
-    movieExtensions: [],
+    movieExtensions:
+      [],
 
     currentExtensionNumber:
       0,
@@ -1111,46 +1416,57 @@ function createProductionMemory(
       undefined,
 
     provider:
-      moviePlan.provider ?? "auto",
+      moviePlan.provider ??
+      "auto",
 
     aspectRatio:
       moviePlan.aspectRatio,
 
     editingStyle:
-      moviePlan.editingStyle ?? "social",
+      moviePlan.editingStyle ??
+      "social",
 
     globalVisualStyle:
-      productionBible.visualBible
+      productionBible
+        .visualBible
         .visualStyle,
 
     globalColorGrade:
-      productionBible.visualBible
+      productionBible
+        .visualBible
         .colorGrade,
 
     globalCameraLanguage: [
-      productionBible.cameraBible
+      productionBible
+        .cameraBible
         .cameraStyle,
 
-      productionBible.cameraBible
+      productionBible
+        .cameraBible
         .lensStyle,
 
-      productionBible.cameraBible
+      productionBible
+        .cameraBible
         .motionStyle,
     ]
       .filter(Boolean)
       .join("; "),
 
     globalLightingStyle:
-      productionBible.lightingBible
+      productionBible
+        .lightingBible
         ?.primaryLightingStyle ||
-      productionBible.visualBible
+      productionBible
+        .visualBible
         .lightingStyle,
 
     globalAudioStyle: [
-      productionBible.audioBible
+      productionBible
+        .audioBible
         .ambienceStyle,
 
-      productionBible.audioBible
+      productionBible
+        .audioBible
         .musicStyle,
     ]
       .filter(Boolean)
@@ -1169,7 +1485,8 @@ function createProductionMemory(
       undefined,
 
     updatedAt:
-      new Date().toISOString(),
+      new Date()
+        .toISOString(),
   };
 }
 
@@ -1181,15 +1498,40 @@ function createProductionMemory(
 
 export async function requestStoryArchitect(
   storyDraft: StoryDraft,
-  targetDurationSeconds: VideoDurationSeconds = 60,
-  aspectRatio: VideoAspectRatio = "9:16",
-  editingStyle: VideoEditingStyle = "social",
-  audioStyle: VideoAudioStyle = "cinematic",
-  voiceMode: VideoVoiceMode = "auto",
-  spokenLanguage: VideoSpokenLanguage = "de",
-  voiceoverText = "",
-  closingText = "",
-  creationMode: VideoCreationMode = "standard",
+
+  targetDurationSeconds:
+    VideoDurationSeconds =
+    60,
+
+  aspectRatio:
+    VideoAspectRatio =
+    "9:16",
+
+  editingStyle:
+    VideoEditingStyle =
+    "social",
+
+  audioStyle:
+    VideoAudioStyle =
+    "cinematic",
+
+  voiceMode:
+    VideoVoiceMode =
+    "auto",
+
+  spokenLanguage:
+    VideoSpokenLanguage =
+    "de",
+
+  voiceoverText =
+    "",
+
+  closingText =
+    "",
+
+  creationMode:
+    VideoCreationMode =
+    "standard",
 ): Promise<Story> {
   if (
     !isVideoDurationSeconds(
@@ -1197,7 +1539,7 @@ export async function requestStoryArchitect(
     )
   ) {
     throw new Error(
-      "Ungültige Videolänge. Erlaubt sind 8, 30, 60, 120, 180, 240 oder 300 Sekunden.",
+      "Ungültige Videolänge. Erlaubt sind 15, 30, 60, 120, 180, 240 oder 300 Sekunden. 8 Sekunden werden nur noch für bestehende Legacy-Aufträge unterstützt.",
     );
   }
 
@@ -1221,23 +1563,42 @@ export async function requestStoryArchitect(
     );
   }
 
-  if (!isVideoAudioStyle(audioStyle)) {
-    throw new Error("Ungültiger KI-Musikstil.");
+  if (
+    !isVideoAudioStyle(
+      audioStyle,
+    )
+  ) {
+    throw new Error(
+      "Ungültiger KI-Musikstil.",
+    );
   }
 
-  if (!isVideoVoiceMode(voiceMode)) {
-    throw new Error("Ungültige Stimmen-Option.");
+  if (
+    !isVideoVoiceMode(
+      voiceMode,
+    )
+  ) {
+    throw new Error(
+      "Ungültige Stimmen-Option.",
+    );
   }
 
-  if (!isVideoSpokenLanguage(spokenLanguage)) {
-    throw new Error("Ungültige gesprochene Sprache.");
+  if (
+    !isVideoSpokenLanguage(
+      spokenLanguage,
+    )
+  ) {
+    throw new Error(
+      "Ungültige gesprochene Sprache.",
+    );
   }
 
   const response =
     await fetch(
       "/api/story-architect",
       {
-        method: "POST",
+        method:
+          "POST",
 
         headers: {
           "Content-Type":
@@ -1275,23 +1636,23 @@ export async function requestStoryArchitect(
 
   try {
     data =
-      (await response.json()) as StoryArchitectApiResponse;
+      await response
+        .json() as StoryArchitectApiResponse;
   } catch {
     throw new Error(
       `Der Story Architect hat keine gültige JSON-Antwort geliefert. HTTP ${response.status}`,
     );
   }
 
-  if (!response.ok) {
+  if (
+    !response.ok
+  ) {
     throw new Error(
       data.error ||
         "Der Story Architect konnte keinen Filmplan für die gewählte Videolänge erstellen.",
     );
   }
 
-  /*
-   * Neue Hauptstruktur prüfen.
-   */
   if (
     !isProductionBible(
       data.productionBible,
@@ -1313,11 +1674,9 @@ export async function requestStoryArchitect(
   }
 
   /*
-   * Alte scenes nur noch als temporäre
-   * Kompatibilität übernehmen.
+   * story.scenes bleibt nur für ältere Komponenten.
    *
-   * Sie bestimmen NICHT mehr die neue
-   * Langvideo-Generierung.
+   * Es bestimmt NICHT die aktive Seedance-Pipeline.
    */
   const compatibilityScenes =
     Array.isArray(
@@ -1329,7 +1688,9 @@ export async function requestStoryArchitect(
       : [];
 
   const orderedScenes =
-    [...compatibilityScenes].sort(
+    [
+      ...compatibilityScenes,
+    ].sort(
       (
         firstScene,
         secondScene,
@@ -1352,16 +1713,9 @@ export async function requestStoryArchitect(
 
     productionMemory,
 
-    /*
-     * NEUE Hauptpipeline.
-     */
     moviePlan:
       data.moviePlan,
 
-    /*
-     * Nur noch vorübergehend für
-     * bestehende alte Komponenten.
-     */
     scenes:
       orderedScenes,
 

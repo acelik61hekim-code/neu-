@@ -5,18 +5,38 @@ import {
 
 import { start } from "workflow/api";
 
-import { renderVideoWorkflow } from "@/workflows/render-video";
-import { renderSongWorkflow } from "@/workflows/render-song";
-import { renderImageWorkflow } from "@/workflows/render-image";
+import {
+  renderVideoWorkflow,
+} from "@/workflows/render-video";
 
-import { stripe } from "../../../lib/stripe";
-import { jobStore } from "../../../lib/store";
-import { songStore } from "../../../lib/song-store";
-import { imageStore } from "../../../lib/image-store";
+import {
+  renderSongWorkflow,
+} from "@/workflows/render-song";
+
+import {
+  renderImageWorkflow,
+} from "@/workflows/render-image";
+
+import {
+  stripe,
+} from "../../../lib/stripe";
+
+import {
+  jobStore,
+} from "../../../lib/store";
+
+import {
+  songStore,
+} from "../../../lib/song-store";
+
+import {
+  imageStore,
+} from "../../../lib/image-store";
 
 import {
   buildVideoDurationPlan,
 } from "../../../lib/veo";
+
 import {
   normalizeVideoAudioStyle,
   normalizeVideoSpokenLanguage,
@@ -32,12 +52,24 @@ import type {
   VideoVoiceMode,
 } from "@/types/story";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const runtime =
+  "nodejs";
 
+export const dynamic =
+  "force-dynamic";
+
+export const maxDuration =
+  60;
+
+/*
+ * 8 Sekunden bleiben ausschließlich für bereits
+ * existierende alte Stripe-Sessions erhalten.
+ *
+ * Neue Checkout-Sessions starten bei 15 Sekunden.
+ */
 const SUPPORTED_VIDEO_DURATIONS = [
   8,
+  15,
   30,
   60,
   120,
@@ -113,27 +145,45 @@ function isVideoEditingStyle(
   );
 }
 
+/*
+ * Liest ausschließlich die bezahlte
+ * Konfiguration aus Stripe.
+ *
+ * Wenn bei einer sehr alten Stripe-Session
+ * targetDurationSeconds noch fehlt:
+ *
+ * short -> 8 Sekunden Legacy
+ * long  -> 60 Sekunden Legacy
+ *
+ * Neue Stripe-Sessions enthalten die Dauer
+ * immer explizit und beginnen bei 15 Sekunden.
+ */
 function readPaidVideoConfig(
   metadata:
-    Record<string, string> | null | undefined,
+    Record<
+      string,
+      string
+    > |
+    null |
+    undefined,
+
   legacyFormat:
     "short" | "long",
 ): PaidVideoConfig {
   const rawDuration =
-    metadata?.targetDurationSeconds;
+    metadata
+      ?.targetDurationSeconds;
 
   let targetDurationSeconds:
     VideoDurationSeconds;
 
   if (
-    rawDuration === undefined
+    rawDuration ===
+    undefined
   ) {
-    /*
-     * Rückwärtskompatibilität für Stripe-Sessions,
-     * die vor der neuen Dauer-Auswahl erstellt wurden.
-     */
     targetDurationSeconds =
-      legacyFormat === "long"
+      legacyFormat ===
+      "long"
         ? 60
         : 8;
   } else {
@@ -160,7 +210,8 @@ function readPaidVideoConfig(
   }
 
   const rawAspectRatio =
-    metadata?.aspectRatio;
+    metadata
+      ?.aspectRatio;
 
   let aspectRatio:
     VideoAspectRatio =
@@ -185,7 +236,8 @@ function readPaidVideoConfig(
   }
 
   const rawEditingStyle =
-    metadata?.editingStyle;
+    metadata
+      ?.editingStyle;
 
   let editingStyle:
     VideoEditingStyle =
@@ -211,14 +263,43 @@ function readPaidVideoConfig(
 
   return {
     targetDurationSeconds,
+
     aspectRatio,
+
     editingStyle,
-    audioStyle: normalizeVideoAudioStyle(metadata?.audioStyle),
-    voiceMode: normalizeVideoVoiceMode(metadata?.voiceMode),
-    spokenLanguage: normalizeVideoSpokenLanguage(metadata?.spokenLanguage),
+
+    audioStyle:
+      normalizeVideoAudioStyle(
+        metadata
+          ?.audioStyle,
+      ),
+
+    voiceMode:
+      normalizeVideoVoiceMode(
+        metadata
+          ?.voiceMode,
+      ),
+
+    spokenLanguage:
+      normalizeVideoSpokenLanguage(
+        metadata
+          ?.spokenLanguage,
+      ),
   };
 }
 
+/*
+ * Seedance 15-Sekunden-Architektur:
+ *
+ * 8 s   -> 0 Extensions (Legacy)
+ * 15 s  -> 0 Extensions
+ * 30 s  -> 1 Extension
+ * 60 s  -> 3 Extensions
+ * 120 s -> 7 Extensions
+ *
+ * Bei späteren Langvideos werden die
+ * Extensions pro Kapitel addiert.
+ */
 function countTotalExtensions(
   chapterTargets:
     VideoDurationSeconds[],
@@ -230,7 +311,7 @@ function countTotalExtensions(
     ) => {
       if (
         chapterDuration <=
-        8
+        15
       ) {
         return total;
       }
@@ -240,8 +321,9 @@ function countTotalExtensions(
         Math.ceil(
           (
             chapterDuration -
-            8
-          ) / 7,
+            15
+          ) /
+            15,
         )
       );
     },
@@ -269,8 +351,10 @@ async function startQueuedRenderWorkflowOnce(
   /*
    * Erst den persistenten Start-Marker prüfen.
    *
-   * Dadurch verlassen wir uns NICHT allein auf workerId
-   * im Job-JSON. Der separate Redis-Key schützt auch
+   * Dadurch verlassen wir uns NICHT allein
+   * auf workerId im Job-JSON.
+   *
+   * Der separate Redis-Key schützt auch
    * parallele Stripe-Webhook-Zustellungen.
    */
   const existingState =
@@ -310,7 +394,9 @@ async function startQueuedRenderWorkflowOnce(
         claimId,
       );
 
-  if (!claimed) {
+  if (
+    !claimed
+  ) {
     const stateAfterClaim =
       await jobStore
         .getWorkflowStartState(
@@ -318,7 +404,8 @@ async function startQueuedRenderWorkflowOnce(
         );
 
     if (
-      stateAfterClaim?.status ===
+      stateAfterClaim
+        ?.status ===
       "started"
     ) {
       return {
@@ -338,8 +425,9 @@ async function startQueuedRenderWorkflowOnce(
   }
 
   /*
-   * Nur der Request, der den atomaren NX-Claim gewonnen
-   * hat, darf start() ausführen.
+   * Nur der Request, der den atomaren
+   * NX-Claim gewonnen hat, darf den
+   * Render-Workflow starten.
    */
   const run =
     await start(
@@ -350,9 +438,8 @@ async function startQueuedRenderWorkflowOnce(
     );
 
   /*
-   * ZUERST den separaten persistenten Start-Marker
-   * bestätigen. Danach aktualisieren wir zusätzlich
-   * das normale Job-JSON für Status/Diagnose.
+   * Zuerst den separaten persistenten
+   * Start-Marker bestätigen.
    */
   await jobStore
     .confirmWorkflowStarted(
@@ -360,8 +447,13 @@ async function startQueuedRenderWorkflowOnce(
       run.runId,
     );
 
+  /*
+   * Danach normales Job-JSON für
+   * Status und Diagnose aktualisieren.
+   */
   await jobStore.update(
     jobId,
+
     (
       current,
     ) => ({
@@ -391,15 +483,9 @@ function workflowStillStartingResponse(
   /*
    * Absichtlich HTTP 500:
    *
-   * Wenn ein anderer Webhook gerade den Start-Claim
-   * besitzt, soll Stripe später erneut zustellen.
-   *
-   * Sobald der erste Request den Workflow erfolgreich
-   * bestätigt hat, liefert der Retry anschließend 200.
-   *
-   * Falls der erste Request vor start() abstürzt, läuft
-   * der kurze Claim nach einigen Minuten aus und ein
-   * späterer Stripe-Retry kann übernehmen.
+   * Wenn ein paralleler Webhook bereits
+   * den Start-Claim besitzt, soll Stripe
+   * später erneut zustellen.
    */
   return NextResponse.json(
     {
@@ -421,92 +507,529 @@ function workflowStillStartingResponse(
   );
 }
 
+/*
+ * =========================================================
+ * SONG CHECKOUT
+ * =========================================================
+ *
+ * Unverändert gegenüber deiner bestehenden
+ * Song-Pipeline.
+ */
 async function handlePaidSongCheckout(
   jobId: string,
   sessionId: string,
-  metadata: Record<string, string> | null | undefined,
+
+  metadata:
+    Record<
+      string,
+      string
+    > |
+    null |
+    undefined,
 ) {
-  const job = await songStore.get(jobId);
-  if (!job) {
-    console.error("Bezahlter Stripe-Song ohne passenden Auftrag:", { jobId, sessionId });
-    return NextResponse.json({ received: true });
-  }
+  const job =
+    await songStore.get(
+      jobId,
+    );
 
-  if (metadata?.songLength !== job.length || metadata?.lyricsMode !== job.lyricsMode) {
-    await songStore.set(jobId, {
-      ...job,
-      status: "error",
-      paymentStatus: "paid",
-      stripeSessionId: sessionId,
-      paidAt: Date.now(),
-      renderStage: "failed",
-      progressPercent: 0,
-      errorMessage: "Die bezahlte Song-Konfiguration ist ungültig.",
-    });
-    return NextResponse.json({ received: true });
-  }
+  if (
+    !job
+  ) {
+    console.error(
+      "Bezahlter Stripe-Song ohne passenden Auftrag:",
+      {
+        jobId,
+        sessionId,
+      },
+    );
 
-  if (job.paymentStatus !== "paid") {
-    await songStore.set(jobId, {
-      ...job,
-      status: "processing",
-      paymentStatus: "paid",
-      stripeSessionId: sessionId,
-      paidAt: Date.now(),
-      renderStage: "queued",
-      progressPercent: 5,
-      errorMessage: undefined,
+    return NextResponse.json({
+      received:
+        true,
     });
   }
 
+  if (
+    metadata?.songLength !==
+      job.length ||
+    metadata?.lyricsMode !==
+      job.lyricsMode
+  ) {
+    await songStore.set(
+      jobId,
+      {
+        ...job,
+
+        status:
+          "error",
+
+        paymentStatus:
+          "paid",
+
+        stripeSessionId:
+          sessionId,
+
+        paidAt:
+          Date.now(),
+
+        renderStage:
+          "failed",
+
+        progressPercent:
+          0,
+
+        errorMessage:
+          "Die bezahlte Song-Konfiguration ist ungültig.",
+      },
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+    });
+  }
+
+  if (
+    job.paymentStatus !==
+    "paid"
+  ) {
+    await songStore.set(
+      jobId,
+      {
+        ...job,
+
+        status:
+          "processing",
+
+        paymentStatus:
+          "paid",
+
+        stripeSessionId:
+          sessionId,
+
+        paidAt:
+          Date.now(),
+
+        renderStage:
+          "queued",
+
+        progressPercent:
+          5,
+
+        errorMessage:
+          undefined,
+      },
+    );
+  }
+
   try {
-    const existing = await songStore.getWorkflowStartState(jobId);
-    if (existing?.status === "started") {
-      return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: existing.workflowRunId });
-    }
-    if (existing?.status === "starting") {
-      return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
+    const existing =
+      await songStore
+        .getWorkflowStartState(
+          jobId,
+        );
+
+    if (
+      existing?.status ===
+      "started"
+    ) {
+      return NextResponse.json({
+        received:
+          true,
+
+        queued:
+          true,
+
+        jobId,
+
+        workflowRunId:
+          existing
+            .workflowRunId,
+      });
     }
 
-    const claimed = await songStore.claimWorkflowStart(jobId, sessionId);
-    if (!claimed) {
-      return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
+    if (
+      existing?.status ===
+      "starting"
+    ) {
+      return NextResponse.json(
+        {
+          received:
+            true,
+
+          queued:
+            true,
+
+          jobId,
+
+          workflowStarting:
+            true,
+        },
+        {
+          status:
+            500,
+        },
+      );
     }
 
-    const run = await start(renderSongWorkflow, [jobId]);
-    await songStore.confirmWorkflowStarted(jobId, run.runId);
-    await songStore.update(jobId, (current) => ({ ...current, workflowRunId: run.runId }));
-    return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: run.runId });
-  } catch (error) {
-    console.error("Song-Workflow konnte nicht gestartet werden:", { jobId, error });
-    return NextResponse.json({ error: "Song-Workflow konnte nicht gestartet werden." }, { status: 500 });
+    const claimed =
+      await songStore
+        .claimWorkflowStart(
+          jobId,
+          sessionId,
+        );
+
+    if (
+      !claimed
+    ) {
+      return NextResponse.json(
+        {
+          received:
+            true,
+
+          queued:
+            true,
+
+          jobId,
+
+          workflowStarting:
+            true,
+        },
+        {
+          status:
+            500,
+        },
+      );
+    }
+
+    const run =
+      await start(
+        renderSongWorkflow,
+        [
+          jobId,
+        ],
+      );
+
+    await songStore
+      .confirmWorkflowStarted(
+        jobId,
+        run.runId,
+      );
+
+    await songStore.update(
+      jobId,
+
+      (
+        current,
+      ) => ({
+        ...current,
+
+        workflowRunId:
+          run.runId,
+      }),
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+
+      queued:
+        true,
+
+      jobId,
+
+      workflowRunId:
+        run.runId,
+    });
+  } catch (
+    error
+  ) {
+    console.error(
+      "Song-Workflow konnte nicht gestartet werden:",
+      {
+        jobId,
+        error,
+      },
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Song-Workflow konnte nicht gestartet werden.",
+      },
+      {
+        status:
+          500,
+      },
+    );
   }
 }
 
-async function handlePaidImageCheckout(jobId: string, sessionId: string, metadata: Record<string, string> | null | undefined) {
-  const job = await imageStore.get(jobId);
-  if (!job) { console.error("Bezahltes Stripe-Bild ohne passenden Auftrag:", { jobId, sessionId }); return NextResponse.json({ received: true }); }
-  if (metadata?.quality !== job.quality || metadata?.aspectRatio !== job.aspectRatio || metadata?.style !== job.style) {
-    await imageStore.set(jobId, { ...job, status: "error", paymentStatus: "paid", stripeSessionId: sessionId, paidAt: Date.now(), renderStage: "failed", progressPercent: 0, errorMessage: "Die bezahlte Bild-Konfiguration ist ungültig." });
-    return NextResponse.json({ received: true });
+/*
+ * =========================================================
+ * IMAGE CHECKOUT
+ * =========================================================
+ *
+ * Ebenfalls unverändert gegenüber der
+ * bestehenden Bilder-Pipeline.
+ */
+async function handlePaidImageCheckout(
+  jobId: string,
+  sessionId: string,
+
+  metadata:
+    Record<
+      string,
+      string
+    > |
+    null |
+    undefined,
+) {
+  const job =
+    await imageStore.get(
+      jobId,
+    );
+
+  if (
+    !job
+  ) {
+    console.error(
+      "Bezahltes Stripe-Bild ohne passenden Auftrag:",
+      {
+        jobId,
+        sessionId,
+      },
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+    });
   }
-  if (job.paymentStatus !== "paid") await imageStore.set(jobId, { ...job, status: "processing", paymentStatus: "paid", stripeSessionId: sessionId, paidAt: Date.now(), renderStage: "queued", progressPercent: 5, errorMessage: undefined });
+
+  if (
+    metadata?.quality !==
+      job.quality ||
+    metadata?.aspectRatio !==
+      job.aspectRatio ||
+    metadata?.style !==
+      job.style
+  ) {
+    await imageStore.set(
+      jobId,
+      {
+        ...job,
+
+        status:
+          "error",
+
+        paymentStatus:
+          "paid",
+
+        stripeSessionId:
+          sessionId,
+
+        paidAt:
+          Date.now(),
+
+        renderStage:
+          "failed",
+
+        progressPercent:
+          0,
+
+        errorMessage:
+          "Die bezahlte Bild-Konfiguration ist ungültig.",
+      },
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+    });
+  }
+
+  if (
+    job.paymentStatus !==
+    "paid"
+  ) {
+    await imageStore.set(
+      jobId,
+      {
+        ...job,
+
+        status:
+          "processing",
+
+        paymentStatus:
+          "paid",
+
+        stripeSessionId:
+          sessionId,
+
+        paidAt:
+          Date.now(),
+
+        renderStage:
+          "queued",
+
+        progressPercent:
+          5,
+
+        errorMessage:
+          undefined,
+      },
+    );
+  }
+
   try {
-    const existing = await imageStore.getWorkflowStartState(jobId);
-    if (existing?.status === "started") return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: existing.workflowRunId });
-    if (existing?.status === "starting") return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
-    const claimed = await imageStore.claimWorkflowStart(jobId, sessionId);
-    if (!claimed) return NextResponse.json({ received: true, queued: true, jobId, workflowStarting: true }, { status: 500 });
-    const run = await start(renderImageWorkflow, [jobId]);
-    await imageStore.confirmWorkflowStarted(jobId, run.runId);
-    await imageStore.update(jobId, (current) => ({ ...current, workflowRunId: run.runId }));
-    return NextResponse.json({ received: true, queued: true, jobId, workflowRunId: run.runId });
-  } catch (error) {
-    console.error("Bild-Workflow konnte nicht gestartet werden:", { jobId, error });
-    return NextResponse.json({ error: "Bild-Workflow konnte nicht gestartet werden." }, { status: 500 });
+    const existing =
+      await imageStore
+        .getWorkflowStartState(
+          jobId,
+        );
+
+    if (
+      existing?.status ===
+      "started"
+    ) {
+      return NextResponse.json({
+        received:
+          true,
+
+        queued:
+          true,
+
+        jobId,
+
+        workflowRunId:
+          existing
+            .workflowRunId,
+      });
+    }
+
+    if (
+      existing?.status ===
+      "starting"
+    ) {
+      return NextResponse.json(
+        {
+          received:
+            true,
+
+          queued:
+            true,
+
+          jobId,
+
+          workflowStarting:
+            true,
+        },
+        {
+          status:
+            500,
+        },
+      );
+    }
+
+    const claimed =
+      await imageStore
+        .claimWorkflowStart(
+          jobId,
+          sessionId,
+        );
+
+    if (
+      !claimed
+    ) {
+      return NextResponse.json(
+        {
+          received:
+            true,
+
+          queued:
+            true,
+
+          jobId,
+
+          workflowStarting:
+            true,
+        },
+        {
+          status:
+            500,
+        },
+      );
+    }
+
+    const run =
+      await start(
+        renderImageWorkflow,
+        [
+          jobId,
+        ],
+      );
+
+    await imageStore
+      .confirmWorkflowStarted(
+        jobId,
+        run.runId,
+      );
+
+    await imageStore.update(
+      jobId,
+
+      (
+        current,
+      ) => ({
+        ...current,
+
+        workflowRunId:
+          run.runId,
+      }),
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+
+      queued:
+        true,
+
+      jobId,
+
+      workflowRunId:
+        run.runId,
+    });
+  } catch (
+    error
+  ) {
+    console.error(
+      "Bild-Workflow konnte nicht gestartet werden:",
+      {
+        jobId,
+        error,
+      },
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Bild-Workflow konnte nicht gestartet werden.",
+      },
+      {
+        status:
+          500,
+      },
+    );
   }
 }
 
+/*
+ * =========================================================
+ * STRIPE WEBHOOK
+ * =========================================================
+ */
 export async function POST(
   req: NextRequest,
 ) {
@@ -532,7 +1055,8 @@ export async function POST(
           "Webhook nicht konfiguriert",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
@@ -541,15 +1065,16 @@ export async function POST(
 
   try {
     /*
-     * Die Stripe-Signaturprüfung ist die Vertrauensgrenze.
-     * Erst danach werden Session und Metadata ausgewertet.
+     * Stripe-Signaturprüfung ist die
+     * Vertrauensgrenze.
      */
     event =
-      stripe.webhooks.constructEvent(
-        body,
-        signature,
-        webhookSecret,
-      );
+      stripe.webhooks
+        .constructEvent(
+          body,
+          signature,
+          webhookSecret,
+        );
   } catch (
     error
   ) {
@@ -564,16 +1089,21 @@ export async function POST(
           "Ungültige Signatur",
       },
       {
-        status: 400,
+        status:
+          400,
       },
     );
   }
 
   const isSuccessfulCheckoutEvent =
-    event.type === "checkout.session.completed" ||
-    event.type === "checkout.session.async_payment_succeeded";
+    event.type ===
+      "checkout.session.completed" ||
+    event.type ===
+      "checkout.session.async_payment_succeeded";
 
-  if (!isSuccessfulCheckoutEvent) {
+  if (
+    !isSuccessfulCheckoutEvent
+  ) {
     return NextResponse.json({
       received:
         true,
@@ -581,12 +1111,12 @@ export async function POST(
   }
 
   const session =
-    event.data.object as
-      CheckoutSessionLike;
+    event.data
+      .object as CheckoutSessionLike;
 
   /*
    * Kein kostenpflichtiger Render-Auftrag,
-   * solange Stripe nicht eindeutig "paid" meldet.
+   * solange Stripe nicht eindeutig paid meldet.
    */
   if (
     session.payment_status !==
@@ -611,11 +1141,13 @@ export async function POST(
 
   const sessionId =
     typeof session.id ===
-      "string"
+    "string"
       ? session.id.trim()
       : "";
 
-  if (!sessionId) {
+  if (
+    !sessionId
+  ) {
     console.error(
       "Bezahlte Stripe-Session ohne gültige Session-ID.",
     );
@@ -633,44 +1165,16 @@ export async function POST(
   }
 
   const jobId =
-    session.metadata?.jobId;
+    session.metadata
+      ?.jobId;
 
-  if (!jobId) {
+  if (
+    !jobId
+  ) {
     console.error(
       "Bezahlte Stripe-Session ohne jobId-Metadata:",
       {
-        sessionId:
-          sessionId,
-      },
-    );
-
-    return NextResponse.json({
-      received:
-        true,
-    });
-  }
-
-  if (session.metadata?.productType === "song") {
-    return handlePaidSongCheckout(jobId, sessionId, session.metadata);
-  }
-
-  if (session.metadata?.productType === "image") {
-    return handlePaidImageCheckout(jobId, sessionId, session.metadata);
-  }
-
-  const job =
-    await jobStore.get(
-      jobId,
-    );
-
-  if (!job) {
-    console.error(
-      "Bezahlter Stripe-Auftrag ohne passenden Job:",
-      {
-        jobId,
-
-        sessionId:
-          sessionId,
+        sessionId,
       },
     );
 
@@ -681,12 +1185,62 @@ export async function POST(
   }
 
   /*
-   * Stripe-Webhooks können mehrfach oder sogar nahezu
+   * Song und Bild bleiben vollständig
+   * von der Video-Dauerumstellung getrennt.
+   */
+  if (
+    session.metadata
+      ?.productType ===
+    "song"
+  ) {
+    return handlePaidSongCheckout(
+      jobId,
+      sessionId,
+      session.metadata,
+    );
+  }
+
+  if (
+    session.metadata
+      ?.productType ===
+    "image"
+  ) {
+    return handlePaidImageCheckout(
+      jobId,
+      sessionId,
+      session.metadata,
+    );
+  }
+
+  const job =
+    await jobStore.get(
+      jobId,
+    );
+
+  if (
+    !job
+  ) {
+    console.error(
+      "Bezahlter Stripe-Auftrag ohne passenden Job:",
+      {
+        jobId,
+        sessionId,
+      },
+    );
+
+    return NextResponse.json({
+      received:
+        true,
+    });
+  }
+
+  /*
+   * Stripe-Webhooks können mehrfach oder
    * gleichzeitig zugestellt werden.
    *
-   * Der normale VideoJob allein reicht dafür nicht als
-   * Lock. Deshalb prüfen/starten wir über den separaten
-   * atomaren Workflow-Start-Marker im jobStore.
+   * Bereits bezahlte Jobs werden deshalb
+   * über den separaten atomaren
+   * Workflow-Start-Marker behandelt.
    */
   if (
     job.paymentStatus ===
@@ -707,8 +1261,7 @@ export async function POST(
           "Workflow-Start ist bereits von einem parallelen Webhook geclaimt:",
           {
             jobId,
-            sessionId:
-              sessionId,
+            sessionId,
           },
         );
 
@@ -722,8 +1275,7 @@ export async function POST(
         {
           jobId,
 
-          sessionId:
-            sessionId,
+          sessionId,
 
           workflowRunId:
             workflowStart
@@ -751,6 +1303,7 @@ export async function POST(
         "Workflow-Start für bereits bezahlten Auftrag fehlgeschlagen:",
         {
           jobId,
+
           workflowStartError,
         },
       );
@@ -782,7 +1335,7 @@ export async function POST(
   ) {
     const message =
       metadataError instanceof
-        Error
+      Error
         ? metadataError.message
         : "Ungültige Stripe-Metadata.";
 
@@ -791,17 +1344,18 @@ export async function POST(
       {
         jobId,
 
-        sessionId:
-          sessionId,
+        sessionId,
 
         message,
       },
     );
 
     /*
-     * Zahlung ist real erfolgt, auch wenn die interne
-     * Video-Konfiguration beschädigt ist. Das speichern
-     * wir bewusst korrekt für Support/Refund-Behandlung.
+     * Die Zahlung ist real erfolgt.
+     *
+     * Auch bei beschädigter Metadata muss
+     * paymentStatus deshalb korrekt auf paid
+     * gespeichert werden.
      */
     await jobStore.set(
       jobId,
@@ -832,9 +1386,9 @@ export async function POST(
     );
 
     /*
-     * 200 zurückgeben:
-     * Ein dauerhaft ungültiger Event soll von Stripe
-     * nicht endlos erneut zugestellt werden.
+     * Dauerhaft ungültige Metadata:
+     * HTTP 200 verhindert endlose
+     * Stripe-Wiederholungen.
      */
     return NextResponse.json({
       received:
@@ -842,37 +1396,45 @@ export async function POST(
     });
   }
 
+  /*
+   * Zentrale Dauerplanung.
+   *
+   * Neue Seedance-Struktur:
+   *
+   * 15  -> 15
+   * 30  -> 15 + 15
+   * 60  -> 4 x 15
+   * 120 -> 8 x 15
+   *
+   * 8 bleibt nur für alte bezahlte
+   * Stripe-Sessions möglich.
+   */
   const durationPlan =
     buildVideoDurationPlan(
-      config.targetDurationSeconds,
+      config
+        .targetDurationSeconds,
     );
 
   const totalExtensions =
     countTotalExtensions(
-      durationPlan.chapterTargets,
+      durationPlan
+        .chapterTargets,
     );
 
   const now =
     Date.now();
 
   /*
-   * =========================================================
-   * WICHTIGER ARCHITEKTURWECHSEL
-   * =========================================================
+   * Der Webhook startet selbst KEINEN
+   * Seedance-Provider-Aufruf.
    *
-   * Der Webhook startet KEIN Veo mehr.
-   * Kein waitUntil.
-   * Keine Polling-Schleife.
-   * Keine Langvideo-Generierung innerhalb des Webhooks.
+   * Er macht ausschließlich:
    *
-   * Er macht nur:
-   *
-   * 1. Zahlung verifizieren
+   * 1. Stripe-Zahlung prüfen
    * 2. bezahlte Konfiguration validieren
-   * 3. vollständigen Render-Auftrag persistent speichern
-   * 4. renderStage = "queued"
-   *
-   * Der Render-Worker übernimmt danach den Job.
+   * 3. Job persistent speichern
+   * 4. renderStage = queued
+   * 5. durable Render-Workflow starten
    */
   await jobStore.set(
     jobId,
@@ -882,10 +1444,14 @@ export async function POST(
       status:
         "processing",
 
+      /*
+       * 8 s Legacy und neue 15 s
+       * sind das Short-Format.
+       */
       format:
         config
-          .targetDurationSeconds ===
-        8
+          .targetDurationSeconds <=
+        15
           ? "short"
           : "long",
 
@@ -982,8 +1548,7 @@ export async function POST(
     {
       jobId,
 
-      sessionId:
-        sessionId,
+      sessionId,
 
       targetDurationSeconds:
         config
@@ -1011,12 +1576,10 @@ export async function POST(
   );
 
   /*
-   * Nach erfolgreicher Zahlungs-Persistenz darf nur der
-   * Gewinner des atomaren Workflow-Start-Claims den
-   * durable Workflow starten.
-   *
-   * Der Workflow enthält zu diesem Zeitpunkt weiterhin
-   * noch keinen kostenpflichtigen Veo-Start-Step.
+   * Nach erfolgreicher Zahlungs-Persistenz
+   * darf nur der Gewinner des atomaren
+   * Workflow-Start-Claims den durable
+   * Render-Workflow starten.
    */
   try {
     const workflowStart =
@@ -1033,8 +1596,7 @@ export async function POST(
         "Workflow-Start wurde parallel bereits geclaimt:",
         {
           jobId,
-          sessionId:
-            sessionId,
+          sessionId,
         },
       );
 
@@ -1074,6 +1636,7 @@ export async function POST(
       "Durable Render-Workflow konnte nicht gestartet werden:",
       {
         jobId,
+
         workflowStartError,
       },
     );
@@ -1081,10 +1644,9 @@ export async function POST(
     /*
      * HTTP 500 ist hier gewollt.
      *
-     * Stripe darf erneut zustellen. Ein bestehender
-     * "starting"-Claim verhindert während seiner kurzen
-     * TTL einen parallelen Doppelstart. Nach erfolgreicher
-     * Bestätigung wird er zu "started".
+     * Stripe darf erneut zustellen.
+     * Der Workflow-Start-Lock verhindert
+     * dabei parallele Doppelstarts.
      */
     return NextResponse.json(
       {

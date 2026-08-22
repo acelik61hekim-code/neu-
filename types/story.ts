@@ -9,13 +9,12 @@ export type Character = {
  * ALLGEMEINE VIDEO-ARCHITEKTUR
  *
  * Dauer, Bildformat und Schnittstil sind getrennte Dinge.
- * So kann z. B. ein 5-Minuten-Kinofilm 16:9 sein,
- * während ein 30-Sekunden-Social-Video 9:16 ist.
  * =========================================================
  */
 
 export type VideoDurationSeconds =
-  | 8
+  | 8 // Nur Legacy für bereits bestehende alte Aufträge
+  | 15
   | 30
   | 60
   | 120
@@ -166,9 +165,6 @@ export type ProductionBible = {
   cameraBible: CameraBible;
   audioBible: AudioBible;
 
-  /*
-   * Neu für hochwertige Langvideos.
-   */
   viralBible?: ViralBible;
   performanceBible?: PerformanceBible;
   lightingBible?: LightingBible;
@@ -230,8 +226,7 @@ export type Scene = {
   dialogue: SceneDialogue;
 
   /*
-   * Zusätzliche Sprecherwechsel innerhalb desselben 8-Sekunden-Clips.
-   * Das Hauptfeld `dialogue` bleibt für bestehende Pläne der erste Turn.
+   * Zusätzliche Sprecherwechsel innerhalb desselben Clips.
    */
   dialogueTurns?: SceneDialogue[];
 
@@ -280,8 +275,11 @@ export type Scene = {
  */
 
 /*
- * Der erste Abschnitt erzeugt das ursprüngliche
- * 8-Sekunden-Veo-Video.
+ * Der erste Abschnitt ist bei neuen Seedance-Aufträgen
+ * normalerweise ein 15-Sekunden-Clip.
+ *
+ * Die Felder bleiben absichtlich number, damit alte
+ * 8-Sekunden-Aufträge weiterhin kompatibel bleiben.
  */
 export type MovieOpening = {
   id: "opening";
@@ -289,9 +287,9 @@ export type MovieOpening = {
   title: string;
 
   startSecond: 0;
-  endSecond: 8;
+  endSecond: number;
 
-  durationSeconds: 8;
+  durationSeconds: number;
 
   storyBeat: string;
 
@@ -324,12 +322,10 @@ export type MovieOpening = {
 };
 
 /*
- * Jede Veo-Extension verlängert das vorhandene
- * Video ungefähr um weitere 7 Sekunden.
+ * Bei Seedance werden neue Fortsetzungen ebenfalls
+ * als 15-Sekunden-Blöcke erzeugt.
  *
- * Die Extension beschreibt NICHT noch einmal einen
- * neuen Film, sondern ausschließlich die direkte
- * Fortsetzung des bereits vorhandenen Videos.
+ * number bleibt für Legacy-Aufträge erhalten.
  */
 export type MovieContinuation = {
   id: number;
@@ -341,7 +337,7 @@ export type MovieContinuation = {
   startSecond: number;
   endSecond: number;
 
-  durationSeconds: 7;
+  durationSeconds: number;
 
   storyBeat: string;
 
@@ -362,18 +358,11 @@ export type MovieContinuation = {
   dialogue: SceneDialogue;
   dialogueTurns?: SceneDialogue[];
 
-  /*
-   * Dieser Prompt wird an /api/extend-video gesendet.
-   */
   continuationPrompt: string;
 
-  /*
-   * Optional für spätere Spezialanweisungen.
-   */
   audioPrompt?: string;
   negativePrompt?: string;
 };
-
 
 export type VideoChapter = {
   id: number;
@@ -403,12 +392,11 @@ export type VideoChapter = {
 /*
  * Gesamter Video-Plan.
  *
- * Unterstützte Ziel-Längen:
- * 8 s, 30 s, 60 s, 120 s, 180 s, 240 s, 300 s.
+ * Neue freigegebene Ziel-Längen:
+ * 15 s, 30 s, 60 s und 120 s.
  *
- * Social und Kino unterscheiden sich nicht nur im
- * Seitenverhältnis, sondern auch in Schnitt, Kamera,
- * Shot-Länge, Übergängen und Erzählrhythmus.
+ * 8 s bleibt ausschließlich für alte Aufträge bestehen.
+ * 180–300 s bleiben für spätere Freischaltung vorbereitet.
  */
 export type MoviePlan = {
   targetDurationSeconds: VideoDurationSeconds;
@@ -434,10 +422,6 @@ export type MoviePlan = {
   finalPayoff: string;
   finalCliffhanger: string;
 
-  /*
-   * Globale Regeln, die bei jeder Extension
-   * erneut berücksichtigt werden sollen.
-   */
   characterContinuityRules: string;
   visualContinuityRules: string;
 
@@ -535,9 +519,6 @@ export type SceneContinuityMemory = {
   lastFrameUrl?: string;
 };
 
-/*
- * Neue Memory-Struktur speziell für Veo Extensions.
- */
 export type MovieExtensionMemory = {
   extensionNumber: number;
 
@@ -570,17 +551,11 @@ export type ProductionMemory = {
   locations: LocationMemory[];
   props: PropMemory[];
 
-  /*
-   * Alte Scene-Pipeline.
-   */
   sceneContinuity: SceneContinuityMemory[];
 
   currentSceneId?: number;
   lastCompletedSceneId?: number;
 
-  /*
-   * Neue Langvideo-Pipeline.
-   */
   movieExtensions?: MovieExtensionMemory[];
 
   currentExtensionNumber?: number;
@@ -642,18 +617,11 @@ export type Story = {
 
   /*
    * Alte Pipeline.
-   *
-   * Noch erforderlich, solange einige vorhandene
-   * Komponenten mit scenes arbeiten.
    */
   scenes: Scene[];
 
   /*
    * Neue Pipeline.
-   *
-   * Sobald der neue Story Architect aktiv ist,
-   * befindet sich hier der vollständige Plan
-   * für das zusammenhängende Langvideo.
    */
   moviePlan?: MoviePlan;
 
@@ -685,10 +653,6 @@ export type AiDirectorResult = {
 
   ready: boolean;
 
-  /*
-   * Manche ältere Komponenten benutzen finished.
-   * Deshalb lassen wir es optional bestehen.
-   */
   finished?: boolean;
 
   story: StoryDraft;
@@ -742,7 +706,7 @@ export type PromptEngineerResult = {
 
 /*
  * =========================================================
- * VEO STANDARD VIDEO
+ * STANDARD VIDEO
  * =========================================================
  */
 
@@ -773,7 +737,7 @@ export type GenerateVideoRequest = {
 
 /*
  * =========================================================
- * VEO VIDEO EXTENSION
+ * VIDEO EXTENSION
  * =========================================================
  */
 
@@ -801,7 +765,7 @@ export type ExtendVideoResult = {
 };
 
 /*
- * Gesamter Auftrag zur Erstellung des Langvideos.
+ * Gesamter Auftrag zur Erstellung des Videos.
  */
 export type VideoGenerationRequest = {
   openingPrompt: string;
@@ -911,14 +875,8 @@ export type VideoJob = {
 
   prompt: string;
 
-  /*
-   * Alte Scene-Pipeline.
-   */
   sceneId?: number;
 
-  /*
-   * Neue Extension-Pipeline.
-   */
   extensionNumber?: number;
 
   operationName?: string;
@@ -951,11 +909,6 @@ export type VideoJob = {
 /*
  * =========================================================
  * VIDEO MERGE
- *
- * Bleibt zunächst vorhanden, damit ältere Funktionen
- * nicht kaputtgehen. Für die neue Veo-Extension-Pipeline
- * brauchen wir das Zusammenfügen später normalerweise
- * nicht mehr.
  * =========================================================
  */
 

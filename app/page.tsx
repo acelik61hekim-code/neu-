@@ -1,22 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ChangeEvent } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+import type {
+  ChangeEvent,
+} from "react";
 
 import Chat from "@/components/Chat";
 import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
 import SongStudio from "@/components/SongStudio";
 import ImageStudio from "@/components/ImageStudio";
-import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
+
+import StudioChooser, {
+  type StudioMode,
+} from "@/components/StudioChooser";
+
 import {
   formatEuroPrice,
   getVideoPriceCents,
   isReleasedVideoDuration,
 } from "@/lib/pricing";
-import { STUDIO_PATHS } from "@/lib/site";
-import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
-import type { ViralCharacter } from "@/lib/viral-characters";
+
+import {
+  STUDIO_PATHS,
+} from "@/lib/site";
+
+import {
+  requestAutomaticVoiceover,
+} from "@/services/voiceoverClient";
+
+import type {
+  ViralCharacter,
+} from "@/lib/viral-characters";
 
 import type {
   VideoAspectRatio,
@@ -27,17 +46,40 @@ import type {
   VideoVoiceMode,
 } from "@/types/story";
 
+/*
+ * =========================================================
+ * VERÖFFENTLICHTE VIDEOLÄNGEN
+ * =========================================================
+ *
+ * 8 Sekunden werden nicht mehr angeboten.
+ *
+ * Neue sichtbare Tarife:
+ *
+ * 15 s  = 6,99 €
+ * 30 s  = 13,99 €
+ * 60 s  = 27,99 €
+ * 120 s = 54,99 €
+ */
 const VIDEO_DURATION_OPTIONS: Array<{
   value: VideoDurationSeconds;
   label: string;
 }> = [
-  { value: 8, label: "8 Sek." },
-  { value: 30, label: "30 Sek." },
-  { value: 60, label: "1 Min." },
-  { value: 120, label: "2 Min." },
-  { value: 180, label: "3 Min." },
-  { value: 240, label: "4 Min." },
-  { value: 300, label: "5 Min." },
+  {
+    value: 15,
+    label: "15 Sek.",
+  },
+  {
+    value: 30,
+    label: "30 Sek.",
+  },
+  {
+    value: 60,
+    label: "1 Min.",
+  },
+  {
+    value: 120,
+    label: "2 Min.",
+  },
 ];
 
 const VIDEO_FORMAT_OPTIONS: Array<{
@@ -48,12 +90,14 @@ const VIDEO_FORMAT_OPTIONS: Array<{
   {
     value: "9:16",
     label: "9:16 Vertikal",
-    description: "Reels, Shorts, TikTok",
+    description:
+      "Reels, Shorts, TikTok",
   },
   {
     value: "16:9",
     label: "16:9 Widescreen",
-    description: "Kino, Film, YouTube",
+    description:
+      "Kino, Film, YouTube",
   },
 ];
 
@@ -92,31 +136,70 @@ const AUDIO_STYLE_OPTIONS: Array<{
   value: VideoAudioStyle;
   label: string;
 }> = [
-  { value: "cinematic", label: "Filmisch" },
-  { value: "emotional", label: "Emotional" },
-  { value: "upbeat", label: "Energie" },
-  { value: "electronic", label: "Elektronisch" },
-  { value: "ambient", label: "Atmosphärisch" },
-  { value: "no-music", label: "Keine Musik" },
+  {
+    value: "cinematic",
+    label: "Filmisch",
+  },
+  {
+    value: "emotional",
+    label: "Emotional",
+  },
+  {
+    value: "upbeat",
+    label: "Energie",
+  },
+  {
+    value: "electronic",
+    label: "Elektronisch",
+  },
+  {
+    value: "ambient",
+    label: "Atmosphärisch",
+  },
+  {
+    value: "no-music",
+    label: "Keine Musik",
+  },
 ];
 
 const VOICE_MODE_OPTIONS: Array<{
   value: VideoVoiceMode;
   label: string;
 }> = [
-  { value: "auto", label: "Automatisch" },
-  { value: "dialogue", label: "Dialog" },
-  { value: "voiceover", label: "Voice-over" },
-  { value: "no-voice", label: "Ohne Sprache" },
+  {
+    value: "auto",
+    label: "Automatisch",
+  },
+  {
+    value: "dialogue",
+    label: "Dialog",
+  },
+  {
+    value: "voiceover",
+    label: "Voice-over",
+  },
+  {
+    value: "no-voice",
+    label: "Ohne Sprache",
+  },
 ];
 
 const SPOKEN_LANGUAGE_OPTIONS: Array<{
   value: VideoSpokenLanguage;
   label: string;
 }> = [
-  { value: "de", label: "Deutsch" },
-  { value: "en", label: "Englisch" },
-  { value: "auto", label: "Automatisch" },
+  {
+    value: "de",
+    label: "Deutsch",
+  },
+  {
+    value: "en",
+    label: "Englisch",
+  },
+  {
+    value: "auto",
+    label: "Automatisch",
+  },
 ];
 
 type PreviewApiResponse = {
@@ -127,85 +210,268 @@ type PreviewApiResponse = {
   error?: string;
 };
 
-async function optimizeReferenceImage(file: File): Promise<string> {
-  const supportedTypes = ["image/jpeg", "image/png", "image/webp"];
-  if (!supportedTypes.includes(file.type)) {
-    throw new Error("Bitte lade ein JPG-, PNG- oder WebP-Bild hoch.");
-  }
-  if (file.size > 15 * 1024 * 1024) {
-    throw new Error("Das Originalbild darf höchstens 15 MB groß sein.");
+async function optimizeReferenceImage(
+  file: File,
+): Promise<string> {
+  const supportedTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+  ];
+
+  if (
+    !supportedTypes.includes(
+      file.type,
+    )
+  ) {
+    throw new Error(
+      "Bitte lade ein JPG-, PNG- oder WebP-Bild hoch.",
+    );
   }
 
-  const objectUrl = URL.createObjectURL(file);
+  if (
+    file.size >
+    15 * 1024 * 1024
+  ) {
+    throw new Error(
+      "Das Originalbild darf höchstens 15 MB groß sein.",
+    );
+  }
+
+  const objectUrl =
+    URL.createObjectURL(
+      file,
+    );
+
   try {
-    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
-      const element = new Image();
-      element.onload = () => resolve(element);
-      element.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
-      element.src = objectUrl;
-    });
+    const image =
+      await new Promise<HTMLImageElement>(
+        (
+          resolve,
+          reject,
+        ) => {
+          const element =
+            new Image();
 
-    const maximumDimension = 1000;
-    const scale = Math.min(1, maximumDimension / Math.max(image.naturalWidth, image.naturalHeight));
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Das Bild konnte nicht vorbereitet werden.");
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, width, height);
-    context.drawImage(image, 0, 0, width, height);
-    let optimized = canvas.toDataURL("image/jpeg", 0.8);
-    if (optimized.length > 1_200_000) {
-      optimized = canvas.toDataURL("image/jpeg", 0.65);
+          element.onload = () =>
+            resolve(
+              element,
+            );
+
+          element.onerror = () =>
+            reject(
+              new Error(
+                "Das Bild konnte nicht gelesen werden.",
+              ),
+            );
+
+          element.src =
+            objectUrl;
+        },
+      );
+
+    const maximumDimension =
+      1000;
+
+    const scale =
+      Math.min(
+        1,
+
+        maximumDimension /
+          Math.max(
+            image.naturalWidth,
+            image.naturalHeight,
+          ),
+      );
+
+    const width =
+      Math.max(
+        1,
+
+        Math.round(
+          image.naturalWidth *
+            scale,
+        ),
+      );
+
+    const height =
+      Math.max(
+        1,
+
+        Math.round(
+          image.naturalHeight *
+            scale,
+        ),
+      );
+
+    const canvas =
+      document.createElement(
+        "canvas",
+      );
+
+    canvas.width =
+      width;
+
+    canvas.height =
+      height;
+
+    const context =
+      canvas.getContext(
+        "2d",
+      );
+
+    if (
+      !context
+    ) {
+      throw new Error(
+        "Das Bild konnte nicht vorbereitet werden.",
+      );
     }
-    if (optimized.length > 1_200_000) {
-      throw new Error("Das Bild ist trotz Optimierung noch zu groß. Bitte verwende ein kleineres Bild.");
+
+    context.fillStyle =
+      "#ffffff";
+
+    context.fillRect(
+      0,
+      0,
+      width,
+      height,
+    );
+
+    context.drawImage(
+      image,
+      0,
+      0,
+      width,
+      height,
+    );
+
+    let optimized =
+      canvas.toDataURL(
+        "image/jpeg",
+        0.8,
+      );
+
+    if (
+      optimized.length >
+      1_200_000
+    ) {
+      optimized =
+        canvas.toDataURL(
+          "image/jpeg",
+          0.65,
+        );
     }
+
+    if (
+      optimized.length >
+      1_200_000
+    ) {
+      throw new Error(
+        "Das Bild ist trotz Optimierung noch zu groß. Bitte verwende ein kleineres Bild.",
+      );
+    }
+
     return optimized;
   } finally {
-    URL.revokeObjectURL(objectUrl);
+    URL.revokeObjectURL(
+      objectUrl,
+    );
   }
 }
 
-async function loadPublicImageAsDataUrl(path: string): Promise<string> {
-  const response = await fetch(path, { cache: "force-cache" });
-  if (!response.ok) {
-    throw new Error("Eine ausgewählte Figurenreferenz konnte nicht geladen werden.");
+async function loadPublicImageAsDataUrl(
+  path: string,
+): Promise<string> {
+  const response =
+    await fetch(
+      path,
+      {
+        cache:
+          "force-cache",
+      },
+    );
+
+  if (
+    !response.ok
+  ) {
+    throw new Error(
+      "Eine ausgewählte Figurenreferenz konnte nicht geladen werden.",
+    );
   }
 
-  const blob = await response.blob();
-  return await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () =>
-      typeof reader.result === "string"
-        ? resolve(reader.result)
-        : reject(new Error("Die Figurenreferenz konnte nicht gelesen werden."));
-    reader.onerror = () => reject(new Error("Die Figurenreferenz konnte nicht gelesen werden."));
-    reader.readAsDataURL(blob);
-  });
+  const blob =
+    await response.blob();
+
+  return await new Promise<string>(
+    (
+      resolve,
+      reject,
+    ) => {
+      const reader =
+        new FileReader();
+
+      reader.onload = () =>
+        typeof reader.result ===
+        "string"
+          ? resolve(
+              reader.result,
+            )
+          : reject(
+              new Error(
+                "Die Figurenreferenz konnte nicht gelesen werden.",
+              ),
+            );
+
+      reader.onerror = () =>
+        reject(
+          new Error(
+            "Die Figurenreferenz konnte nicht gelesen werden.",
+          ),
+        );
+
+      reader.readAsDataURL(
+        blob,
+      );
+    },
+  );
 }
 
-function hasCompleteMoviePlan(value: string): boolean {
-  if (!value.trim()) return false;
+function hasCompleteMoviePlan(
+  value: string,
+): boolean {
+  if (
+    !value.trim()
+  ) {
+    return false;
+  }
 
   try {
-    const parsed = JSON.parse(value) as {
-      moviePlan?: {
-        opening?: {
-          veoPrompt?: unknown;
+    const parsed =
+      JSON.parse(
+        value,
+      ) as {
+        moviePlan?: {
+          opening?: {
+            veoPrompt?: unknown;
+          };
         };
+
+        productionBible?: unknown;
       };
-      productionBible?: unknown;
-    };
 
     return Boolean(
       parsed.productionBible &&
-        parsed.moviePlan?.opening &&
-        typeof parsed.moviePlan.opening.veoPrompt === "string" &&
-        parsed.moviePlan.opening.veoPrompt.trim(),
+        parsed.moviePlan
+          ?.opening &&
+        typeof parsed.moviePlan
+          .opening
+          .veoPrompt ===
+          "string" &&
+        parsed.moviePlan
+          .opening
+          .veoPrompt
+          .trim(),
     );
   } catch {
     return false;
@@ -217,124 +483,295 @@ export function StudioHome({
 }: {
   initialStudio?: StudioMode;
 }) {
-  const [studioMode, setStudioMode] = useState<StudioMode>(initialStudio);
+  const [
+    studioMode,
+    setStudioMode,
+  ] =
+    useState<StudioMode>(
+      initialStudio,
+    );
 
-  useEffect(() => {
-    const requestedStudio = new URLSearchParams(window.location.search).get("studio");
-    if (requestedStudio === "song" || requestedStudio === "image") setStudioMode(requestedStudio);
-  }, []);
+  useEffect(
+    () => {
+      const requestedStudio =
+        new URLSearchParams(
+          window.location.search,
+        ).get(
+          "studio",
+        );
 
-  function selectStudio(mode: StudioMode) {
-    const targetPath = STUDIO_PATHS[mode];
-    if (window.location.pathname !== targetPath) {
-      window.location.assign(targetPath);
+      if (
+        requestedStudio ===
+          "song" ||
+        requestedStudio ===
+          "image"
+      ) {
+        setStudioMode(
+          requestedStudio,
+        );
+      }
+    },
+    [],
+  );
+
+  function selectStudio(
+    mode: StudioMode,
+  ) {
+    const targetPath =
+      STUDIO_PATHS[
+        mode
+      ];
+
+    if (
+      window.location
+        .pathname !==
+      targetPath
+    ) {
+      window.location.assign(
+        targetPath,
+      );
+
       return;
     }
-    setStudioMode(mode);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    setStudioMode(
+      mode,
+    );
+
+    window.scrollTo({
+      top:
+        0,
+
+      behavior:
+        "smooth",
+    });
   }
 
-  const [story, setStory] = useState("");
+  const [
+    story,
+    setStory,
+  ] =
+    useState(
+      "",
+    );
 
+  /*
+   * Standard bleibt 30 Sekunden.
+   *
+   * Kleinste auswählbare Länge:
+   * 15 Sekunden.
+   */
   const [
     targetDurationSeconds,
     setTargetDurationSeconds,
-  ] = useState<VideoDurationSeconds>(
-    30,
-  );
+  ] =
+    useState<VideoDurationSeconds>(
+      30,
+    );
 
   const [
     aspectRatio,
     setAspectRatio,
-  ] = useState<VideoAspectRatio>(
-    "9:16",
-  );
+  ] =
+    useState<VideoAspectRatio>(
+      "9:16",
+    );
 
   const [
     editingStyle,
     setEditingStyle,
-  ] = useState<VideoEditingStyle>(
-    "social",
-  );
+  ] =
+    useState<VideoEditingStyle>(
+      "social",
+    );
 
-  const [audioStyle, setAudioStyle] =
-    useState<VideoAudioStyle>("cinematic");
+  const [
+    audioStyle,
+    setAudioStyle,
+  ] =
+    useState<VideoAudioStyle>(
+      "cinematic",
+    );
 
-  const [voiceMode, setVoiceMode] =
-    useState<VideoVoiceMode>("auto");
+  const [
+    voiceMode,
+    setVoiceMode,
+  ] =
+    useState<VideoVoiceMode>(
+      "auto",
+    );
 
-  const [spokenLanguage, setSpokenLanguage] =
-    useState<VideoSpokenLanguage>("de");
+  const [
+    spokenLanguage,
+    setSpokenLanguage,
+  ] =
+    useState<VideoSpokenLanguage>(
+      "de",
+    );
 
-  const [voiceoverText, setVoiceoverText] =
-    useState("");
+  const [
+    voiceoverText,
+    setVoiceoverText,
+  ] =
+    useState(
+      "",
+    );
 
-  const [voiceoverLoading, setVoiceoverLoading] =
-    useState(false);
+  const [
+    voiceoverLoading,
+    setVoiceoverLoading,
+  ] =
+    useState(
+      false,
+    );
 
-  const [closingText, setClosingText] =
-    useState("");
+  const [
+    closingText,
+    setClosingText,
+  ] =
+    useState(
+      "",
+    );
 
-  const [referenceImages, setReferenceImages] =
-    useState<Array<{ dataUrl: string; name: string }>>([]);
+  const [
+    referenceImages,
+    setReferenceImages,
+  ] =
+    useState<
+      Array<{
+        dataUrl: string;
+        name: string;
+      }>
+    >(
+      [],
+    );
 
   const [
     chatSessionKey,
     setChatSessionKey,
-  ] = useState(0);
+  ] =
+    useState(
+      0,
+    );
 
-  const [loading, setLoading] =
-    useState(false);
+  const [
+    loading,
+    setLoading,
+  ] =
+    useState(
+      false,
+    );
 
-  const [error, setError] =
-    useState<string | null>(null);
+  const [
+    error,
+    setError,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
 
   const [
     previewLoading,
     setPreviewLoading,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
 
   const [
     previewImage,
     setPreviewImage,
-  ] = useState<string | null>(
-    null,
-  );
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
 
   const [
     previewApproved,
     setPreviewApproved,
-  ] = useState(false);
+  ] =
+    useState(
+      false,
+    );
 
-  const [previewReferenceUri, setPreviewReferenceUri] =
-    useState<string | null>(null);
+  const [
+    previewReferenceUri,
+    setPreviewReferenceUri,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
 
-  const [previewReferenceMimeType, setPreviewReferenceMimeType] =
-    useState<string | null>(null);
+  const [
+    previewReferenceMimeType,
+    setPreviewReferenceMimeType,
+  ] =
+    useState<
+      string |
+      null
+    >(
+      null,
+    );
 
-  const storyReadyForPreview = hasCompleteMoviePlan(story);
+  const storyReadyForPreview =
+    hasCompleteMoviePlan(
+      story,
+    );
 
   function resetPlannedProject() {
-    setStory("");
-    setPreviewImage(null);
-    setPreviewApproved(false);
-    setPreviewReferenceUri(null);
-    setPreviewReferenceMimeType(null);
-    setError(null);
+    setStory(
+      "",
+    );
+
+    setPreviewImage(
+      null,
+    );
+
+    setPreviewApproved(
+      false,
+    );
+
+    setPreviewReferenceUri(
+      null,
+    );
+
+    setPreviewReferenceMimeType(
+      null,
+    );
+
+    setError(
+      null,
+    );
 
     /*
-     * Chat besitzt eigene Gesprächs- und Filmplan-States.
-     * Durch einen neuen Key wird der Chat sauber neu gestartet,
-     * sobald Dauer, Format oder Schnittstil geändert werden.
+     * Chat besitzt eigene Gesprächs-
+     * und Filmplan-States.
+     *
+     * Durch einen neuen Key wird er
+     * nach einer Einstellungsänderung
+     * sauber neu gestartet.
      */
     setChatSessionKey(
-      (previous) =>
-        previous + 1,
+      (
+        previous,
+      ) =>
+        previous +
+        1,
     );
   }
 
   function selectDuration(
-    value: VideoDurationSeconds,
+    value:
+      VideoDurationSeconds,
   ) {
     if (
       value ===
@@ -351,167 +788,411 @@ export function StudioHome({
   }
 
   function selectAspectRatio(
-    value: VideoAspectRatio,
+    value:
+      VideoAspectRatio,
   ) {
     if (
-      value === aspectRatio
+      value ===
+      aspectRatio
     ) {
       return;
     }
 
-    setAspectRatio(value);
+    setAspectRatio(
+      value,
+    );
 
     resetPlannedProject();
   }
 
   function selectEditingStyle(
-    value: VideoEditingStyle,
+    value:
+      VideoEditingStyle,
   ) {
     if (
-      value === editingStyle
+      value ===
+      editingStyle
     ) {
       return;
     }
 
-    setEditingStyle(value);
+    setEditingStyle(
+      value,
+    );
 
     resetPlannedProject();
   }
 
-  function selectAudioStyle(value: VideoAudioStyle) {
-    if (value === audioStyle) return;
-    setAudioStyle(value);
+  function selectAudioStyle(
+    value:
+      VideoAudioStyle,
+  ) {
+    if (
+      value ===
+      audioStyle
+    ) {
+      return;
+    }
+
+    setAudioStyle(
+      value,
+    );
+
     resetPlannedProject();
   }
 
-  function selectVoiceMode(value: VideoVoiceMode) {
-    if (value === voiceMode) return;
-    setVoiceMode(value);
-    if (value !== "voiceover") setVoiceoverText("");
+  function selectVoiceMode(
+    value:
+      VideoVoiceMode,
+  ) {
+    if (
+      value ===
+      voiceMode
+    ) {
+      return;
+    }
+
+    setVoiceMode(
+      value,
+    );
+
+    if (
+      value !==
+      "voiceover"
+    ) {
+      setVoiceoverText(
+        "",
+      );
+    }
+
     resetPlannedProject();
   }
 
-  function selectSpokenLanguage(value: VideoSpokenLanguage) {
-    if (value === spokenLanguage) return;
-    setSpokenLanguage(value);
+  function selectSpokenLanguage(
+    value:
+      VideoSpokenLanguage,
+  ) {
+    if (
+      value ===
+      spokenLanguage
+    ) {
+      return;
+    }
+
+    setSpokenLanguage(
+      value,
+    );
+
     resetPlannedProject();
   }
 
-  async function handleReferenceImageChange(event: ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(event.target.files ?? []);
-    event.target.value = "";
-    if (files.length === 0) return;
+  async function handleReferenceImageChange(
+    event:
+      ChangeEvent<HTMLInputElement>,
+  ) {
+    const files =
+      Array.from(
+        event.target
+          .files ??
+          [],
+      );
 
-    const availableSlots = 3 - referenceImages.length;
-    if (availableSlots <= 0) {
-      setError("Du kannst höchstens drei Referenzbilder verwenden.");
+    event.target.value =
+      "";
+
+    if (
+      files.length ===
+      0
+    ) {
+      return;
+    }
+
+    const availableSlots =
+      3 -
+      referenceImages.length;
+
+    if (
+      availableSlots <=
+      0
+    ) {
+      setError(
+        "Du kannst höchstens drei Referenzbilder verwenden.",
+      );
+
       return;
     }
 
     try {
-      setPreviewLoading(true);
-      setError(null);
-      const selectedFiles = files.slice(0, availableSlots);
-      const optimized = await Promise.all(
-        selectedFiles.map(async (file) => ({
-          dataUrl: await optimizeReferenceImage(file),
-          name: file.name,
-        })),
+      setPreviewLoading(
+        true,
       );
-      setReferenceImages((current) => [...current, ...optimized]);
-      setPreviewImage(null);
-      setPreviewApproved(false);
-      setPreviewReferenceUri(null);
-      setPreviewReferenceMimeType(null);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "Das Bild konnte nicht vorbereitet werden.");
+
+      setError(
+        null,
+      );
+
+      const selectedFiles =
+        files.slice(
+          0,
+          availableSlots,
+        );
+
+      const optimized =
+        await Promise.all(
+          selectedFiles.map(
+            async (
+              file,
+            ) => ({
+              dataUrl:
+                await optimizeReferenceImage(
+                  file,
+                ),
+
+              name:
+                file.name,
+            }),
+          ),
+        );
+
+      setReferenceImages(
+        (
+          current,
+        ) => [
+          ...current,
+          ...optimized,
+        ],
+      );
+
+      setPreviewImage(
+        null,
+      );
+
+      setPreviewApproved(
+        false,
+      );
+
+      setPreviewReferenceUri(
+        null,
+      );
+
+      setPreviewReferenceMimeType(
+        null,
+      );
+    } catch (
+      caughtError
+    ) {
+      setError(
+        caughtError instanceof
+        Error
+          ? caughtError.message
+          : "Das Bild konnte nicht vorbereitet werden.",
+      );
     } finally {
-      setPreviewLoading(false);
+      setPreviewLoading(
+        false,
+      );
     }
   }
 
-  function removeReferenceImage(index: number) {
-    setReferenceImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
-    setPreviewImage(null);
-    setPreviewApproved(false);
-    setPreviewReferenceUri(null);
-    setPreviewReferenceMimeType(null);
-  }
-
-  async function handleViralStoryStart(characters: ViralCharacter[]) {
-    if (characters.length < 2 || characters.length > 3) {
-      throw new Error("Wähle für die TikTok-Story zwei oder drei Hauptfiguren aus.");
-    }
-
-    setAspectRatio("9:16");
-    setEditingStyle("social");
-    setAudioStyle("emotional");
-    setVoiceMode("dialogue");
-    setSpokenLanguage("de");
-    setVoiceoverText("");
-    setClosingText("");
-    setPreviewImage(null);
-    setPreviewApproved(false);
-    setPreviewReferenceUri(null);
-    setPreviewReferenceMimeType(null);
-    setError(null);
-
-    const preparedReferences = await Promise.all(
-      characters.map(async (character) => ({
-        dataUrl: await loadPublicImageAsDataUrl(character.imagePath),
-        name: `${character.shortName} – feste TikTok-Figur`,
-      })),
+  function removeReferenceImage(
+    index: number,
+  ) {
+    setReferenceImages(
+      (
+        current,
+      ) =>
+        current.filter(
+          (
+            _,
+            itemIndex,
+          ) =>
+            itemIndex !==
+            index,
+        ),
     );
 
-    setReferenceImages(preparedReferences);
+    setPreviewImage(
+      null,
+    );
+
+    setPreviewApproved(
+      false,
+    );
+
+    setPreviewReferenceUri(
+      null,
+    );
+
+    setPreviewReferenceMimeType(
+      null,
+    );
+  }
+
+  async function handleViralStoryStart(
+    characters:
+      ViralCharacter[],
+  ) {
+    if (
+      characters.length <
+        2 ||
+      characters.length >
+        3
+    ) {
+      throw new Error(
+        "Wähle für die TikTok-Story zwei oder drei Hauptfiguren aus.",
+      );
+    }
+
+    setAspectRatio(
+      "9:16",
+    );
+
+    setEditingStyle(
+      "social",
+    );
+
+    setAudioStyle(
+      "emotional",
+    );
+
+    setVoiceMode(
+      "dialogue",
+    );
+
+    setSpokenLanguage(
+      "de",
+    );
+
+    setVoiceoverText(
+      "",
+    );
+
+    setClosingText(
+      "",
+    );
+
+    setPreviewImage(
+      null,
+    );
+
+    setPreviewApproved(
+      false,
+    );
+
+    setPreviewReferenceUri(
+      null,
+    );
+
+    setPreviewReferenceMimeType(
+      null,
+    );
+
+    setError(
+      null,
+    );
+
+    const preparedReferences =
+      await Promise.all(
+        characters.map(
+          async (
+            character,
+          ) => ({
+            dataUrl:
+              await loadPublicImageAsDataUrl(
+                character.imagePath,
+              ),
+
+            name:
+              `${character.shortName} – feste TikTok-Figur`,
+          }),
+        ),
+      );
+
+    setReferenceImages(
+      preparedReferences,
+    );
   }
 
   function handleStoryChange(
-    updatedStory: string,
+    updatedStory:
+      string,
   ) {
-    setStory(updatedStory);
+    setStory(
+      updatedStory,
+    );
 
     /*
      * Sobald sich die Story ändert,
      * ist eine vorherige Vorschau
      * nicht mehr gültig.
      */
-    setPreviewImage(null);
-    setPreviewApproved(false);
-    setPreviewReferenceUri(null);
-    setPreviewReferenceMimeType(null);
+    setPreviewImage(
+      null,
+    );
 
-    if (error) {
-      setError(null);
+    setPreviewApproved(
+      false,
+    );
+
+    setPreviewReferenceUri(
+      null,
+    );
+
+    setPreviewReferenceMimeType(
+      null,
+    );
+
+    if (
+      error
+    ) {
+      setError(
+        null,
+      );
     }
   }
 
   async function handleAutomaticVoiceover() {
-    let plannedStory: unknown;
+    let plannedStory:
+      unknown;
 
     try {
-      plannedStory = JSON.parse(story);
+      plannedStory =
+        JSON.parse(
+          story,
+        );
     } catch {
       setError(
         "Schließe zuerst die Geschichte mit dem AI Director ab.",
       );
+
       return;
     }
 
     if (
-      typeof plannedStory !== "object" ||
-      plannedStory === null ||
-      !("moviePlan" in plannedStory)
+      typeof plannedStory !==
+        "object" ||
+      plannedStory ===
+        null ||
+      !(
+        "moviePlan" in
+        plannedStory
+      )
     ) {
       setError(
         "Schließe zuerst die Geschichte mit dem AI Director ab.",
       );
+
       return;
     }
 
     try {
-      setVoiceoverLoading(true);
-      setError(null);
+      setVoiceoverLoading(
+        true,
+      );
+
+      setError(
+        null,
+      );
 
       const automaticVoiceover =
         await requestAutomaticVoiceover(
@@ -520,23 +1201,33 @@ export function StudioHome({
           spokenLanguage,
         );
 
-      setVoiceoverText(automaticVoiceover);
-    } catch (voiceoverError) {
+      setVoiceoverText(
+        automaticVoiceover,
+      );
+    } catch (
+      voiceoverError
+    ) {
       setError(
-        voiceoverError instanceof Error
+        voiceoverError instanceof
+        Error
           ? voiceoverError.message
           : "Der Sprechertext konnte nicht automatisch erstellt werden.",
       );
     } finally {
-      setVoiceoverLoading(false);
+      setVoiceoverLoading(
+        false,
+      );
     }
   }
 
-  function getPreviewPrompt(): string {
+  function getPreviewPrompt():
+    string {
     const cleanedStory =
       story.trim();
 
-    if (!cleanedStory) {
+    if (
+      !cleanedStory
+    ) {
       return "";
     }
 
@@ -564,7 +1255,8 @@ export function StudioHome({
         };
 
       const openingPrompt =
-        parsed.moviePlan?.opening
+        parsed.moviePlan
+          ?.opening
           ?.veoPrompt;
 
       if (
@@ -572,7 +1264,8 @@ export function StudioHome({
           "string" &&
         openingPrompt.trim()
       ) {
-        return openingPrompt.trim();
+        return openingPrompt
+          .trim();
       }
 
       const summary =
@@ -584,16 +1277,23 @@ export function StudioHome({
         summary.trim()
       ) {
         return [
-          parsed.title ?? "",
+          parsed.title ??
+            "",
+
           summary,
         ]
-          .filter(Boolean)
-          .join("\n");
+          .filter(
+            Boolean,
+          )
+          .join(
+            "\n",
+          );
       }
     } catch {
       /*
-       * Während des Gesprächs ist story
-       * noch normaler Text und kein JSON.
+       * Während des Gesprächs
+       * ist story noch normaler
+       * Text und kein JSON.
        */
     }
 
@@ -601,17 +1301,22 @@ export function StudioHome({
   }
 
   async function handleGeneratePreview() {
-    if (!storyReadyForPreview) {
+    if (
+      !storyReadyForPreview
+    ) {
       setError(
         "Warte bitte, bis der AI Director den Filmplan vollständig erstellt hat.",
       );
+
       return;
     }
 
     const previewPrompt =
       getPreviewPrompt();
 
-    if (!previewPrompt) {
+    if (
+      !previewPrompt
+    ) {
       setError(
         "Erstelle zuerst deine Story mit dem AI Director.",
       );
@@ -619,63 +1324,92 @@ export function StudioHome({
       return;
     }
 
-    if (voiceMode === "voiceover" && !voiceoverText.trim()) {
+    if (
+      voiceMode ===
+        "voiceover" &&
+      !voiceoverText.trim()
+    ) {
       setError(
         "Bitte gib unter Audio den exakten Sprechertext ein.",
       );
+
       return;
     }
 
     try {
-      setPreviewLoading(true);
+      setPreviewLoading(
+        true,
+      );
 
-      setError(null);
+      setError(
+        null,
+      );
 
-      setPreviewApproved(false);
+      setPreviewApproved(
+        false,
+      );
 
       const response =
         await fetch(
           "/api/generate-preview",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
                 "application/json",
             },
 
-            body: JSON.stringify({
-              prompt:
-                previewPrompt,
+            body:
+              JSON.stringify({
+                prompt:
+                  previewPrompt,
 
-              aspectRatio,
+                aspectRatio,
 
-              editingStyle,
+                editingStyle,
 
-              referenceImages:
-                referenceImages.map((image) => image.dataUrl),
-            }),
+                referenceImages:
+                  referenceImages.map(
+                    (
+                      image,
+                    ) =>
+                      image.dataUrl,
+                  ),
+              }),
           },
         );
 
       const data =
-        (await response.json()) as PreviewApiResponse;
+        (
+          await response.json()
+        ) as PreviewApiResponse;
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ||
             "Die Vorschau konnte nicht erstellt werden.",
         );
       }
 
-      if (!data.imageData) {
+      if (
+        !data.imageData
+      ) {
         throw new Error(
           "Die Bilddaten der Vorschau fehlen.",
         );
       }
 
-      if (!data.referenceImageUri || !data.mimeType) {
-        throw new Error("Die sichere Referenz der Vorschau fehlt.");
+      if (
+        !data.referenceImageUri ||
+        !data.mimeType
+      ) {
+        throw new Error(
+          "Die sichere Referenz der Vorschau fehlt.",
+        );
       }
 
       const mimeType =
@@ -689,24 +1423,37 @@ export function StudioHome({
         dataUrl,
       );
 
-      setPreviewReferenceUri(data.referenceImageUri);
-      setPreviewReferenceMimeType(data.mimeType);
+      setPreviewReferenceUri(
+        data.referenceImageUri,
+      );
+
+      setPreviewReferenceMimeType(
+        data.mimeType,
+      );
     } catch (
       caughtError
     ) {
       const message =
-        caughtError instanceof Error
+        caughtError instanceof
+        Error
           ? caughtError.message
           : "Die Vorschau konnte nicht erstellt werden.";
 
-      setError(message);
+      setError(
+        message,
+      );
 
       setPreviewImage(
         null,
       );
 
-      setPreviewReferenceUri(null);
-      setPreviewReferenceMimeType(null);
+      setPreviewReferenceUri(
+        null,
+      );
+
+      setPreviewReferenceMimeType(
+        null,
+      );
     } finally {
       setPreviewLoading(
         false,
@@ -718,7 +1465,9 @@ export function StudioHome({
     const cleanedStory =
       story.trim();
 
-    if (!cleanedStory) {
+    if (
+      !cleanedStory
+    ) {
       setError(
         "Beantworte zuerst die Fragen des AI Directors.",
       );
@@ -727,9 +1476,8 @@ export function StudioHome({
     }
 
     /*
-     * NEU:
      * Ohne bestätigte Vorschau
-     * gibt es noch keine Zahlung.
+     * gibt es keine Zahlung.
      */
     if (
       !previewImage ||
@@ -745,15 +1493,20 @@ export function StudioHome({
     }
 
     try {
-      setLoading(true);
+      setLoading(
+        true,
+      );
 
-      setError(null);
+      setError(
+        null,
+      );
 
       const response =
         await fetch(
           "/api/create-checkout-session",
           {
-            method: "POST",
+            method:
+              "POST",
 
             headers: {
               "Content-Type":
@@ -766,11 +1519,14 @@ export function StudioHome({
                   cleanedStory,
 
                 /*
-                 * "format" bleibt vorerst für die bestehende
-                 * Checkout-Route erhalten.
+                 * 15 Sekunden ist das
+                 * neue Short-Format.
                  */
                 format:
-                  "long",
+                  targetDurationSeconds ===
+                  15
+                    ? "short"
+                    : "long",
 
                 targetDurationSeconds,
 
@@ -800,18 +1556,18 @@ export function StudioHome({
       const data =
         await response.json();
 
-      if (!response.ok) {
+      if (
+        !response.ok
+      ) {
         throw new Error(
           data.error ||
             "Die Stripe-Bezahlung konnte nicht vorbereitet werden.",
         );
       }
 
-      /*
-       * Deine bestehende Route
-       * liefert momentan data.url.
-       */
-      if (!data.url) {
+      if (
+        !data.url
+      ) {
         throw new Error(
           "Die Weiterleitungsadresse von Stripe fehlt.",
         );
@@ -823,22 +1579,45 @@ export function StudioHome({
       caughtError
     ) {
       const message =
-        caughtError instanceof Error
+        caughtError instanceof
+        Error
           ? caughtError.message
           : "Ein unbekannter Fehler ist aufgetreten.";
 
-      setError(message);
+      setError(
+        message,
+      );
 
-      setLoading(false);
+      setLoading(
+        false,
+      );
     }
   }
 
-  if (studioMode === "song") {
-    return <SongStudio onStudioChange={selectStudio} />;
+  if (
+    studioMode ===
+    "song"
+  ) {
+    return (
+      <SongStudio
+        onStudioChange={
+          selectStudio
+        }
+      />
+    );
   }
 
-  if (studioMode === "image") {
-    return <ImageStudio onStudioChange={selectStudio} />;
+  if (
+    studioMode ===
+    "image"
+  ) {
+    return (
+      <ImageStudio
+        onStudioChange={
+          selectStudio
+        }
+      />
+    );
   }
 
   return (
@@ -853,21 +1632,23 @@ export function StudioHome({
         <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.018)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.018)_1px,transparent_1px)] bg-[size:48px_48px]" />
       </div>
 
-      <Header active="video" onStudioChange={selectStudio} />
+      <Header
+        active="video"
+        onStudioChange={
+          selectStudio
+        }
+      />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-5 pb-16 pt-12 sm:px-8 sm:pt-16">
         <section className="mx-auto mb-12 max-w-4xl text-center">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
 
-            KI-gestützte
-            Story- und
-            Videoerstellung
+            KI-gestützte Story- und Videoerstellung
           </div>
 
           <h1 className="text-balance text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl lg:text-6xl">
-            Verwandle deine
-            Idee in eine
+            Verwandle deine Idee in eine
 
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-blue-300 bg-clip-text text-transparent">
               {" "}
@@ -876,17 +1657,17 @@ export function StudioHome({
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-sm leading-7 text-zinc-400 sm:text-base">
-            Entwickle deine
-            Geschichte gemeinsam
-            mit einem KI-Regisseur,
-            prüfe zuerst eine
-            visuelle Vorschau und
-            erzeuge anschließend
-            dein professionelles
-            Video.
+            Entwickle deine Geschichte gemeinsam mit einem KI-Regisseur,
+            prüfe zuerst eine visuelle Vorschau und erzeuge anschließend
+            dein professionelles Video.
           </p>
 
-          <StudioChooser active="video" onChange={selectStudio} />
+          <StudioChooser
+            active="video"
+            onChange={
+              selectStudio
+            }
+          />
         </section>
 
         <section className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20 backdrop-blur-xl">
@@ -912,6 +1693,7 @@ export function StudioHome({
                 <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
                   Videolänge
                 </p>
+
                 <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-300">
                   Neuer günstiger Preis
                 </span>
@@ -919,39 +1701,53 @@ export function StudioHome({
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-2">
                 {VIDEO_DURATION_OPTIONS.map(
-                  (option) => {
+                  (
+                    option,
+                  ) => {
                     const released =
-                      isReleasedVideoDuration(option.value);
+                      isReleasedVideoDuration(
+                        option.value,
+                      );
 
                     return (
                       <button
-                      key={
-                        option.value
-                      }
-                      type="button"
-                      onClick={() =>
-                        selectDuration(
-                          option.value,
-                        )
-                      }
-                      disabled={
-                        loading ||
-                        previewLoading ||
-                        !released
-                      }
-                      className={`rounded-xl border px-3 py-3 text-sm font-medium transition disabled:cursor-not-allowed ${
-                        targetDurationSeconds ===
-                        option.value
-                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
-                          : released
-                            ? "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:bg-white/5 hover:text-white"
-                            : "border-white/5 bg-black/10 text-zinc-600"
-                      }`}
-                    >
-                        <span className="block">{option.label}</span>
-                        <span className="mt-1 block text-xs font-normal">
-                          {formatEuroPrice(getVideoPriceCents(option.value))}
+                        key={
+                          option.value
+                        }
+                        type="button"
+                        onClick={() =>
+                          selectDuration(
+                            option.value,
+                          )
+                        }
+                        disabled={
+                          loading ||
+                          previewLoading ||
+                          !released
+                        }
+                        className={`rounded-xl border px-3 py-3 text-sm font-medium transition disabled:cursor-not-allowed ${
+                          targetDurationSeconds ===
+                          option.value
+                            ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                            : released
+                              ? "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:bg-white/5 hover:text-white"
+                              : "border-white/5 bg-black/10 text-zinc-600"
+                        }`}
+                      >
+                        <span className="block">
+                          {
+                            option.label
+                          }
                         </span>
+
+                        <span className="mt-1 block text-xs font-normal">
+                          {formatEuroPrice(
+                            getVideoPriceCents(
+                              option.value,
+                            ),
+                          )}
+                        </span>
+
                         {!released && (
                           <span className="mt-1 block text-[10px] font-normal uppercase tracking-wide text-amber-300/70">
                             Qualitätstest läuft
@@ -962,8 +1758,11 @@ export function StudioHome({
                   },
                 )}
               </div>
+
               <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                Für einen vollständigen Satz und einen sauberen Abschluss darf das fertige Video technisch bis zu 2 Sekunden länger auslaufen.
+                Für einen vollständigen Satz und einen sauberen Abschluss
+                darf das fertige Video technisch bis zu 2 Sekunden länger
+                auslaufen.
               </p>
             </div>
 
@@ -974,7 +1773,9 @@ export function StudioHome({
 
               <div className="space-y-2">
                 {VIDEO_FORMAT_OPTIONS.map(
-                  (option) => (
+                  (
+                    option,
+                  ) => (
                     <button
                       key={
                         option.value
@@ -1020,7 +1821,9 @@ export function StudioHome({
 
               <div className="space-y-2">
                 {VIDEO_STYLE_OPTIONS.map(
-                  (option) => (
+                  (
+                    option,
+                  ) => (
                     <button
                       key={
                         option.value
@@ -1066,10 +1869,12 @@ export function StudioHome({
                 <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
                   KI-Musik, Ton und Stimmen
                 </p>
+
                 <h3 className="mt-1 text-base font-semibold text-white">
                   Audio passend zum Video erzeugen
                 </h3>
               </div>
+
               <span className="w-fit rounded-lg bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
                 Im Videopreis inklusive
               </span>
@@ -1077,105 +1882,202 @@ export function StudioHome({
 
             <div className="grid gap-5 lg:grid-cols-3">
               <div>
-                <p className="mb-2 text-xs font-medium text-zinc-500">Musikstil</p>
+                <p className="mb-2 text-xs font-medium text-zinc-500">
+                  Musikstil
+                </p>
+
                 <div className="grid grid-cols-2 gap-2">
-                  {AUDIO_STYLE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => selectAudioStyle(option.value)}
-                      disabled={loading || previewLoading}
-                      className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
-                        audioStyle === option.value
-                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
-                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                  {AUDIO_STYLE_OPTIONS.map(
+                    (
+                      option,
+                    ) => (
+                      <button
+                        key={
+                          option.value
+                        }
+                        type="button"
+                        onClick={() =>
+                          selectAudioStyle(
+                            option.value,
+                          )
+                        }
+                        disabled={
+                          loading ||
+                          previewLoading
+                        }
+                        className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                          audioStyle ===
+                          option.value
+                            ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                            : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                        }`}
+                      >
+                        {
+                          option.label
+                        }
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium text-zinc-500">Stimmen</p>
+                <p className="mb-2 text-xs font-medium text-zinc-500">
+                  Stimmen
+                </p>
+
                 <div className="grid grid-cols-2 gap-2">
-                  {VOICE_MODE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => selectVoiceMode(option.value)}
-                      disabled={loading || previewLoading}
-                      className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
-                        voiceMode === option.value
-                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
-                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
+                  {VOICE_MODE_OPTIONS.map(
+                    (
+                      option,
+                    ) => (
+                      <button
+                        key={
+                          option.value
+                        }
+                        type="button"
+                        onClick={() =>
+                          selectVoiceMode(
+                            option.value,
+                          )
+                        }
+                        disabled={
+                          loading ||
+                          previewLoading
+                        }
+                        className={`rounded-xl border px-3 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                          voiceMode ===
+                          option.value
+                            ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                            : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                        }`}
+                      >
+                        {
+                          option.label
+                        }
+                      </button>
+                    ),
+                  )}
                 </div>
-                {voiceMode === "dialogue" ? (
+
+                {voiceMode ===
+                "dialogue" ? (
                   <p className="mt-2 text-[11px] leading-5 text-emerald-300">
-                    Mindestens zwei sichtbare Figuren sprechen abwechselnd. Jede Figur erhält eine feste Stimme; der Filmplan wird vor der Zahlung automatisch geprüft.
+                    Mindestens zwei sichtbare Figuren sprechen abwechselnd.
+                    Jede Figur erhält eine feste Stimme; der Filmplan wird vor
+                    der Zahlung automatisch geprüft.
                   </p>
                 ) : (
                   <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                    Dialog erzeugt ein echtes Gespräch ohne Erzähler oder Voice-over.
+                    Dialog erzeugt ein echtes Gespräch ohne Erzähler oder
+                    Voice-over.
                   </p>
                 )}
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium text-zinc-500">Gesprochene Sprache</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {SPOKEN_LANGUAGE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => selectSpokenLanguage(option.value)}
-                      disabled={loading || previewLoading}
-                      className={`rounded-xl border px-2 py-2 text-xs font-medium transition disabled:opacity-50 ${
-                        spokenLanguage === option.value
-                          ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
-                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] leading-5 text-zinc-600">
-                  Bei Dialog und Voice-over werden stabile Stimmen separat erzeugt und sauber mit Musik und Umgebung gemischt.
+                <p className="mb-2 text-xs font-medium text-zinc-500">
+                  Gesprochene Sprache
                 </p>
-                {voiceMode === "auto" && targetDurationSeconds > 8 ? (
+
+                <div className="grid grid-cols-3 gap-2">
+                  {SPOKEN_LANGUAGE_OPTIONS.map(
+                    (
+                      option,
+                    ) => (
+                      <button
+                        key={
+                          option.value
+                        }
+                        type="button"
+                        onClick={() =>
+                          selectSpokenLanguage(
+                            option.value,
+                          )
+                        }
+                        disabled={
+                          loading ||
+                          previewLoading
+                        }
+                        className={`rounded-xl border px-2 py-2 text-xs font-medium transition disabled:opacity-50 ${
+                          spokenLanguage ===
+                          option.value
+                            ? "border-violet-400/50 bg-violet-500/15 text-violet-100"
+                            : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20 hover:text-white"
+                        }`}
+                      >
+                        {
+                          option.label
+                        }
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+                  Bei Dialog und Voice-over werden stabile Stimmen separat
+                  erzeugt und sauber mit Musik und Umgebung gemischt.
+                </p>
+
+                {voiceMode ===
+                  "auto" &&
+                targetDurationSeconds >
+                  15 ? (
                   <p className="mt-2 text-[11px] leading-5 text-zinc-500">
-                    Automatisch verwendet bei längeren Videos vorerst keine gesprochene Stimme, damit es zwischen den Abschnitten keinen Stimmenwechsel gibt.
+                    Automatisch verwendet bei längeren Videos vorerst keine
+                    gesprochene Stimme, damit es zwischen den Abschnitten
+                    keinen Stimmenwechsel gibt.
                   </p>
                 ) : null}
               </div>
             </div>
 
-            {voiceMode === "voiceover" && (
+            {voiceMode ===
+              "voiceover" && (
               <div className="mt-5 grid gap-4 lg:grid-cols-2">
                 <label className="block">
                   <span className="mb-2 block text-xs font-medium text-zinc-400">
                     Exakter Sprechertext
                   </span>
+
                   <textarea
-                    value={voiceoverText}
-                    onChange={(event) => setVoiceoverText(event.target.value)}
-                    maxLength={4000}
-                    rows={5}
+                    value={
+                      voiceoverText
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setVoiceoverText(
+                        event.target
+                          .value,
+                      )
+                    }
+                    maxLength={
+                      4000
+                    }
+                    rows={
+                      5
+                    }
                     placeholder="Schreibe hier Wort für Wort, was die Stimme sagen soll."
-                    disabled={loading || previewLoading || voiceoverLoading}
+                    disabled={
+                      loading ||
+                      previewLoading ||
+                      voiceoverLoading
+                    }
                     className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
                   />
+
                   <button
                     type="button"
-                    onClick={handleAutomaticVoiceover}
-                    disabled={loading || previewLoading || voiceoverLoading || !story.trim()}
+                    onClick={
+                      handleAutomaticVoiceover
+                    }
+                    disabled={
+                      loading ||
+                      previewLoading ||
+                      voiceoverLoading ||
+                      !story.trim()
+                    }
                     className="mt-3 rounded-xl border border-violet-400/40 bg-violet-500/15 px-4 py-2 text-xs font-semibold text-violet-100 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {voiceoverLoading
@@ -1184,8 +2086,12 @@ export function StudioHome({
                         ? "Sprechertext neu erstellen"
                         : "Sprechertext automatisch erstellen"}
                   </button>
+
                   <span className="mt-1 block text-[11px] text-zinc-600">
-                    Wird nach dem Filmplan automatisch erstellt und bleibt vor der Zahlung vollständig bearbeitbar. Das Video darf für einen vollständigen Satz bis zu 2 Sekunden länger auslaufen.
+                    Wird nach dem Filmplan automatisch erstellt und bleibt
+                    vor der Zahlung vollständig bearbeitbar. Das Video darf
+                    für einen vollständigen Satz bis zu 2 Sekunden länger
+                    auslaufen.
                   </span>
                 </label>
 
@@ -1193,17 +2099,38 @@ export function StudioHome({
                   <span className="mb-2 block text-xs font-medium text-zinc-400">
                     Saubere Schluss-Einblendung (optional)
                   </span>
+
                   <textarea
-                    value={closingText}
-                    onChange={(event) => setClosingText(event.target.value)}
-                    maxLength={160}
-                    rows={5}
-                    placeholder={"KI VIDEO STUDIO\nkivideostudio.de"}
-                    disabled={loading || previewLoading}
+                    value={
+                      closingText
+                    }
+                    onChange={(
+                      event,
+                    ) =>
+                      setClosingText(
+                        event.target
+                          .value,
+                      )
+                    }
+                    maxLength={
+                      160
+                    }
+                    rows={
+                      5
+                    }
+                    placeholder={
+                      "KI VIDEO STUDIO\nkivideostudio.de"
+                    }
+                    disabled={
+                      loading ||
+                      previewLoading
+                    }
                     className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-zinc-600 focus:border-violet-400/50 disabled:opacity-50"
                   />
+
                   <span className="mt-1 block text-[11px] text-zinc-600">
-                    Wird technisch gerendert, damit keine Fantasieschrift entsteht.
+                    Wird technisch gerendert, damit keine Fantasieschrift
+                    entsteht.
                   </span>
                 </label>
               </div>
@@ -1220,7 +2147,9 @@ export function StudioHome({
               loading ||
               previewLoading
             }
-            error={error}
+            error={
+              error
+            }
             onStoryChange={
               handleStoryChange
             }
@@ -1236,22 +2165,40 @@ export function StudioHome({
             editingStyle={
               editingStyle
             }
-            audioStyle={audioStyle}
-            voiceMode={voiceMode}
-            spokenLanguage={spokenLanguage}
-            voiceoverText={voiceoverText}
-            closingText={closingText}
-            onViralStoryStart={handleViralStoryStart}
+            audioStyle={
+              audioStyle
+            }
+            voiceMode={
+              voiceMode
+            }
+            spokenLanguage={
+              spokenLanguage
+            }
+            voiceoverText={
+              voiceoverText
+            }
+            closingText={
+              closingText
+            }
+            onViralStoryStart={
+              handleViralStoryStart
+            }
           />
 
           <div className="space-y-6">
             <StoryPreview
-              prompt={story}
-              loading={loading}
+              prompt={
+                story
+              }
+              loading={
+                loading
+              }
               targetDurationSeconds={
                 targetDurationSeconds
               }
-              aspectRatio={aspectRatio}
+              aspectRatio={
+                aspectRatio
+              }
               onCreateVideo={
                 handleCreateVideo
               }
@@ -1260,33 +2207,26 @@ export function StudioHome({
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/30 backdrop-blur-xl">
               <div className="border-b border-white/10 px-5 py-4 sm:px-6">
                 <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-                  Vorschau vor der
-                  Zahlung
+                  Vorschau vor der Zahlung
                 </p>
 
                 <h2 className="mt-1 text-lg font-semibold text-white">
-                  Prüfe zuerst den
-                  Look deines Videos
+                  Prüfe zuerst den Look deines Videos
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-zinc-400">
-                  Wir erzeugen ein
-                  Beispielbild aus
-                  deinem Filmplan.
-                  Erst wenn dir
-                  Stil, Figur,
-                  Umgebung und
-                  Qualität gefallen,
-                  bestätigst du die
-                  Vorschau und gehst
-                  zur Zahlung.
+                  Wir erzeugen ein Beispielbild aus deinem Filmplan.
+                  Erst wenn dir Stil, Figur, Umgebung und Qualität gefallen,
+                  bestätigst du die Vorschau und gehst zur Zahlung.
                 </p>
 
                 <div className="mt-4 flex flex-wrap gap-2">
                   <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
                     {
                       VIDEO_DURATION_OPTIONS.find(
-                        (option) =>
+                        (
+                          option,
+                        ) =>
                           option.value ===
                           targetDurationSeconds,
                       )?.label
@@ -1294,13 +2234,17 @@ export function StudioHome({
                   </span>
 
                   <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
-                    {aspectRatio}
+                    {
+                      aspectRatio
+                    }
                   </span>
 
                   <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
                     {
                       VIDEO_STYLE_OPTIONS.find(
-                        (option) =>
+                        (
+                          option,
+                        ) =>
                           option.value ===
                           editingStyle,
                       )?.label
@@ -1308,7 +2252,16 @@ export function StudioHome({
                   </span>
 
                   <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
-                    {AUDIO_STYLE_OPTIONS.find((option) => option.value === audioStyle)?.label} · KI-Audio
+                    {
+                      AUDIO_STYLE_OPTIONS.find(
+                        (
+                          option,
+                        ) =>
+                          option.value ===
+                          audioStyle,
+                      )?.label
+                    }{" "}
+                    · KI-Audio
                   </span>
                 </div>
               </div>
@@ -1317,56 +2270,102 @@ export function StudioHome({
                 <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-medium text-white">Eigenes Bild als Referenz</p>
+                      <p className="text-sm font-medium text-white">
+                        Eigenes Bild als Referenz
+                      </p>
+
                       <p className="mt-1 text-xs leading-5 text-zinc-500">
-                        Optional: Lade eine Person, Figur, ein Produkt oder einen Stil hoch. Die KI übernimmt die sichtbaren Merkmale in Vorschau und Video.
+                        Optional: Lade eine Person, Figur, ein Produkt oder
+                        einen Stil hoch. Die KI übernimmt die sichtbaren
+                        Merkmale in Vorschau und Video.
                       </p>
                     </div>
+
                     <span className="shrink-0 rounded-lg bg-emerald-400/10 px-2 py-1 text-[10px] font-medium text-emerald-300">
                       inklusive
                     </span>
                   </div>
 
-                  {referenceImages.length > 0 && (
+                  {referenceImages.length >
+                    0 && (
                     <div className="mt-4 grid grid-cols-3 gap-3">
-                      {referenceImages.map((image, index) => (
-                        <div key={`${image.name}-${index}`} className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30">
-                          <img
-                            src={image.dataUrl}
-                            alt={`Hochgeladene Bildreferenz ${index + 1}`}
-                            className="aspect-square w-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removeReferenceImage(index)}
-                            disabled={previewLoading || loading}
-                            className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
-                            aria-label={`${image.name} entfernen`}
+                      {referenceImages.map(
+                        (
+                          image,
+                          index,
+                        ) => (
+                          <div
+                            key={`${image.name}-${index}`}
+                            className="relative overflow-hidden rounded-xl border border-white/10 bg-black/30"
                           >
-                            Entfernen
-                          </button>
-                          <p className="truncate px-2 py-1.5 text-[10px] text-zinc-500">{image.name}</p>
-                        </div>
-                      ))}
+                            <img
+                              src={
+                                image.dataUrl
+                              }
+                              alt={`Hochgeladene Bildreferenz ${index + 1}`}
+                              className="aspect-square w-full object-cover"
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                removeReferenceImage(
+                                  index,
+                                )
+                              }
+                              disabled={
+                                previewLoading ||
+                                loading
+                              }
+                              className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white transition hover:bg-red-600 disabled:opacity-50"
+                              aria-label={`${image.name} entfernen`}
+                            >
+                              Entfernen
+                            </button>
+
+                            <p className="truncate px-2 py-1.5 text-[10px] text-zinc-500">
+                              {
+                                image.name
+                              }
+                            </p>
+                          </div>
+                        ),
+                      )}
                     </div>
                   )}
 
-                  {referenceImages.length < 3 && (
+                  {referenceImages.length <
+                    3 && (
                     <label className="mt-4 flex cursor-pointer items-center justify-center rounded-xl border border-dashed border-violet-400/30 bg-violet-400/[0.06] px-4 py-3 text-sm font-medium text-violet-200 transition hover:bg-violet-400/10">
-                      {referenceImages.length === 0 ? "Bilder auswählen" : "Weiteres Bild hinzufügen"}
+                      {referenceImages.length ===
+                      0
+                        ? "Bilder auswählen"
+                        : "Weiteres Bild hinzufügen"}
+
                       <input
                         type="file"
                         multiple
                         accept="image/jpeg,image/png,image/webp"
-                        onChange={(event) => void handleReferenceImageChange(event)}
-                        disabled={previewLoading || loading}
+                        onChange={(
+                          event,
+                        ) =>
+                          void handleReferenceImageChange(
+                            event,
+                          )
+                        }
+                        disabled={
+                          previewLoading ||
+                          loading
+                        }
                         className="hidden"
                       />
                     </label>
                   )}
 
                   <p className="mt-3 text-[10px] leading-4 text-zinc-600">
-                    Bis zu 3 Bilder. Verwende nur Bilder, für die du die nötigen Rechte und Einwilligungen besitzt. JPG, PNG oder WebP, je Original bis 15 MB.
+                    Bis zu 3 Bilder. Verwende nur Bilder, für die du die
+                    nötigen Rechte und Einwilligungen besitzt. JPG, PNG oder
+                    WebP, je Original bis 15 MB.
                   </p>
                 </div>
 
@@ -1375,7 +2374,9 @@ export function StudioHome({
                     role="alert"
                     className="mb-4 rounded-xl border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm leading-5 text-red-100"
                   >
-                    {error}
+                    {
+                      error
+                    }
                   </div>
                 ) : null}
 
@@ -1394,7 +2395,8 @@ export function StudioHome({
                   >
                     {previewLoading
                       ? "Vorschau wird erstellt ..."
-                      : story.trim() && !storyReadyForPreview
+                      : story.trim() &&
+                          !storyReadyForPreview
                         ? "Filmplan wird vorbereitet ..."
                         : "🖼 Vorschau erstellen"}
                   </button>
@@ -1419,19 +2421,9 @@ export function StudioHome({
 
                     <div className="rounded-xl border border-white/10 bg-black/20 p-3">
                       <p className="text-xs leading-5 text-zinc-400">
-                        Die Vorschau
-                        zeigt den
-                        geplanten
-                        visuellen
-                        Stil und das
-                        Motiv. Das
-                        spätere
-                        Video kann
-                        bei Bewegung,
-                        Kameraführung
-                        und Details
-                        leicht
-                        abweichen.
+                        Die Vorschau zeigt den geplanten visuellen Stil und
+                        das Motiv. Das spätere Video kann bei Bewegung,
+                        Kameraführung und Details leicht abweichen.
                       </p>
                     </div>
 
@@ -1470,17 +2462,11 @@ export function StudioHome({
                     ) : (
                       <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-4">
                         <p className="text-sm font-medium text-emerald-200">
-                          ✓ Vorschau
-                          bestätigt
+                          ✓ Vorschau bestätigt
                         </p>
 
                         <p className="mt-1 text-xs leading-5 text-emerald-200/70">
-                          Du kannst
-                          jetzt das
-                          Video
-                          bestellen
-                          und zur
-                          Zahlung
+                          Du kannst jetzt das Video bestellen und zur Zahlung
                           weitergehen.
                         </p>
 
@@ -1500,7 +2486,8 @@ export function StudioHome({
                         </button>
 
                         <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
-                          Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay oder Link – je nach Verfügbarkeit.
+                          Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay
+                          oder Link – je nach Verfügbarkeit.
                         </p>
                       </div>
                     )}
@@ -1530,18 +2517,14 @@ export function StudioHome({
                       }
                       className="w-full text-center text-xs text-zinc-500 transition hover:text-zinc-300 disabled:opacity-50"
                     >
-                      Vorschau
-                      verwerfen
+                      Vorschau verwerfen
                     </button>
                   </div>
                 )}
 
                 {!story.trim() && (
                   <p className="text-center text-xs leading-5 text-zinc-500">
-                    Erstelle zuerst
-                    links mit dem AI
-                    Director deine
-                    Story.
+                    Erstelle zuerst links mit dem AI Director deine Story.
                   </p>
                 )}
               </div>
@@ -1576,5 +2559,9 @@ export function StudioHome({
 }
 
 export default function HomePage() {
-  return <StudioHome initialStudio="video" />;
+  return (
+    <StudioHome
+      initialStudio="video"
+    />
+  );
 }
