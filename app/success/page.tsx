@@ -202,6 +202,7 @@ function SuccessContent() {
         setConnectionError(null);
         if (
   data.status === "processing" &&
+  data.targetDurationSeconds === 8 &&
   (data.progressPercent ?? 0) >= 85 &&
   (
     data.renderStage === "generating-opening" ||

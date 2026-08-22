@@ -100,9 +100,10 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
     }
 
     const chapterUris: string[] = [...prepared.completedSegmentUris];
+    const completedSegmentCount = prepared.completedSegmentUris.length;
     let completedExtensions = 0;
 
-    for (const segment of prepared.segments.slice(chapterUris.length)) {
+    for (const segment of prepared.segments.slice(completedSegmentCount)) {
       let currentUri = await completeOpeningWithOperationRecovery(
         jobId,
         segment.openingPrompt,
@@ -112,8 +113,11 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
         prepared.totalExtensions,
       );
 
+      chapterUris.push(currentUri);
+
       for (let index = 0; index < segment.continuationPrompts.length; index += 1) {
         const globalExtensionNumber = completedExtensions + 1;
+
         currentUri = await completeExtensionWithOperationRecovery(
           jobId,
           currentUri,
@@ -123,10 +127,11 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
           globalExtensionNumber,
           prepared.totalExtensions,
         );
+
         completedExtensions = globalExtensionNumber;
+        chapterUris.push(currentUri);
       }
 
-      chapterUris.push(currentUri);
       await recordChapterStep(
         jobId,
         segment.chapterNumber,
@@ -135,7 +140,6 @@ export async function renderVideoWorkflow(jobId: string): Promise<RenderResult> 
         prepared.totalExtensions,
       );
     }
-
     await markFinalizingStep(jobId, chapterUris.length > 1);
     const output = chapterUris.length === 1
       ? await trimFinalVideoStep(jobId, chapterUris[0], prepared.duration, prepared.finishing)
