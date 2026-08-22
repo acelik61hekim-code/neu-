@@ -158,7 +158,9 @@ export async function POST(request: NextRequest) {
     updatedAt: now,
   });
 
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const appUrl =
+  process.env.APP_URL?.trim() ||
+  request.nextUrl.origin;
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",

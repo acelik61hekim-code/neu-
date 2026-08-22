@@ -37,6 +37,12 @@ export type SongJob = {
   qualityRepairAttempts?: number;
   stripeSessionId?: string;
   workflowRunId?: string;
+
+    provider?: "acedata" | "lyria";
+  providerTaskId?: string;
+  providerTraceId?: string;
+  providerSongId?: string;
+  
   paidAt?: number;
   startedAt?: number;
   completedAt?: number;
