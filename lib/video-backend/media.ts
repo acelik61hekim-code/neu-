@@ -88,13 +88,41 @@ async function download(source: string, destination: string) {
     return;
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
   const url = new URL(source);
-  if (apiKey && !url.searchParams.has("key")) url.searchParams.set("key", apiKey);
-  const response = await fetch(url, {
-    headers: apiKey ? { "x-goog-api-key": apiKey } : undefined,
+
+const isGoogleVideo =
+  url.hostname ===
+  "generativelanguage.googleapis.com";
+
+const apiKey =
+  isGoogleVideo
+    ? process.env.GEMINI_API_KEY
+    : undefined;
+
+if (
+  apiKey &&
+  !url.searchParams.has("key")
+) {
+  url.searchParams.set(
+    "key",
+    apiKey,
+  );
+}
+
+const response = await fetch(
+  url,
+  {
+    headers:
+      apiKey
+        ? {
+            "x-goog-api-key":
+              apiKey,
+          }
+        : undefined,
+
     cache: "no-store",
-  });
+  },
+);
   if (!response.ok || !response.body) {
     throw new Error(`Video-Download fehlgeschlagen (HTTP ${response.status}).`);
   }
