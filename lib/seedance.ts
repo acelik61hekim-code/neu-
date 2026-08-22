@@ -26,12 +26,24 @@ export type SeedanceGenerationOptions = {
   referenceImage?: SeedanceImageReference;
   referenceImages?: SeedanceImageReference[];
   maxAttempts?: number;
+
+  /**
+   * Wird von fal.ai aufgerufen, sobald die Generierung
+   * abgeschlossen oder fehlgeschlagen ist.
+   */
+  webhookUrl?: string;
 };
 
 export type SeedanceExtensionOptions = {
   aspectRatio?: VideoAspectRatio;
   extensionNumber?: number;
   maxAttempts?: number;
+
+  /**
+   * Wird von fal.ai aufgerufen, sobald die Fortsetzung
+   * abgeschlossen oder fehlgeschlagen ist.
+   */
+  webhookUrl?: string;
 };
 
 export type SeedanceVideoStatus = {
@@ -39,6 +51,30 @@ export type SeedanceVideoStatus = {
   videoUrl?: string;
   videoUri?: string;
   mimeType?: string;
+};
+
+export type SeedanceOperationDetails = {
+  modelId: string;
+  requestId: string;
+};
+
+export type SeedanceWebhookPayload = {
+  request_id?: string;
+  gateway_request_id?: string;
+  status?: string;
+
+  payload?: {
+    video?: {
+      url?: string;
+      content_type?: string;
+      file_name?: string;
+      file_size?: number;
+    };
+
+    [key: string]: unknown;
+  };
+
+  error?: unknown;
 };
 
 export class SeedanceProviderStartError extends Error {
@@ -128,8 +164,7 @@ export function getRetryableSeedanceStartError(
     httpStatus: candidate.httpStatus,
 
     retryAfterMs:
-      typeof candidate.retryAfterMs ===
-      "number"
+      typeof candidate.retryAfterMs === "number"
         ? candidate.retryAfterMs
         : undefined,
   };
@@ -237,13 +272,43 @@ function readHttpStatus(
   }
 
   if (
-    typeof candidate.response?.status ===
-    "number"
+    typeof candidate.response?.status === "number"
   ) {
     return candidate.response.status;
   }
 
   return 0;
+}
+
+function normalizeWebhookUrl(
+  value: string | undefined,
+): string | undefined {
+  const webhookUrl = value?.trim();
+
+  if (!webhookUrl) {
+    return undefined;
+  }
+
+  let parsed: URL;
+
+  try {
+    parsed = new URL(webhookUrl);
+  } catch {
+    throw new Error(
+      "Die Seedance-Webhook-URL ist ungültig.",
+    );
+  }
+
+  if (
+    parsed.protocol !== "https:" &&
+    parsed.protocol !== "http:"
+  ) {
+    throw new Error(
+      "Die Seedance-Webhook-URL muss HTTP oder HTTPS verwenden.",
+    );
+  }
+
+  return webhookUrl;
 }
 
 function encodeOperation(
@@ -259,10 +324,7 @@ function encodeOperation(
 
 function decodeOperation(
   operationName: string,
-): {
-  modelId: string;
-  requestId: string;
-} {
+): SeedanceOperationDetails {
   const parts =
     operationName.split("|");
 
@@ -283,6 +345,12 @@ function decodeOperation(
   };
 }
 
+export function getSeedanceOperationDetails(
+  operationName: string,
+): SeedanceOperationDetails {
+  return decodeOperation(operationName);
+}
+
 export function isSeedanceOperationName(
   operationName: string,
 ): boolean {
@@ -294,8 +362,12 @@ export function isSeedanceOperationName(
 async function submitSeedance(
   modelId: string,
   input: Record<string, unknown>,
+  webhookUrl?: string,
 ): Promise<string> {
   configureFal();
+
+  const normalizedWebhookUrl =
+    normalizeWebhookUrl(webhookUrl);
 
   try {
     const result =
@@ -303,6 +375,13 @@ async function submitSeedance(
         modelId as any,
         {
           input,
+
+          ...(normalizedWebhookUrl
+            ? {
+                webhookUrl:
+                  normalizedWebhookUrl,
+              }
+            : {}),
         } as any,
       );
 
@@ -376,6 +455,7 @@ export async function startVideoGeneration(
           options.referenceImage,
         ),
       },
+      options.webhookUrl,
     );
   }
 
@@ -415,6 +495,7 @@ export async function startVideoGeneration(
             toDataUri,
           ),
       },
+      options.webhookUrl,
     );
   }
 
@@ -424,6 +505,7 @@ export async function startVideoGeneration(
       ...commonInput,
       prompt: cleanedPrompt,
     },
+    options.webhookUrl,
   );
 }
 
@@ -478,9 +560,130 @@ export async function startVideoExtension(
 
       bitrate_mode: "standard",
     },
+    options.webhookUrl,
   );
 }
 
+/**
+ * Liest den direkten Callback von fal.ai.
+ *
+ * Erwarteter erfolgreicher Callback:
+ *
+ * {
+ *   request_id: "...",
+ *   status: "OK",
+ *   payload: {
+ *     video: {
+ *       url: "https://..."
+ *     }
+ *   }
+ * }
+ */
+export function readSeedanceWebhookResult(
+  operationName: string,
+  value: unknown,
+): SeedanceVideoStatus {
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value)
+  ) {
+    throw new SeedanceProviderOperationError(
+      "Seedance hat einen ungültigen Webhook-Callback geliefert.",
+    );
+  }
+
+  const body =
+    value as SeedanceWebhookPayload;
+
+  const operation =
+    decodeOperation(operationName);
+
+  const callbackRequestId =
+    typeof body.request_id === "string"
+      ? body.request_id
+      : typeof body.gateway_request_id === "string"
+        ? body.gateway_request_id
+        : "";
+
+  if (
+    callbackRequestId &&
+    callbackRequestId !== operation.requestId
+  ) {
+    throw new SeedanceProviderOperationError(
+      "Der Seedance-Webhook gehört nicht zur erwarteten Videooperation.",
+    );
+  }
+
+  const status =
+    typeof body.status === "string"
+      ? body.status.toUpperCase()
+      : "";
+
+  if (status === "ERROR") {
+    let errorMessage =
+      "Seedance konnte die Generierung nicht abschließen.";
+
+    if (
+      typeof body.error === "string" &&
+      body.error.trim()
+    ) {
+      errorMessage = body.error.trim();
+    } else if (
+      body.error &&
+      typeof body.error === "object" &&
+      "message" in body.error &&
+      typeof body.error.message === "string"
+    ) {
+      errorMessage =
+        body.error.message;
+    }
+
+    throw new SeedanceProviderOperationError(
+      errorMessage,
+    );
+  }
+
+  if (
+    status &&
+    status !== "OK" &&
+    status !== "COMPLETED"
+  ) {
+    throw new SeedanceProviderOperationError(
+      `Seedance hat einen unerwarteten Webhook-Status geliefert: ${status}`,
+    );
+  }
+
+  const videoUrl =
+    body.payload?.video?.url;
+
+  if (!videoUrl) {
+    throw new SeedanceProviderOperationError(
+      "Seedance hat den Webhook ausgelöst, aber keine Video-URL geliefert.",
+    );
+  }
+
+  return {
+    done: true,
+    videoUrl,
+    videoUri: videoUrl,
+
+    mimeType:
+      body.payload?.video?.content_type ??
+      "video/mp4",
+  };
+}
+
+/**
+ * Bleibt absichtlich erhalten:
+ * - manuelle Recovery
+ * - bestehende alte Jobs
+ * - Debugging
+ *
+ * Der normale neue Workflow soll anschließend aber
+ * über den fal.ai-Webhook weiterlaufen und nicht mehr
+ * alle 10 Sekunden pollen.
+ */
 export async function checkVideoStatus(
   operationName: string,
 ): Promise<SeedanceVideoStatus> {
