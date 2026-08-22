@@ -168,6 +168,7 @@ function SuccessContent() {
     let interval: ReturnType<typeof setInterval> | undefined;
     let checkoutConfirmed = false;
     let refreshing = false;
+    let lastProviderRecoveryCheckAt = 0;
 
     const refreshStatus = async () => {
       if (refreshing) return;
@@ -199,6 +200,32 @@ function SuccessContent() {
 
         setVideoStatus(data);
         setConnectionError(null);
+        if (
+  data.status === "processing" &&
+  (data.progressPercent ?? 0) >= 85 &&
+  (
+    data.renderStage === "generating-opening" ||
+    data.renderStage === "extending" ||
+    data.renderStage === "generating-chapter"
+  )
+) {
+  const now = Date.now();
+
+  if (now - lastProviderRecoveryCheckAt >= 20_000) {
+    lastProviderRecoveryCheckAt = now;
+
+    await fetch("/api/recover-video", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jobId,
+        session_id: sessionId,
+      }),
+    });
+  }
+}
 
         if (
           (data.status === "pending" || data.status === "processing") &&
