@@ -141,21 +141,31 @@ export async function POST(req: NextRequest) {
   if (!hasRecoverableProviderVideo && retryGeneration) {
     const previousRecoveryAttempts = job.manualRecoveryAttempts ?? 0;
     const audioFailureCanRetry = /issue with the audio|audio for your prompt/i.test(
-      job.errorMessage ?? providerFailureMessage ?? "",
-    );
-    const internalProviderFailureCanRetry =
-      /internal server issue|try again in a few minutes|internen Serverfehler/i.test(
-        job.errorMessage ?? providerFailureMessage ?? "",
-      );
-    const maximumRecoveryAttempts = trashTvReactionBoost
-      ? 5
-      : nativeCharacterDialogue
-        ? 4
-        : audioFailureCanRetry
-          ? 2
-          : internalProviderFailureCanRetry
-            ? 4
-            : 1;
+  job.errorMessage ?? providerFailureMessage ?? "",
+);
+
+const internalProviderFailureCanRetry =
+  /internal server issue|try again in a few minutes|internen Serverfehler/i.test(
+    job.errorMessage ?? providerFailureMessage ?? "",
+  );
+
+const preProviderConfigurationFailureCanRetry =
+  !job.currentOperationName &&
+  /Veo-Rendering ist deaktiviert|Seedance-Rendering ist deaktiviert|SEEDANCE_WORKFLOW_RENDER_ENABLED ist deaktiviert/i.test(
+    job.errorMessage ?? providerFailureMessage ?? "",
+  );
+
+const maximumRecoveryAttempts = preProviderConfigurationFailureCanRetry
+  ? 2
+  : trashTvReactionBoost
+    ? 5
+    : nativeCharacterDialogue
+      ? 4
+      : audioFailureCanRetry
+        ? 2
+        : internalProviderFailureCanRetry
+          ? 4
+          : 1;
     if (previousRecoveryAttempts >= maximumRecoveryAttempts) {
       return NextResponse.json(
         { error: "Dieser Auftrag hat die sichere Anzahl kostenloser Wiederherstellungsversuche erreicht." },
