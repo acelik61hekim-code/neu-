@@ -777,11 +777,6 @@ function SuccessContent() {
               true,
           )
         }
-        onNativeDialogue={() =>
-          void recoverPaidVideo(
-            true,
-          )
-        }
         onReactionBoost={() =>
           void recoverPaidVideo(
             true,
@@ -850,7 +845,6 @@ function StatusCard({
   videoStatus = {},
   connectionError,
   onRecover,
-  onNativeDialogue,
   onReactionBoost,
   recoveryState = "idle",
   recoveryError,
@@ -869,9 +863,6 @@ function StatusCard({
     null;
 
   onRecover?:
-    () => void;
-
-  onNativeDialogue?:
     () => void;
 
   onReactionBoost?:
@@ -1229,36 +1220,6 @@ function StatusCard({
                 >
                   Video herunterladen
                 </a>
-
-                {!videoStatus.nativeCharacterDialogue &&
-                  onNativeDialogue && (
-                    <div>
-                      <button
-                        className="mt-3 inline-flex items-center justify-center rounded-xl border border-violet-400/30 bg-violet-400/10 px-5 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-400/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={
-                          recoveryState ===
-                          "working"
-                        }
-                        onClick={
-                          onNativeDialogue
-                        }
-                        type="button"
-                      >
-                        {recoveryState ===
-                        "working"
-                          ? "Neufassung wird gestartet …"
-                          : "Ohne Voiceover – Figuren selbst sprechen lassen"}
-                      </button>
-
-                      {recoveryError && (
-                        <p className="mt-3 text-xs leading-5 text-red-200/80">
-                          {
-                            recoveryError
-                          }
-                        </p>
-                      )}
-                    </div>
-                  )}
 
                 {videoStatus.nativeCharacterDialogue &&
                   !videoStatus.trashTvReactionBoost &&

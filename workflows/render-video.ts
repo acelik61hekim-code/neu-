@@ -2273,6 +2273,27 @@ async function startOpeningVideoStep(
     );
   }
 
+  const totalChapters =
+    Math.max(
+      1,
+      latest.totalChapters ?? 1,
+    );
+
+  const activeChapterProgress =
+    Math.min(
+      84,
+      8 +
+        Math.round(
+          (
+            Math.max(
+              0,
+              chapterNumber - 1,
+            ) /
+            totalChapters
+          ) * 80,
+        ),
+    );
+
   await jobStore.set(
     jobId,
     {
@@ -2288,6 +2309,12 @@ async function startOpeningVideoStep(
           "chaptered"
           ? "generating-chapter"
           : "generating-opening",
+
+      progressPercent:
+        Math.max(
+          latest.progressPercent ?? 0,
+          activeChapterProgress,
+        ),
 
       currentChapter:
         chapterNumber,
@@ -2538,6 +2565,24 @@ async function startExtensionVideoStep(
     );
   }
 
+  const totalExtensions =
+    Math.max(
+      1,
+      latest.totalExtensions ?? 1,
+    );
+
+  const activeExtensionProgress =
+    Math.min(
+      84,
+      8 +
+        Math.round(
+          (
+            extensionNumber /
+            (totalExtensions + 1)
+          ) * 80,
+        ),
+    );
+
   await jobStore.set(
     jobId,
     {
@@ -2548,6 +2593,12 @@ async function startExtensionVideoStep(
 
       renderStage:
         "extending",
+
+      progressPercent:
+        Math.max(
+          latest.progressPercent ?? 0,
+          activeExtensionProgress,
+        ),
 
       currentChapter:
         chapterNumber,
@@ -3828,6 +3879,48 @@ function getFixedVoiceName(
   return voiceName;
 }
 
+function buildViralStudioVoiceDirection(
+  speaker: string,
+  text: string,
+): string {
+  const value =
+    `${speaker} ${text}`
+      .toLocaleLowerCase(
+        "de-DE",
+      );
+
+  const pronunciationGuides = [
+    ["ruby", "Ruby wie Ruh-bi"],
+    ["bano", "Bano wie Bah-no"],
+    ["pina", "Pina wie Pii-na"],
+    ["limo", "Limo wie Lii-mo"],
+    ["melo", "Melo wie Mee-lo"],
+    ["ora", "Ora wie Oh-ra"],
+    ["gino", "Gino wie Dschii-no"],
+    ["ava", "Ava wie Ah-va"],
+  ]
+    .filter(
+      ([name]) =>
+        value.includes(name),
+    )
+    .map(
+      ([, guide]) =>
+        guide,
+    );
+
+  return [
+    "Energetic but controlled German reality-TV dialogue.",
+    "Use crisp natural Hochdeutsch, clear consonants and complete word endings.",
+    "Speak at conversational volume without shouting, screaming, whispering, sobbing or breathy effects.",
+    "Keep the emotional drama in timing and emphasis, not distorted pronunciation.",
+    pronunciationGuides.length > 0
+      ? `Pronunciation guide: ${pronunciationGuides.join(", ")}.`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 /*
  * Viral-Modus:
  * Jeder Shot = 15 Sekunden.
@@ -3943,8 +4036,10 @@ function buildViralDialogueCues(
               ),
 
             voiceDirection:
-              dialogue
-                .voiceDirection,
+              buildViralStudioVoiceDirection(
+                dialogue.speaker,
+                dialogue.text,
+              ),
           });
         },
       );
@@ -4396,7 +4491,7 @@ function buildViralReferenceDirection(
 
     "WORLD LOCK: every shot takes place in the same luxurious tropical dating-show villa with pool terrace, fire pit, palms and warm evening light. Allowed zones are the fire pit, pool terrace, lounge and bedroom of that same villa. Never use an office, warehouse, classroom, street, studio or generic neutral room.",
 
-    "TEXT-FREE FRAME: absolutely no subtitles, closed captions, lower thirds, title cards, speech bubbles, letters, words, numbers, logos, watermarks, signs, name tags or readable text on phones, screens, luggage, clothing or props. Keep device screens abstract and unreadable; communicate evidence through a plain prop and character reactions.",
+    "TEXT-FREE FRAME: absolutely no subtitles, closed captions, lower thirds, title cards, speech bubbles, letters, words, numbers, logos, watermarks, signs, name tags or readable text on phones, screens, luggage, clothing or props. The primary proof must be a witnessed action or an unmistakable physical situation with clear ownership and context. A phone, paper, photo or receipt may only confirm a secondary detail and must never carry the plot alone.",
 
     identityList
       ? `LOCKED IDENTITIES:\n${identityList}`
@@ -4418,6 +4513,8 @@ function buildViralTrashTvDirection(
     "TIKTOK TRASH-TV DRAMA (mandatory):",
 
     "Stage an exaggerated interpersonal reality-show confrontation between the fruit characters: accusation, secret, betrayal, jealousy or alliance, escalating reactions, a sharp reveal and a dramatic payoff.",
+
+    "SHOW, THEN CONFRONT: first show the forbidden action, discovery or unmistakable physical evidence in context; then cut to the witness discovering it; only then stage the accusation and denial. Never substitute a generic phone close-up, receipt or unexplained prop for the actual event.",
 
     "Every shot contains an active visible verbal argument, never a calm explanatory conversation. Characters interrupt each other, point accusingly, throw their hands up, invade personal space without touching, turn away in outrage, snap back, roll their eyes, exchange hostile side-eye, recoil in disbelief and perform huge double-takes.",
 
@@ -4451,13 +4548,13 @@ function buildViralMicrodramaBeatDirection(
     1
   ) {
     storyPhase =
-      "Compress the full arc into this shot: scandal cold open, visible evidence, direct confrontation, counter-reveal and an unresolved final sting.";
+      "Compress the full arc into this shot: show the forbidden action itself, its immediate discovery, direct confrontation, counter-reveal and an unresolved final sting.";
   } else if (
     shotNumber ===
     1
   ) {
     storyPhase =
-      "COLD OPEN: Start inside the scandal or its consequence. Show the accusation and visible evidence immediately; never begin with backstory, recap or calm setup.";
+      "COLD OPEN: Start on the forbidden action itself or the exact instant it is discovered. Show who does what to whom before the accusation; never begin with a phone, receipt, backstory, recap or calm setup.";
   } else if (
     shotNumber ===
     totalShots
@@ -4476,7 +4573,7 @@ function buildViralMicrodramaBeatDirection(
     2
   ) {
     storyPhase =
-      "DISCOVERY: A character overhears, catches or finds a concrete piece of evidence. Turn suspicion into a direct accusation and end with an unexpected denial or threat to expose more.";
+      "DISCOVERY: A character directly witnesses an action or finds physical evidence whose owner and meaning are visually unmistakable. Turn that discovery into a direct accusation and end with a specific contradictory fact.";
   } else {
     storyPhase =
       "ESCALATION: Break an alliance, expose a contradiction or introduce a witness from the locked cast. Every action must tighten the same central scandal.";
@@ -4487,9 +4584,9 @@ function buildViralMicrodramaBeatDirection(
 
     storyPhase,
 
-    "Internal 15-second rhythm: 0.0–3.0s visible hook; 3.0–7.0s accusation or evidence; 7.0–11.0s extreme reaction and counter-response; 11.0–15.0s escalation or surprise sting.",
+    "Use purposeful multi-shot editing inside the 15 seconds: 0.0–2.0s shock cold open; CUT TO 2.0–5.0s wide proof of the action or discovery; CUT TO 5.0–9.0s accused character answering; CUT TO 9.0–12.0s witness or counter-reaction; CUT TO 12.0–15.0s a new visible reveal and hard reaction ending.",
 
-    "Keep every individual spoken line punchy and no longer than ten words. The visible character speaks it directly with synchronized lips; no narrator and no voice-over.",
+    "Keep every individual line punchy and no longer than nine words. Show the active speaker's face and sentence-paced mouth movement clearly. No narrator, no voice-over and no off-screen speech.",
   ].join(
     "\n",
   );
@@ -4632,7 +4729,7 @@ function buildViralIndependentShotPrompt(
 
     nativeCharacterDialogue
       ? "The assigned visible characters speak their lines with synchronized lips. No narrator, no voice-over, no off-screen speech, no subtitles, no captions, no readable text, no logos and no watermark."
-      : "No spoken words, no lip-synced dialogue, no subtitles, no captions, no readable text, no logos and no watermark.",
+      : "Do not synthesize audible words inside the Seedance clip. Preserve clear sentence-paced speaking performance and mouth movement for the later fixed studio voices. No narrator, subtitles, captions, readable text, logos or watermark.",
   ]
     .filter(
       Boolean,

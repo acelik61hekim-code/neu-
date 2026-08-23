@@ -271,7 +271,7 @@ export default function SongStudio({
       <div className="relative z-10 mx-auto max-w-6xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16">
         <section className="mx-auto max-w-3xl text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-400/20 bg-fuchsia-400/10 px-3 py-1.5 text-xs font-medium text-fuchsia-200">
-            <SparklesIcon /> Lyria 3 Musik-KI
+            <SparklesIcon /> Suno Musik-KI
           </div>
           <h1 className="mt-5 text-balance text-4xl font-semibold tracking-[-0.045em] sm:text-6xl">
             Deine Idee wird zum

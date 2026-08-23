@@ -1091,7 +1091,7 @@ async function finishVideo(
     "fast",
 
     "-crf",
-    "20",
+    "18",
 
     "-c:a",
     "aac",

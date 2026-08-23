@@ -1657,6 +1657,65 @@ function isInfidelityStory(
   );
 }
 
+function hasMandatoryViralVisualPlan(
+  response: ArchitectResponse,
+  story: StoryDraft,
+): boolean {
+  const opening =
+    response.moviePlan.opening;
+
+  const openingVisualPlan = [
+    opening.hook,
+    opening.storyBeat,
+    opening.action,
+    opening.veoPrompt,
+  ].join(" ");
+
+  const continuationVisualPlans =
+    response.moviePlan.continuations.map(
+      (continuation) => [
+        continuation.storyBeat,
+        continuation.actionContinuation,
+        continuation.continuationPrompt,
+      ].join(" "),
+    );
+
+  const completeVisualPlan = [
+    openingVisualPlan,
+    ...continuationVisualPlans,
+  ].join(" ");
+
+  const namesVisibleAction =
+    /sieht|beobachtet|erwischt|öffnet|betritt|fällt|zeigt|hält|trägt|übergibt|nimmt|vertauscht|küss|umarm|entdeckt|catches|sees|witnesses|opens|enters|falls|reveals|holds|wears|hands over|swaps|kisses|embraces|discovers/i.test(
+      openingVisualPlan,
+    );
+
+  if (
+    openingVisualPlan.length < 80 ||
+    !namesVisibleAction ||
+    continuationVisualPlans.some(
+      (plan) => plan.length < 50,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    isInfidelityStory(story)
+  ) {
+    const showsBetrayalItself =
+      /küss|kuss|umarm|händchen|hand in hand|eng umschlungen|streichel|verlässt.{0,30}(?:zimmer|schlafzimmer)|kommt.{0,30}(?:zimmer|schlafzimmer)|kiss|embrac|holding hands|caress|leaves?.{0,30}bedroom|walks?.{0,30}out of.{0,20}(?:room|bedroom)/i.test(
+        completeVisualPlan,
+      );
+
+    if (!showsBetrayalItself) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 function isVagueDramaLine(
   text: string,
 ): boolean {
@@ -1719,7 +1778,7 @@ function buildViralDialogueArc(
     return `
 VERBINDLICHER EINMINÜTIGER DIALOGBOGEN – VIER 15-SEKUNDEN-BEATS
 
-1. Opening 0–15: Die betrogene Figur benennt sofort den konkreten Kuss, Gegenstand oder Nachrichtenfund. Eine direkte Antwort oder Gegenreaktion darf über dialogueTurns folgen.
+1. Opening 0–15: Zeige zuerst die verbotene Handlung selbst oder wie sie unmittelbar entdeckt wird. Die betrogene Figur benennt danach den konkreten Kuss, die Umarmung, das Zimmer oder den Gegenstand. Eine direkte Antwort oder Gegenreaktion darf über dialogueTurns folgen.
 2. Fortsetzung 15–30: Die beschuldigte Figur antwortet direkt und nennt ein überprüfbares Detail oder eine konkrete Ausrede.
 3. Fortsetzung 30–45: Die dritte Figur oder der Gegenpart enthüllt einen Widerspruch, ein Beweisstück oder ein Teilgeständnis.
 4. Fortsetzung 45–60: Konsequenz, Gegenenthüllung und ein konkret benannter Cliffhanger. Der letzte Satz oder die letzte Reaktion öffnet die nächste mögliche Episode.
@@ -1872,7 +1931,7 @@ function hasMandatoryDialoguePlan(
 
   const maximumWordsPerLine =
     isViralDialogue
-      ? 10
+      ? 9
       : 12;
 
   for (
@@ -1906,6 +1965,9 @@ function hasMandatoryDialoguePlan(
       wordCount < 1 ||
       wordCount >
         maximumWordsPerLine ||
+      /\d|[#@/\\]|[A-ZÄÖÜ]{2,}/.test(
+        dialogue.text,
+      ) ||
       dialogue.text.length >
         140
     ) {
@@ -1953,7 +2015,7 @@ function hasMandatoryDialoguePlan(
   if (
     targetDurationSeconds ===
       15 &&
-    totalWordCount > 28
+    totalWordCount > 24
   ) {
     return false;
   }
@@ -3297,13 +3359,18 @@ VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 - Fruchtart, Kopfform, Gesicht, Augen, Körperbau, Outfit, Farben, Schuhe und Accessoires bleiben unverändert.
 - Nutze maximal drei sichtbare Hauptfiguren pro Einstellung.
 - Die ersten zwei Sekunden beginnen mitten im Skandal.
+- Der zentrale Verrat oder Regelbruch wird als sichtbare Handlung gezeigt. Bei Fremdgehen sieht die betrogene Figur den Kuss, die vertraute Umarmung, das Händchenhalten oder das gemeinsame Verlassen eines Zimmers selbst.
+- Ein Handy, Chat, Foto, Brief, Beleg oder Bildschirm darf nur ein zusätzliches Detail bestätigen und niemals der einzige oder primäre Beweis sein.
+- Plane visuelle Kausalität: konkrete Handlung, direkte Entdeckung, unmittelbare Reaktion, Vorwurf, Antwort und Gegenenthüllung.
+- opening.hook, opening.action und opening.veoPrompt müssen diese sichtbare Handlung oder Entdeckung konkret beschreiben.
 
 INTERNE DRAMATURGIE EINES 15-SEKUNDEN-CLIPS
 
-- 0–3 Sekunden: sichtbarer Hook oder Vorwurf.
-- 3–7 Sekunden: konkreter Beweis, Geständnis oder neue Information.
-- 7–11 Sekunden: starke Reaktion und Gegenargument.
-- 11–15 Sekunden: Eskalation, Gegenenthüllung oder Sting.
+- 0–2 Sekunden: schockierender Cold Open.
+- 2–5 Sekunden: weite Einstellung der konkreten Handlung oder Entdeckung.
+- 5–9 Sekunden: beschuldigte Figur mit direkter Antwort.
+- 9–12 Sekunden: Zeuge, Widerspruch oder Gegenreaktion.
+- 12–15 Sekunden: neue sichtbare Enthüllung oder Sting.
 
 ${buildViralDialogueArc(
   targetDurationSeconds,
@@ -3316,7 +3383,8 @@ DIALOGSTRUKTUR
 - opening.dialogueTurns darf bis zu drei zusätzliche Sprecherwechsel enthalten.
 - Jede Fortsetzung darf dialogue plus dialogueTurns verwenden.
 - Jede ausgewählte Figur muss mindestens einmal sprechen.
-- Jede einzelne Dialogzeile hat höchstens zehn gut sprechbare Wörter.
+- Jede einzelne Dialogzeile hat höchstens neun gut sprechbare Wörter.
+- Nutze kurze deutsche Hauptsätze, Alltagswörter und ausgeschriebene Zahlen. Keine Abkürzungen, Ziffern, Hashtags, Schrägstriche oder künstlichen Wortzusammensetzungen.
 - Kein Erzähler.
 - Kein Voice-over.
 - Keine Offscreen-Sprache.
@@ -3495,7 +3563,7 @@ SCHNITTSTIL: SOCIAL / REELS
   const selectedAudioDirection =
     creationMode ===
     "viral-story"
-      ? "NATIVE ON-SCREEN CHARACTER DIALOGUE: Plan exact short dialogue lines that the assigned visible characters themselves speak audibly and lip-synchronously inside each Seedance clip. No narrator, no voice-over, no off-screen speech and no subtitles."
+      ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short German lines and clear sentence-paced mouth, jaw, face and body performance for each visible assigned character. Seedance creates only restrained non-vocal ambience and music; fixed studio-quality German character voices are mixed scene-synchronously during finishing. No narrator, no voice-over, no off-screen speech and no subtitles."
       : voiceMode ===
           "dialogue"
         ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE: Plan exact short lines and visible sentence-paced speaking performances, but keep generated footage free of audible speech. Fixed voices are mixed later."
@@ -4166,9 +4234,18 @@ export async function POST(
                   story,
                 );
 
+              const visualPlanValid =
+                creationMode !==
+                  "viral-story" ||
+                hasMandatoryViralVisualPlan(
+                  normalizedCandidate,
+                  story,
+                );
+
               return (
                 structurallyValid &&
-                dialogueValid
+                dialogueValid &&
+                visualPlanValid
               );
             }
           : undefined,
@@ -4286,6 +4363,30 @@ export async function POST(
 
           error:
             "Der automatische Dialogplan war noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
+        },
+
+        {
+          status:
+            502,
+        },
+      );
+    }
+
+    if (
+      creationMode ===
+        "viral-story" &&
+      !hasMandatoryViralVisualPlan(
+        normalized,
+        story,
+      )
+    ) {
+      return NextResponse.json(
+        {
+          success:
+            false,
+
+          error:
+            "Die Story hat den zentralen Konflikt noch nicht eindeutig im Bild gezeigt. Bitte starte die automatische Planung erneut.",
         },
 
         {

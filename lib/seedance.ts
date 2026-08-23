@@ -508,7 +508,12 @@ export async function startVideoGeneration(
 
     aspect_ratio: aspectRatio,
     generate_audio: true,
-    bitrate_mode: "standard",
+    /*
+     * Fast bleibt wirtschaftlich bei 720p, aber der High-Bitrate-
+     * Encode bewahrt Gesichter, Fruchttexturen und schnelle
+     * Reaktionsschnitte deutlich sauberer.
+     */
+    bitrate_mode: "high",
   };
 
   if (options.referenceImage) {
@@ -635,7 +640,7 @@ export async function startVideoExtension(
 
       generate_audio: true,
 
-      bitrate_mode: "standard",
+      bitrate_mode: "high",
     },
     options.webhookUrl,
   );
