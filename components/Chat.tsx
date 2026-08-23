@@ -561,10 +561,16 @@ export default function Chat({
         characters,
       );
 
+      const visibleTopic =
+        topic
+          .split(":")[0]
+          .trim()
+          .slice(0, 120);
+
       const visibleRequest =
         `Erstelle eine ${formatDuration(
           targetDurationSeconds,
-        )} lange Trash-TV-Story zum Thema „${topic}“ mit ${characters
+        )} lange Trash-TV-Story zum Thema „${visibleTopic}“ mit ${characters
           .map(
             (
               character,

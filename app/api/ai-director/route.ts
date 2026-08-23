@@ -66,8 +66,8 @@ ${STUDIO_BRAND_CONTEXT}
 Deine Aufgabe ist NICHT nur zu chatten.
 
 Deine Aufgabe ist es, in möglichst wenigen Nachrichten alle Informationen zu sammeln,
-die benötigt werden, um daraus eine hochwertige Geschichte mit sechs
-zusammenhängenden 8-Sekunden-Videos zu erzeugen.
+die benötigt werden, um daraus eine hochwertige Geschichte mit aufeinander
+aufbauenden 15-Sekunden-Videoabschnitten zu erzeugen.
 
 Die Geschichte benötigt:
 
@@ -115,7 +115,7 @@ stelle keine weitere Frage.
 
 13. Der Nutzer sieht ausschließlich "reply".
 
-14. Die Geschichte soll später automatisch in sechs Szenen
+14. Die Geschichte soll später automatisch in klare 15-Sekunden-Abschnitte
 aufgeteilt werden können.
 
 15. Achte deshalb darauf,
@@ -142,6 +142,8 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Lege den Konflikt vor dem Dialog konkret fest: Beziehung, Auslöser, sichtbares Beweisstück, verborgenes Wissen und Konsequenz.
 - Jede Antwort reagiert direkt auf den vorherigen Satz und ergänzt eine neue überprüfbare Information. Vermeide austauschbare Platzhaltersätze wie „Das ist alles anders“, „Du verstehst das nicht“, „Warte ab“ oder „Das ist erst der Anfang“.
 - Bei Fremdgehen oder Verrat muss die Zusammenfassung eindeutig sagen, wer wen mit wem betrogen hat, wodurch es auffliegt und welche konkrete Gegenenthüllung folgt.
+- Der zentrale Regelbruch wird sichtbar als Handlung gezeigt. Bei Fremdgehen sieht die betrogene Figur den Kuss, die vertraute Umarmung, das Händchenhalten oder das gemeinsame Verlassen eines Zimmers selbst. Handy, Chat, Foto, Brief oder Rechnung sind höchstens zusätzliche Bestätigung, nie der einzige Hauptbeweis.
+- Plane Ursache, Entdeckung und Reaktion kausal: konkrete Handlung im Bild, entdeckende Figur, unmittelbarer Vorwurf, überprüfbare Antwort, Widerspruch und Konsequenz.
 - Wenn die übrigen Story-Angaben ausreichen, darf ready erst dann true sein, wenn mindestens zwei Gesprächsfiguren im Story-Objekt stehen.
 `;
 
@@ -226,8 +228,9 @@ function enforceViralStory(
       summary: [
         result.story.summary,
         `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
-        "Die Handlung beginnt sofort mit einem klaren visuellen Hook, eskaliert ohne Leerlauf und endet mit einem konkreten ungelösten Cliffhanger. Alle ausgewählten Figuren erhalten kurze natürliche Dialoge, die sie selbst sichtbar und lippensynchron sprechen.",
+        "Die Handlung beginnt sofort mit der verbotenen Handlung oder ihrer sichtbaren Entdeckung, eskaliert ohne Leerlauf und endet mit einem konkreten ungelösten Cliffhanger. Alle ausgewählten Figuren erhalten kurze natürliche deutsche Dialoge. Beim jeweiligen Satz sind Gesicht und Mund der sprechenden Figur klar sichtbar; die festen deutschen Figurenstimmen werden szenengenau in der Finalisierung gemischt.",
         "Verbindliche Bildregeln: dieselbe tropische Villa in allen Einstellungen; geschlossene Besetzung ohne Menschen, Statisten oder zusätzliche Früchte; niemals menschliche Gesichter statt Fruchtköpfen; keinerlei Untertitel, Titelkarten, Schilder, Namensschilder, Logos, Wasserzeichen oder sonstige lesbare Schrift im Bild.",
+        "Der zentrale Beweis ist eine unmittelbar sichtbare Handlung oder eine eindeutig zuordenbare körperliche Situation. Ein Handy, Chat, Foto, Brief oder Beleg darf nur ein zusätzliches Detail bestätigen und niemals allein die Handlung tragen.",
         "Die Dialogfolge ist kausal und konkret: Jede Zeile beantwortet die vorherige, nennt eine neue überprüfbare Information und führt denselben Konflikt weiter. Leere Drama-Platzhalter ohne Bezug zu Beziehung, Beweis oder Konsequenz sind verboten.",
       ]
         .filter(Boolean)

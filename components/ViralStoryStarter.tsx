@@ -23,8 +23,9 @@ export default function ViralStoryStarter({
   const [selectedIds, setSelectedIds] = useState<string[]>([
     VIRAL_CHARACTERS[0].id,
     VIRAL_CHARACTERS[1].id,
+    VIRAL_CHARACTERS[2].id,
   ]);
-  const [topic, setTopic] = useState<string>(VIRAL_STORY_TOPICS[0]);
+  const [topicId, setTopicId] = useState<string>(VIRAL_STORY_TOPICS[0].id);
   const [customTopic, setCustomTopic] = useState("");
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export default function ViralStoryStarter({
 
   function applyTemplate(template: ViralStoryTemplate) {
     setSelectedIds([...template.characterIds]);
-    setCustomTopic(template.topic);
+    setCustomTopic("");
     setActiveTemplateId(template.id);
     setLocalError(null);
   }
@@ -64,10 +65,17 @@ export default function ViralStoryStarter({
     const selectedCharacters = VIRAL_CHARACTERS.filter((character) =>
       selectedIds.includes(character.id),
     );
-    const selectedTopic = customTopic.trim() || topic;
+    const selectedTemplate = VIRAL_STORY_TEMPLATES.find(
+      (template) => template.id === activeTemplateId,
+    );
+    const selectedTopic = VIRAL_STORY_TOPICS.find(
+      (storyTopic) => storyTopic.id === topicId,
+    ) ?? VIRAL_STORY_TOPICS[0];
+    const selectedBrief =
+      customTopic.trim() || selectedTemplate?.topic || selectedTopic.directorBrief;
 
     setLocalError(null);
-    await onCreate(selectedCharacters, selectedTopic);
+    await onCreate(selectedCharacters, selectedBrief);
   }
 
   return (
@@ -221,20 +229,20 @@ export default function ViralStoryStarter({
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="mb-2 block text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-                Story-Idee
+                Detailliertes Thema
               </span>
               <select
-                value={topic}
+                value={topicId}
                 onChange={(event) => {
-                  setTopic(event.target.value);
+                  setTopicId(event.target.value);
                   setActiveTemplateId(null);
                 }}
                 disabled={disabled}
                 className="w-full rounded-xl border border-white/10 bg-[#101016] px-3 py-3 text-xs text-white outline-none transition focus:border-fuchsia-300/50 disabled:opacity-50"
               >
                 {VIRAL_STORY_TOPICS.map((storyTopic) => (
-                  <option key={storyTopic} value={storyTopic}>
-                    {storyTopic}
+                  <option key={storyTopic.id} value={storyTopic.id}>
+                    {storyTopic.category}: {storyTopic.title}
                   </option>
                 ))}
               </select>
@@ -250,13 +258,52 @@ export default function ViralStoryStarter({
                   setCustomTopic(event.target.value);
                   setActiveTemplateId(null);
                 }}
-                maxLength={160}
+                maxLength={320}
                 disabled={disabled}
                 placeholder="z. B. heimliche Hochzeit"
                 className="w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-xs text-white outline-none transition placeholder:text-zinc-600 focus:border-fuchsia-300/50 disabled:opacity-50"
               />
             </label>
           </div>
+
+          {!activeTemplateId && !customTopic.trim() ? (
+            <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3">
+              {(() => {
+                const selectedTopic = VIRAL_STORY_TOPICS.find(
+                  (storyTopic) => storyTopic.id === topicId,
+                ) ?? VIRAL_STORY_TOPICS[0];
+
+                return (
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-fuchsia-200">
+                        Sichtbarer Hook
+                      </p>
+                      <p className="mt-1 text-[10px] leading-4 text-zinc-300">
+                        {selectedTopic.hook}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-violet-200">
+                        Gespräch
+                      </p>
+                      <p className="mt-1 text-[10px] leading-4 text-zinc-300">
+                        {selectedTopic.conversation}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-blue-200">
+                        Cliffhanger
+                      </p>
+                      <p className="mt-1 text-[10px] leading-4 text-zinc-300">
+                        {selectedTopic.cliffhanger}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          ) : null}
 
           {localError ? (
             <p className="mt-3 text-xs leading-5 text-amber-200">{localError}</p>
@@ -272,7 +319,7 @@ export default function ViralStoryStarter({
           </button>
 
           <p className="mt-3 text-[10px] leading-4 text-zinc-500">
-            Die sichtbaren Figuren sprechen direkt und lippensynchron in der Szene. Keine Erzählerstimme und kein nachträgliches Voice-over.
+            Kurze deutsche Figurenstimmen werden sauber im Studio erzeugt und szenengenau gemischt. Keine Erzählerstimme und kein zufälliger Seedance-Dialog.
           </p>
         </div>
       ) : null}

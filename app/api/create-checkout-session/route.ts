@@ -970,9 +970,16 @@ export async function POST(
     body.spokenLanguage as
       VideoSpokenLanguage;
 
+  const hasViralStudioDialogue =
+    hasValidViralDialoguePlan(
+      prompt,
+      targetDurationSeconds,
+    );
+
   if (
     voiceMode ===
       "dialogue" &&
+    !hasViralStudioDialogue &&
     !hasValidDialoguePlan(
       prompt,
       targetDurationSeconds,
@@ -1204,10 +1211,13 @@ export async function POST(
       spokenLanguage,
 
       nativeCharacterDialogue:
-        hasValidViralDialoguePlan(
-          prompt,
-          targetDurationSeconds,
-        ),
+        /*
+         * Viral-Dialoge werden standardmäßig mit festen deutschen
+         * Studio-Stimmen finalisiert. Seedance erzeugt Bild, Mimik,
+         * Musik und Ambience, aber keine fehleranfälligen deutschen
+         * Wörter. Bestehende native Jobs bleiben weiterhin lesbar.
+         */
+        false,
 
       voiceoverText:
         voiceoverText ||
