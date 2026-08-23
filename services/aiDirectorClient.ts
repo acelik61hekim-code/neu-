@@ -1,4 +1,7 @@
-import type { StoryDraft } from "@/types/story";
+import type {
+  MusicVideoTrackContext,
+  StoryDraft,
+} from "@/types/story";
 
 export type ConversationMessage = {
   role: "user" | "assistant";
@@ -77,6 +80,7 @@ export async function requestAiDirector(
   messages: ConversationMessage[],
   viralCharacterIds: string[] = [],
   dialogueMode = false,
+  musicTrack?: MusicVideoTrackContext,
 ): Promise<AiDirectorResponse> {
   const response = await fetch("/api/ai-director", {
     method: "POST",
@@ -87,6 +91,7 @@ export async function requestAiDirector(
       messages,
       viralCharacterIds,
       dialogueMode,
+      musicTrack,
     }),
   });
 

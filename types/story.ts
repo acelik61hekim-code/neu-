@@ -55,6 +55,12 @@ export type VideoCreationMode =
   | "standard"
   | "viral-story";
 
+export type MusicVideoTrackContext = {
+  name: string;
+  durationSeconds: number;
+  analysis: string;
+};
+
 export type VideoProvider =
   | "auto"
   | "veo"

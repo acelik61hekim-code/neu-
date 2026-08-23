@@ -16,13 +16,12 @@ export const VIDEO_PRICE_CENTS = {
   120: 5499,
 
   /*
-   * Noch nicht freigegebene Langvideo-Preise.
-   * Diese Werte werden momentan nicht verkauft,
-   * da CURRENTLY_RELEASED_MAX_DURATION_SECONDS = 120 ist.
+   * Langform-Musikvideos verwenden den vollständigen hochgeladenen
+   * Song und entsprechend mehr 15-Sekunden-Renderabschnitte.
    */
-  180: 4299,
-  240: 5499,
-  300: 6499,
+  180: 8299,
+  240: 10999,
+  300: 13799,
 } as const satisfies Record<VideoDurationSeconds, number>;
 
 /*

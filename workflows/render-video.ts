@@ -8,6 +8,10 @@ import {
   VIRAL_CHARACTERS,
 } from "@/lib/viral-characters";
 
+import {
+  MUSIC_VIDEO_MAX_DURATION_SECONDS,
+} from "@/lib/music-video";
+
 import type {
   VideoAspectRatio,
   VideoDurationSeconds,
@@ -42,6 +46,8 @@ type PreparedRender = {
     dialogueCues?: DialogueCue[];
     closingText?: string;
     spokenLanguage?: "auto" | "de" | "en";
+    musicTrackUri?: string;
+    musicTrackDurationSeconds?: number;
   };
 };
 
@@ -119,6 +125,10 @@ export async function renderVideoWorkflow(
     const gate =
       await providerRenderEnabledStep(
         prepared.duration,
+        Boolean(
+          prepared.finishing
+            .musicTrackUri,
+        ),
       );
 
     if (!gate.enabled) {
@@ -902,12 +912,19 @@ async function prepareRecoveryFinalizationStep(
 
       spokenLanguage:
         job.spokenLanguage,
+
+      musicTrackUri:
+        job.musicVideoAudioUri,
+
+      musicTrackDurationSeconds:
+        job.musicVideoAudioDurationSeconds,
     },
   };
 }
 
 async function providerRenderEnabledStep(
   duration: number,
+  musicVideoMode: boolean,
 ): Promise<{
   enabled: boolean;
   reason?: string;
@@ -917,6 +934,7 @@ async function providerRenderEnabledStep(
   try {
     assertProviderRenderAllowed(
       duration,
+      musicVideoMode,
     );
 
     return {
@@ -1074,7 +1092,14 @@ async function prepareRenderJobStep(
   const postProducedDialogue =
     !viralStoryMode &&
     job.voiceMode ===
-      "dialogue";
+    "dialogue";
+
+  const musicVideoMode =
+    job.editingStyle ===
+      "music-video" &&
+    Boolean(
+      job.musicVideoAudioUri,
+    );
 
   const audioRecoveryFallback =
     !nativeCharacterDialogue &&
@@ -1084,7 +1109,9 @@ async function prepareRenderJobStep(
     ) >= 2;
 
   const selectedAudioDirection =
-    nativeDialogueAudioRetry
+    musicVideoMode
+      ? "ORIGINAL SONG WILL BE ADDED IN POST-PRODUCTION (highest priority): Generate visuals only with silent, non-vocal background audio. Do not create music, singing, lyrics, dialogue, narration, voice-over or prominent sound effects. Cut the visible action, performance, camera movement and internal shot changes to the supplied music-video beat and section plan. The complete uploaded customer song replaces all generated audio during finishing."
+      : nativeDialogueAudioRetry
       ? "AUDIO-FILTER-SAFE NATIVE CHARACTER DIALOGUE (highest priority): Use clear, emotionally tense but controlled German conversational speech from the visible assigned character with synchronized lips. The physical acting may be extremely dramatic even while the spoken delivery remains controlled. Use quiet neutral room ambience and simple Foley only. No music, narrator, voice-over, off-screen voice, shouting, screaming, crying, whispering, breathy vocalizations, singing, profanity or threats."
       : nativeCharacterDialogue
         ? "NATIVE ON-SCREEN CHARACTER DIALOGUE (highest priority): The visible active character speaks the assigned exact line audibly and naturally in German. Synchronize the voice with that character's mouth, face, emotion and body performance. Only the currently visible assigned character may speak. Voice consistency between separate shots is less important than clear in-scene speech. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
@@ -1935,6 +1962,16 @@ async function prepareRenderJobStep(
 
       spokenLanguage:
         job.spokenLanguage,
+
+      musicTrackUri:
+        musicVideoMode
+          ? job.musicVideoAudioUri
+          : undefined,
+
+      musicTrackDurationSeconds:
+        musicVideoMode
+          ? job.musicVideoAudioDurationSeconds
+          : undefined,
     },
   };
 }
@@ -3292,6 +3329,7 @@ function assertProviderRenderAllowed(
   duration:
     number |
     undefined,
+  musicVideoMode = false,
 ): void {
   if (
     process.env
@@ -3306,10 +3344,14 @@ function assertProviderRenderAllowed(
   if (
     !duration ||
     duration >
-      CURRENTLY_RELEASED_MAX_DURATION_SECONDS
+      (
+        musicVideoMode
+          ? MUSIC_VIDEO_MAX_DURATION_SECONDS
+          : CURRENTLY_RELEASED_MAX_DURATION_SECONDS
+      )
   ) {
     throw new Error(
-      `Die Videodauer ${duration || "unbekannt"}s ueberschreitet die freigegebene Grenze von ${CURRENTLY_RELEASED_MAX_DURATION_SECONDS}s.`,
+      `Die Videodauer ${duration || "unbekannt"}s ueberschreitet die freigegebene Grenze von ${musicVideoMode ? MUSIC_VIDEO_MAX_DURATION_SECONDS : CURRENTLY_RELEASED_MAX_DURATION_SECONDS}s.`,
     );
   }
 }

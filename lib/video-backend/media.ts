@@ -17,6 +17,8 @@ export type VideoFinishingOptions = {
   dialogueCues?: DialogueCue[];
   closingText?: string;
   spokenLanguage?: "auto" | "de" | "en";
+  musicTrackUri?: string;
+  musicTrackDurationSeconds?: number;
 };
 
 export type DialogueCue = {
@@ -650,15 +652,23 @@ async function finishVideo(
     );
   }
 
-  const voiceoverText =
-    options.voiceoverText?.trim() ??
+  const musicTrackUri =
+    options.musicTrackUri?.trim() ??
     "";
 
+  const voiceoverText =
+    musicTrackUri
+      ? ""
+      : options.voiceoverText?.trim() ??
+        "";
+
   const dialogueCues =
-    (
+    musicTrackUri
+      ? []
+      : (
       options.dialogueCues ??
       []
-    )
+      )
       .filter(
         (cue) =>
           Number.isFinite(
@@ -694,6 +704,63 @@ async function finishVideo(
     input,
   ];
 
+  let musicInputIndex:
+    number |
+    undefined;
+
+  let exactMusicDuration:
+    number |
+    undefined;
+
+  if (musicTrackUri) {
+    const musicInput =
+      join(
+        dir,
+        "original-song.audio",
+      );
+
+    await download(
+      musicTrackUri,
+      musicInput,
+    );
+
+    exactMusicDuration =
+      await inspectContainerDuration(
+        binary,
+        musicInput,
+      );
+
+    if (
+      !exactMusicDuration ||
+      exactMusicDuration < 15 ||
+      exactMusicDuration > 300.25
+    ) {
+      throw new Error(
+        "Die vollständige Länge des Originalsongs konnte nicht geprüft werden.",
+      );
+    }
+
+    if (
+      options.musicTrackDurationSeconds &&
+      Math.abs(
+        exactMusicDuration -
+          options.musicTrackDurationSeconds,
+      ) > 2
+    ) {
+      throw new Error(
+        "Die gespeicherte Songdauer stimmt nicht mit dem Musikvideo-Auftrag überein.",
+      );
+    }
+
+    musicInputIndex =
+      1;
+
+    args.push(
+      "-i",
+      musicInput,
+    );
+  }
+
   const sourceDuration =
     await inspectContainerDuration(
       binary,
@@ -715,7 +782,11 @@ async function finishVideo(
       inputIndex: number;
     }> = [];
 
-  let nextInputIndex = 1;
+  let nextInputIndex =
+    musicInputIndex ===
+    undefined
+      ? 1
+      : 2;
 
   function appendAudioInput(
     audio: GeneratedNarration,
@@ -820,8 +891,11 @@ async function finishVideo(
   }
 
   const maximumOutputSeconds =
-    seconds +
-    MAX_FINISHING_GRACE_SECONDS;
+    exactMusicDuration ??
+    (
+      seconds +
+      MAX_FINISHING_GRACE_SECONDS
+    );
 
   const naturalVideoEnd =
     Math.min(
@@ -863,6 +937,7 @@ async function finishVideo(
     );
 
   const outputSeconds =
+    exactMusicDuration ??
     Math.min(
       maximumOutputSeconds,
 
@@ -899,7 +974,10 @@ async function finishVideo(
     "0:v:0";
 
   let audioMap =
-    "0:a:0?";
+    musicInputIndex ===
+    undefined
+      ? "0:a:0?"
+      : `${musicInputIndex}:a:0`;
 
   const needsVideoPadding =
     outputSeconds >
@@ -1097,7 +1175,10 @@ async function finishVideo(
     "aac",
 
     "-b:a",
-    "192k",
+    musicInputIndex ===
+    undefined
+      ? "192k"
+      : "320k",
 
     "-ar",
     "48000",
@@ -1168,7 +1249,8 @@ export async function trimAndStore(
     ) &&
     !finishing.voiceoverText &&
     !finishing.dialogueCues?.length &&
-    !finishing.closingText;
+    !finishing.closingText &&
+    !finishing.musicTrackUri;
 
   if (
     canStoreProviderVideoDirectly
