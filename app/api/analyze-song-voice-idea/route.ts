@@ -90,13 +90,29 @@ export async function POST(request: Request) {
 
     const ai = new GoogleGenAI({ apiKey });
     const inputAudio = await normalizeAudioForAnalysis(Buffer.from(await value.arrayBuffer()), mimeType);
-    const referenceSong = formData.get("purpose") === "reference-song";
+    const purpose = formData.get("purpose");
+    const referenceSong = purpose === "reference-song";
+    const musicVideo = purpose === "music-video";
+    const originalDuration = Number(formData.get("durationSeconds"));
+    const windowMap = typeof formData.get("windowMap") === "string"
+      ? String(formData.get("windowMap")).slice(0, 1_500)
+      : "";
     const interaction = await ai.interactions.create({
       model: "gemini-3.6-flash",
       input: [
         {
           type: "text",
-          text: referenceSong
+          text: musicVideo
+            ? [
+                "Analyze this sampled overview of a complete customer-owned song for planning a synchronized original music video.",
+                `The complete source song lasts approximately ${Number.isFinite(originalDuration) ? originalDuration.toFixed(2) : "unknown"} seconds.`,
+                windowMap ? `The concatenated analysis windows map to the original timeline as follows: ${windowMap}` : "The audio is a representative overview of the song.",
+                "Describe approximate BPM or pace, genre, mood, instrumentation, vocal presence and delivery, rhythmic accents, energy changes, likely intro, verse, pre-chorus, chorus, drop, bridge and outro positions on the original timeline.",
+                "Turn those observations into precise German editing guidance: which visual intensity, performance coverage, narrative development, camera movement and transition rhythm belongs to each musical section.",
+                "Do not identify a performer or existing work and do not transcribe or quote lyrics.",
+                "Return only a compact German music-video brief of 7 to 11 sentences without Markdown.",
+              ].join(" ")
+            : referenceSong
             ? [
                 "Analyze this complete reference song so a new, legally distinct reinterpretation can be composed.",
                 "Describe approximate BPM or pace, groove, tonal mood, instrumentation, bass and drum character, melodic contour, harmonic feel, dynamics, section structure and the generic vocal profile and delivery.",

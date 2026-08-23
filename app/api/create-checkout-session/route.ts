@@ -4,6 +4,7 @@ import {
 } from "next/server";
 
 import { nanoid } from "nanoid";
+import { head } from "@vercel/blob";
 
 import { stripe } from "../../../lib/stripe";
 
@@ -26,6 +27,12 @@ import {
 import {
   checkRateLimit,
 } from "../../../lib/rate-limit";
+
+import {
+  MUSIC_VIDEO_AUDIO_TYPES,
+  MUSIC_VIDEO_MAX_AUDIO_BYTES,
+  getMusicVideoDurationBucket,
+} from "../../../lib/music-video";
 
 import {
   jobStore,
@@ -105,6 +112,12 @@ type CheckoutRequest = {
   referenceImageUri?: unknown;
 
   referenceImageMimeType?: unknown;
+
+  musicVideoAudioUri?: unknown;
+  musicVideoAudioMimeType?: unknown;
+  musicVideoAudioName?: unknown;
+  musicVideoAudioDurationSeconds?: unknown;
+  musicVideoAudioAnalysis?: unknown;
 };
 
 function missingProductionServices():
@@ -890,9 +903,22 @@ export async function POST(
       body.format,
     );
 
+  const editingStyle =
+    normalizeEditingStyle(
+      body.editingStyle,
+    );
+
+  const musicVideoMode =
+    editingStyle ===
+    "music-video";
+
   if (
     !isReleasedVideoDuration(
       targetDurationSeconds,
+    ) &&
+    !(
+      musicVideoMode &&
+      targetDurationSeconds <= 300
     )
   ) {
     return NextResponse.json(
@@ -969,6 +995,133 @@ export async function POST(
   const spokenLanguage =
     body.spokenLanguage as
       VideoSpokenLanguage;
+
+  const musicVideoAudioUri =
+    typeof body.musicVideoAudioUri ===
+      "string"
+      ? body.musicVideoAudioUri.trim()
+      : "";
+
+  const musicVideoAudioMimeType =
+    typeof body.musicVideoAudioMimeType ===
+      "string"
+      ? body.musicVideoAudioMimeType
+          .toLowerCase()
+          .split(";")[0]
+          .trim()
+      : "";
+
+  const musicVideoAudioName =
+    typeof body.musicVideoAudioName ===
+      "string"
+      ? body.musicVideoAudioName
+          .trim()
+          .slice(0, 180)
+      : "";
+
+  const musicVideoAudioDurationSeconds =
+    Number(
+      body.musicVideoAudioDurationSeconds,
+    );
+
+  const musicVideoAudioAnalysis =
+    typeof body.musicVideoAudioAnalysis ===
+      "string"
+      ? body.musicVideoAudioAnalysis
+          .trim()
+          .slice(0, 2_500)
+      : "";
+
+  if (musicVideoMode) {
+    let expectedDuration:
+      VideoDurationSeconds;
+
+    try {
+      expectedDuration =
+        getMusicVideoDurationBucket(
+          musicVideoAudioDurationSeconds,
+        );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Die Songdauer ist ungültig.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const supportedMimeType =
+      MUSIC_VIDEO_AUDIO_TYPES.includes(
+        musicVideoAudioMimeType as
+          (typeof MUSIC_VIDEO_AUDIO_TYPES)[number],
+      );
+
+    if (
+      !musicVideoAudioUri.startsWith(
+        "blob:music-video-audio/",
+      ) ||
+      !musicVideoAudioName ||
+      !supportedMimeType ||
+      musicVideoAudioAnalysis.length < 20 ||
+      expectedDuration !==
+        targetDurationSeconds ||
+      audioStyle !==
+        "no-music" ||
+      voiceMode !==
+        "no-voice"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Die Angaben zum vollständigen Originalsong sind unvollständig oder passen nicht zur Videolänge. Es wurde nichts berechnet.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    try {
+      const storedAudio =
+        await head(
+          musicVideoAudioUri.slice(
+            "blob:".length,
+          ),
+        );
+
+      if (
+        storedAudio.size < 1_000 ||
+        storedAudio.size > MUSIC_VIDEO_MAX_AUDIO_BYTES ||
+        !storedAudio.pathname.startsWith(
+          "music-video-audio/",
+        ) ||
+        !storedAudio.contentType.startsWith(
+          "audio/",
+        )
+      ) {
+        throw new Error(
+          "Die gespeicherte Songdatei ist ungültig.",
+        );
+      }
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Der hochgeladene Originalsong konnte nicht geprüft werden.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+  }
 
   const hasViralStudioDialogue =
     hasValidViralDialoguePlan(
@@ -1145,11 +1298,6 @@ export async function POST(
       body.aspectRatio,
     );
 
-  const editingStyle =
-    normalizeEditingStyle(
-      body.editingStyle,
-    );
-
   /*
    * 15 Sekunden ist jetzt das neue
    * Short-Format.
@@ -1209,6 +1357,31 @@ export async function POST(
       voiceMode,
 
       spokenLanguage,
+
+      musicVideoAudioUri:
+        musicVideoMode
+          ? musicVideoAudioUri
+          : undefined,
+
+      musicVideoAudioMimeType:
+        musicVideoMode
+          ? musicVideoAudioMimeType
+          : undefined,
+
+      musicVideoAudioName:
+        musicVideoMode
+          ? musicVideoAudioName
+          : undefined,
+
+      musicVideoAudioDurationSeconds:
+        musicVideoMode
+          ? musicVideoAudioDurationSeconds
+          : undefined,
+
+      musicVideoAudioAnalysis:
+        musicVideoMode
+          ? musicVideoAudioAnalysis
+          : undefined,
 
       nativeCharacterDialogue:
         /*
@@ -1289,6 +1462,16 @@ export async function POST(
 
         hasReferenceImage:
           "true",
+
+        hasOriginalSong:
+          musicVideoMode
+            ? "true"
+            : "false",
+
+        originalSongDurationSeconds:
+          musicVideoMode
+            ? musicVideoAudioDurationSeconds.toFixed(2)
+            : "",
 
         format:
           videoFormat,

@@ -13,6 +13,11 @@ import {
   isStudioWebsiteAdvertisement,
 } from "@/lib/studio-brand";
 import { getViralCharacters } from "@/lib/viral-characters";
+import { isMusicVideoTrackContext } from "@/lib/music-video";
+
+import type {
+  MusicVideoTrackContext,
+} from "@/types/story";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +31,7 @@ type RequestBody = {
   messages?: ConversationMessage[];
   viralCharacterIds?: unknown;
   dialogueMode?: unknown;
+  musicTrack?: unknown;
 };
 
 type StoryCharacter = {
@@ -518,6 +524,7 @@ async function generateWithRetry(
     }>;
   }>,
   dialogueMode = false,
+  musicTrack?: MusicVideoTrackContext,
 ) {
   let lastError: unknown;
 
@@ -539,6 +546,16 @@ async function generateWithRetry(
             [
               SYSTEM_INSTRUCTION,
               dialogueMode ? DIALOGUE_SYSTEM_INSTRUCTION : "",
+              musicTrack
+                ? [
+                    "VERBINDLICHER MUSIKVIDEO-MODUS",
+                    `Der vollständige Originalsong „${musicTrack.name}“ dauert ${musicTrack.durationSeconds.toFixed(2)} Sekunden.`,
+                    `Musikalische Analyse: ${musicTrack.analysis}`,
+                    "Die Story muss als Musikvideoidee funktionieren und der Bildbogen muss den musikalischen Abschnitten, Energieänderungen, Refrains, Drops, Bridge und Outro folgen.",
+                    "Plane keine zusätzliche Musik, Dialoge, Erzählerstimme oder gesprochene Handlung. Die hochgeladene Originaldatei ist später die einzige Tonspur.",
+                    "Wenn die visuelle Idee des Nutzers ausreichend ist, ergänze fehlende Schauplätze, Motive und Übergänge selbst und setze ready sofort auf true.",
+                  ].join("\n")
+                : "",
             ].filter(Boolean).join("\n\n"),
 
           responseMimeType:
@@ -728,6 +745,11 @@ export async function POST(
         ai,
         conversation,
         body.dialogueMode === true,
+        isMusicVideoTrackContext(
+          body.musicTrack,
+        )
+          ? body.musicTrack
+          : undefined,
       );
 
     const responseText =

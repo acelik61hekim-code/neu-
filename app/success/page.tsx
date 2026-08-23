@@ -81,6 +81,10 @@ type VideoStatus = {
 
   nativeCharacterDialogue?: boolean;
 
+  musicVideoAudioName?: string;
+  musicVideoAudioDurationSeconds?: number;
+  hasOriginalSong?: boolean;
+
   trashTvReactionBoost?: boolean;
 
   hasReferenceImage?: boolean;
@@ -153,16 +157,20 @@ function formatDuration(
     return `${seconds} Sekunden`;
   }
 
-  const minutes =
-    seconds /
-    60;
+  const rounded =
+    Math.round(seconds);
 
-  return `${minutes} ${
-    minutes ===
-    1
-      ? "Minute"
-      : "Minuten"
-  }`;
+  const minutes =
+    Math.floor(rounded / 60);
+
+  const remainingSeconds =
+    rounded % 60;
+
+  if (remainingSeconds > 0) {
+    return `${minutes}:${String(remainingSeconds).padStart(2, "0")} Minuten`;
+  }
+
+  return `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`;
 }
 
 function formatEditingStyle(
@@ -896,7 +904,8 @@ function StatusCard({
 
   const duration =
     formatDuration(
-      videoStatus.targetDurationSeconds,
+      videoStatus.musicVideoAudioDurationSeconds ??
+        videoStatus.targetDurationSeconds,
     );
 
   const editingStyle =
@@ -1068,11 +1077,21 @@ function StatusCard({
                   </DetailPill>
                 )}
 
-                {audioStyle && (
+                {videoStatus.hasOriginalSong ? (
+                  <DetailPill>
+                    Originalsong vollständig
+                  </DetailPill>
+                ) : audioStyle && (
                   <DetailPill>
                     {
                       audioStyle
                     }
+                  </DetailPill>
+                )}
+
+                {videoStatus.musicVideoAudioName && (
+                  <DetailPill>
+                    {videoStatus.musicVideoAudioName}
                   </DetailPill>
                 )}
 

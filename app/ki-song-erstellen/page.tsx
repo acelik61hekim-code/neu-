@@ -1,4 +1,4 @@
-import { StudioHome } from "@/app/page";
+import StudioHome from "@/components/StudioHome";
 import SeoContent, { type SeoFaq } from "@/components/SeoContent";
 import { productJsonLd, productMetadata } from "@/lib/seo";
 import { STUDIO_PATHS } from "@/lib/site";

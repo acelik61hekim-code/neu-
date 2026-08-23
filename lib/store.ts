@@ -107,6 +107,18 @@ export type VideoJob = {
     VideoSpokenLanguage;
 
   /*
+   * Bei einem Musikvideo ersetzt diese private Originaldatei die
+   * komplette Seedance-Tonspur im finalen Schnitt. Die technische
+   * Renderlänge kann auf den nächsten Tarifblock aufgerundet sein;
+   * musicVideoAudioDurationSeconds bleibt die exakte Ausgabelänge.
+   */
+  musicVideoAudioUri?: string;
+  musicVideoAudioMimeType?: string;
+  musicVideoAudioName?: string;
+  musicVideoAudioDurationSeconds?: number;
+  musicVideoAudioAnalysis?: string;
+
+  /*
    * Exakter Sprechertext und sauber gerenderte Schluss-Einblendung.
    * Beide werden erst in der technischen Nachbearbeitung hinzugefügt,
    * damit Veo keine Fantasieschrift oder fehlerhafte Aussprache erzeugt.

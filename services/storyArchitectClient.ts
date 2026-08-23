@@ -3,6 +3,7 @@ import type {
   CameraBible,
   CharacterBibleEntry,
   LightingBible,
+  MusicVideoTrackContext,
   MovieContinuation,
   MovieOpening,
   MoviePlan,
@@ -1532,6 +1533,9 @@ export async function requestStoryArchitect(
   creationMode:
     VideoCreationMode =
     "standard",
+
+  musicTrack?:
+    MusicVideoTrackContext,
 ): Promise<Story> {
   if (
     !isVideoDurationSeconds(
@@ -1627,6 +1631,8 @@ export async function requestStoryArchitect(
             closingText,
 
             creationMode,
+
+            musicTrack,
           }),
       },
     );

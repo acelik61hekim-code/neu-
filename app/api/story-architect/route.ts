@@ -9,6 +9,7 @@ import {
 } from "@/lib/audio-options";
 
 import { checkRateLimit } from "@/lib/rate-limit";
+import { isMusicVideoTrackContext } from "@/lib/music-video";
 
 import {
   STUDIO_BRAND_CONTEXT,
@@ -22,6 +23,7 @@ import {
 
 import type {
   MovieContinuation,
+  MusicVideoTrackContext,
   MovieOpening,
   MoviePlan,
   ProductionBible,
@@ -66,6 +68,7 @@ type StoryArchitectRequest = {
   voiceoverText?: unknown;
   closingText?: unknown;
   creationMode?: unknown;
+  musicTrack?: unknown;
 };
 
 const SUPPORTED_VIDEO_DURATIONS = [
@@ -3267,6 +3270,8 @@ function buildStoryPrompt(
     string,
   creationMode:
     VideoCreationMode,
+  musicTrack?:
+    MusicVideoTrackContext,
 ): string {
   const studioAdvertisement =
     isStudioWebsiteAdvertisement(
@@ -3326,6 +3331,32 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
     buildDurationPlan(
       targetDurationSeconds,
     );
+
+  const activeMusicTrack =
+    editingStyle === "music-video" &&
+    musicTrack
+      ? musicTrack
+      : undefined;
+
+  const finalOutputSeconds =
+    activeMusicTrack?.durationSeconds ??
+    targetDurationSeconds;
+
+  const musicTrackSection =
+    activeMusicTrack
+      ? `
+VERBINDLICHER ORIGINALSONG
+
+- Dateiname: ${activeMusicTrack.name}
+- Exakte finale Videolänge: ${activeMusicTrack.durationSeconds.toFixed(2)} Sekunden.
+- Musikalische Analyse: ${activeMusicTrack.analysis}
+- Die hochgeladene Audiodatei bleibt von Sekunde null bis zum vollständigen Ende die einzige finale Tonspur.
+- Plane Bildwechsel, Bewegungsintensität, Performance und Übergänge passend zu den analysierten Songabschnitten.
+- Wiederkehrende Refrains erhalten ein wiedererkennbares visuelles Leitmotiv; Strophen entwickeln Handlung oder Performance weiter; Bridge und Outro bekommen eigene Bildideen.
+- Keine zusätzliche Musik, keine Dialoge, keine Sprecherstimme und keine hörbaren Seedance-Vocals.
+- Der technische Renderblock reicht bis ${targetDurationSeconds} Sekunden. Alles nach Sekunde ${activeMusicTrack.durationSeconds.toFixed(2)} wird verworfen. Höhepunkt, Auflösung und finales Bild müssen deshalb spätestens bis zum tatsächlichen Songende abgeschlossen sein.
+`
+      : "";
 
   const openingDurationSeconds =
     getOpeningDurationSeconds(
@@ -3488,7 +3519,7 @@ ${chapterDescription}
       durationPlan
         .generatedDurationSeconds,
 
-      targetDurationSeconds +
+      finalOutputSeconds +
         2,
     );
 
@@ -3540,8 +3571,10 @@ SCHNITTSTIL: KINO / FILM
 SCHNITTSTIL: MUSIKVIDEO
 
 - Plane wiedererkennbare Bildmotive.
-- Übergänge dürfen auf musikalische Abschnitte reagieren.
+- Übergänge und Bewegungen reagieren gezielt auf Takt, Akzente, Refrains, Drops, Bridge und Outro.
 - Kombiniere Performance-, Narrative- und Atmosphären-Shots.
+- Jeder 15-Sekunden-Abschnitt erhält mehrere klar geplante interne Einstellungen statt eines statischen Dauershots.
+- Schnelle Songteile nutzen motivierte kurze Einstellungen; ruhige Teile längere Kamerabewegungen und emotionale Close-ups.
 `
         : editingStyle ===
             "auto"
@@ -3564,6 +3597,8 @@ SCHNITTSTIL: SOCIAL / REELS
     creationMode ===
     "viral-story"
       ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short German lines and clear sentence-paced mouth, jaw, face and body performance for each visible assigned character. Seedance creates only restrained non-vocal ambience and music; fixed studio-quality German character voices are mixed scene-synchronously during finishing. No narrator, no voice-over, no off-screen speech and no subtitles."
+      : activeMusicTrack
+        ? "ORIGINAL UPLOADED SONG: Generate visuals with no audible dialogue, singing, narration or extra music. The complete customer song is added as the only final soundtrack during finishing. Plan visible performance and edit rhythm from the supplied musical analysis."
       : voiceMode ===
           "dialogue"
         ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE: Plan exact short lines and visible sentence-paced speaking performances, but keep generated footage free of audible speech. Fixed voices are mixed later."
@@ -3619,6 +3654,8 @@ Neue Zeitarchitektur:
 ${studioAdvertisementSection}
 
 ${viralStorySection}
+
+${musicTrackSection}
 
 AUSGEWÄHLTE VIDEO-LÄNGE
 
@@ -4169,6 +4206,13 @@ export async function POST(
           )
       : "";
 
+  const musicTrack =
+    isMusicVideoTrackContext(
+      body.musicTrack,
+    )
+      ? body.musicTrack
+      : undefined;
+
   const prompt =
     buildStoryPrompt(
       story,
@@ -4181,6 +4225,7 @@ export async function POST(
       voiceoverText,
       closingText,
       creationMode,
+      musicTrack,
     );
 
   try {

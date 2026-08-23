@@ -1,4 +1,4 @@
-import { StudioHome } from "@/app/page";
+import StudioHome from "@/components/StudioHome";
 import SeoContent, { type SeoFaq } from "@/components/SeoContent";
 import { VIDEO_PRICE_CENTS } from "@/lib/pricing";
 import { productJsonLd, productMetadata } from "@/lib/seo";
@@ -8,7 +8,7 @@ const title =
   "KI-Video erstellen aus Text – online mit KI";
 
 const description =
-  "Erstelle dein individuelles KI-Video aus einer Textidee: mit Vorschau, Musik oder Sprache, verschiedenen Formaten und bis zu zwei Minuten Länge.";
+  "Erstelle dein individuelles KI-Video aus einer Textidee oder lade deinen fertigen Song für ein passendes Musikvideo mit vollständiger Originaltonspur hoch.";
 
 const faqs: SeoFaq[] = [
   {
@@ -16,7 +16,7 @@ const faqs: SeoFaq[] = [
       "Welche Videolängen kann ich erstellen?",
 
     answer:
-      "Du kannst aktuell zwischen 15 Sekunden, 30 Sekunden, einer Minute und zwei Minuten wählen. Längere Formate werden erst nach abgeschlossenen Qualitätstests freigeschaltet.",
+      "Normale KI-Videos kannst du mit 15 Sekunden, 30 Sekunden, einer Minute oder zwei Minuten erstellen. Für Musikvideos übernimmt die Seite einen hochgeladenen Song vollständig und unterstützt dadurch eine exakte Songlänge von bis zu fünf Minuten.",
   },
   {
     question:
@@ -31,6 +31,13 @@ const faqs: SeoFaq[] = [
 
     answer:
       "Der KI-Regisseur entwickelt zunächst Story und Szenenplan. Zusätzlich kannst du eine visuelle Vorschau erzeugen, bevor du das vollständige Video bestellst.",
+  },
+  {
+    question:
+      "Kann ich meinen eigenen Song für ein Musikvideo hochladen?",
+
+    answer:
+      "Ja. Lade deinen fertigen Song hoch und beschreibe deine Bildidee. Tempo, Stimmung und Energieverlauf werden für die Szenenplanung analysiert; der vollständige Originalsong bleibt anschließend die einzige finale Tonspur des Musikvideos.",
   },
 ];
 
@@ -79,19 +86,20 @@ const jsonLd =
     highPrice:
       String(
         VIDEO_PRICE_CENTS[
-          120
+          300
         ] /
           100,
       ),
 
     offerCount:
-      4,
+      7,
 
     features: [
       "Text zu Video",
       "Story- und Szenenplanung",
       "Formate 9:16 und 16:9",
-      "Videos bis zu zwei Minuten",
+      "Eigene Songs vollständig übernehmen",
+      "Musikvideos bis zu fünf Minuten",
     ],
 
     faqs,
@@ -120,18 +128,18 @@ export default function VideoStudioPage() {
         title="Aus deiner Beschreibung entsteht ein individuelles KI-Video"
         intro="Beschreibe Handlung, Stil und gewünschte Stimmung. Der KI-Regisseur strukturiert deine Idee, plant passende Szenen und bereitet daraus ein Video für Social Media, YouTube oder ein filmisches Projekt vor."
         benefits={[
-          "Wähle zwischen 15 Sekunden, 30 Sekunden, einer Minute und zwei Minuten.",
+          "Erstelle normale KI-Videos bis zwei Minuten oder Musikvideos mit deinem vollständigen Song bis fünf Minuten.",
 
           "Erstelle vertikale 9:16-Videos oder filmische 16:9-Aufnahmen.",
 
-          "Bestimme Musik, Sprache, Schnittstil und eigene Referenzbilder.",
+          "Lass Tempo, Stimmung und Songverlauf analysieren, damit Szenen und Schnitte zu deiner Musik passen.",
         ]}
         steps={[
-          "Wähle Videolänge, Format, Schnittstil, Musik und gewünschte Sprache.",
+          "Wähle den Musikvideo-Modus, lade deinen fertigen Song hoch und bestimme Format und Schnittstil.",
 
-          "Beschreibe deine Idee und lass Story, Figuren und Szenen durch den KI-Regisseur planen.",
+          "Beschreibe deine Bildidee und lass Story, Figuren und Szenen passend zu den Songabschnitten planen.",
 
-          "Prüfe die Vorschau, bezahle sicher und lade das fertige Video anschließend herunter.",
+          "Prüfe die Vorschau, bezahle sicher und lade das fertige Musikvideo mit vollständiger Originaltonspur herunter.",
         ]}
         faqs={
           faqs

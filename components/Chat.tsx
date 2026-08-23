@@ -19,6 +19,7 @@ import {
 
 import type {
   Story,
+  MusicVideoTrackContext,
   VideoAspectRatio,
   VideoAudioStyle,
   VideoDurationSeconds,
@@ -55,6 +56,7 @@ type ChatProps = {
   spokenLanguage?: VideoSpokenLanguage;
   voiceoverText?: string;
   closingText?: string;
+  musicTrack?: MusicVideoTrackContext;
   onViralStoryStart?: (
     characters: ViralCharacter[],
   ) => Promise<void> | void;
@@ -126,6 +128,7 @@ export default function Chat({
   spokenLanguage = "de",
   voiceoverText = "",
   closingText = "",
+  musicTrack,
   onViralStoryStart,
 }: ChatProps) {
   const [
@@ -133,7 +136,15 @@ export default function Chat({
     setMessages,
   ] =
     useState<Message[]>([
-      INITIAL_MESSAGE,
+      editingStyle === "music-video"
+        ? {
+            ...INITIAL_MESSAGE,
+            content:
+              musicTrack
+                ? `Ich habe „${musicTrack.name}“ analysiert. Beschreibe jetzt nur noch deine gewünschte Musikvideo-Idee – Schauplatz, Personen, Handlung oder Look. Den Bildbogen und die Schnitte passe ich automatisch an den Song an.`
+                : "Lade zuerst deinen vollständigen Song hoch. Danach beschreibst du nur noch die gewünschte Musikvideo-Idee.",
+          }
+        : INITIAL_MESSAGE,
     ]);
 
   const [
@@ -360,6 +371,11 @@ export default function Chat({
           !isViralStory &&
             voiceMode ===
               "dialogue",
+
+          editingStyle ===
+              "music-video"
+            ? musicTrack
+            : undefined,
         );
 
       const assistantMessage:
@@ -441,6 +457,11 @@ export default function Chat({
           isViralStory
             ? "viral-story"
             : "standard",
+
+          editingStyle ===
+              "music-video"
+            ? musicTrack
+            : undefined,
         );
 
       if (
@@ -726,7 +747,9 @@ export default function Chat({
 
       <div className="flex flex-1 flex-col">
         <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
-          {!finished ? (
+          {!finished &&
+          editingStyle !==
+            "music-video" ? (
             <ViralStoryStarter
               disabled={
                 isProcessing ||

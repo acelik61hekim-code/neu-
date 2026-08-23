@@ -15,6 +15,8 @@ type StoryPreviewProps = {
   prompt: string;
   loading: boolean;
   targetDurationSeconds: VideoDurationSeconds;
+  actualDurationSeconds?: number;
+  usesOriginalSong?: boolean;
   aspectRatio: VideoAspectRatio;
 
   /*
@@ -38,10 +40,14 @@ const storyFeatures = [
   "Kontinuität für ein zusammenhängendes Video",
 ];
 
-function formatDuration(seconds: VideoDurationSeconds): string {
+function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds} Sekunden`;
-  const minutes = seconds / 60;
-  return `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`;
+  const rounded = Math.round(seconds);
+  const minutes = Math.floor(rounded / 60);
+  const remainingSeconds = rounded % 60;
+  return remainingSeconds === 0
+    ? `${minutes} ${minutes === 1 ? "Minute" : "Minuten"}`
+    : `${minutes}:${String(remainingSeconds).padStart(2, "0")} Minuten`;
 }
 
 export default function StoryPreview(
@@ -51,8 +57,23 @@ export default function StoryPreview(
     prompt,
     loading,
     targetDurationSeconds,
+    actualDurationSeconds,
+    usesOriginalSong = false,
     aspectRatio,
   } = props;
+
+  const displayedDuration =
+    actualDurationSeconds ??
+    targetDurationSeconds;
+
+  const displayedFeatures =
+    storyFeatures.map(
+      (feature) =>
+        usesOriginalSong &&
+        feature === "Musik, Dialoge und Soundeffekte"
+          ? "Vollständiger Originalsong als finale Tonspur"
+          : feature,
+    );
 
   const hasPrompt =
     prompt.trim().length > 0;
@@ -156,7 +177,7 @@ export default function StoryPreview(
             </h2>
 
             <p className="mt-0.5 text-xs text-zinc-500">
-              Dein zukünftiges {formatDuration(targetDurationSeconds)}-Videoprojekt
+              Dein zukünftiges {formatDuration(displayedDuration)}-Videoprojekt
             </p>
           </div>
         </div>
@@ -191,7 +212,7 @@ export default function StoryPreview(
               </div>
 
               <p className="mt-4 text-sm font-medium text-zinc-300">
-                {formatDuration(targetDurationSeconds)}-Video
+                {formatDuration(displayedDuration)}-Video
               </p>
 
               <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-zinc-600">
@@ -206,7 +227,7 @@ export default function StoryPreview(
           </div>
 
           <div className="absolute bottom-3 right-3 rounded-lg border border-white/10 bg-black/50 px-2.5 py-1 text-xs text-zinc-400 backdrop-blur">
-            ca. {formatDuration(targetDurationSeconds)}
+            {usesOriginalSong ? "exakt" : "ca."} {formatDuration(displayedDuration)}
           </div>
         </div>
 
@@ -323,7 +344,7 @@ export default function StoryPreview(
           </p>
 
           <div className="grid gap-2 sm:grid-cols-2">
-            {storyFeatures.map(
+            {displayedFeatures.map(
               (feature) => (
                 <div
                   key={feature}
