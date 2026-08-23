@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { nanoid } from "nanoid";
+import { start } from "workflow/api";
 
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
@@ -15,7 +16,11 @@ import {
   songLengthLabel,
 } from "@/lib/song";
 import { songStore } from "@/lib/song-store";
+import { createSongAccessToken } from "@/lib/song-access";
+import { getActiveSongSubscription } from "@/lib/song-subscription";
+import { reserveSubscriptionUsage } from "@/lib/song-subscription-usage";
 import { stripe } from "@/lib/stripe";
+import { renderSongWorkflow } from "@/workflows/render-song";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,6 +40,7 @@ type SongCheckoutRequest = {
   revisionMode?: unknown;
   revisionApproach?: unknown;
   referenceRightsAccepted?: unknown;
+  useSubscription?: unknown;
 };
 
 function textValue(value: unknown, maximum: number): string {
@@ -135,13 +141,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const useSubscription = body.useSubscription === true;
+  const subscription = useSubscription ? await getActiveSongSubscription(request).catch(() => null) : null;
+  if (useSubscription && !subscription) {
+    return NextResponse.json({ error: "Dein Song-Abo konnte nicht bestätigt werden. Bitte öffne die Seite nach der Abo-Aktivierung erneut." }, { status: 401 });
+  }
+  if (subscription) {
+    const reservation = await reserveSubscriptionUsage({
+      subscriptionId: subscription.subscriptionId,
+      periodStart: subscription.periodStart,
+      periodEnd: subscription.periodEnd,
+      kind: "songs",
+      limit: subscription.plan.songsPerMonth,
+    });
+    if (!reservation.allowed) {
+      return NextResponse.json({ error: "Dein monatliches Songkontingent ist aufgebraucht. Du kannst diesen Song weiterhin einzeln kaufen." }, { status: 409 });
+    }
+  }
+
   const jobId = nanoid();
+  const access = subscription ? createSongAccessToken() : null;
   const now = Date.now();
   await songStore.set(jobId, {
-    status: "pending",
-    paymentStatus: "unpaid",
+    status: subscription ? "processing" : "pending",
+    paymentStatus: subscription ? "paid" : "unpaid",
     renderStage: "queued",
-    progressPercent: 0,
+    progressPercent: subscription ? 5 : 0,
     title: title || undefined,
     description: description || "Song nach der analysierten Sprachidee des Kunden",
     style: style || "Modern und hochwertig produziert",
@@ -154,6 +179,10 @@ export async function POST(request: NextRequest) {
     voiceIdeaAnalysis: voiceIdeaAnalysis || undefined,
     revisionMode,
     revisionApproach,
+    subscriptionId: subscription?.subscriptionId,
+    subscriptionPlanId: subscription?.plan.id,
+    accessTokenHash: access?.hash,
+    paidAt: subscription ? now : undefined,
     createdAt: now,
     updatedAt: now,
   });
@@ -162,6 +191,19 @@ export async function POST(request: NextRequest) {
   process.env.APP_URL?.trim() ||
   request.nextUrl.origin;
   try {
+    if (subscription && access) {
+      const claimed = await songStore.claimWorkflowStart(jobId, `subscription:${subscription.subscriptionId}`);
+      if (!claimed) throw new Error("Der Songstart konnte nicht reserviert werden.");
+      const run = await start(renderSongWorkflow, [jobId]);
+      await songStore.confirmWorkflowStarted(jobId, run.runId);
+      await songStore.update(jobId, (current) => ({ ...current, workflowRunId: run.runId }));
+      return NextResponse.json({
+        url: `${appUrl}/song-success?jobId=${encodeURIComponent(jobId)}&access_token=${encodeURIComponent(access.token)}`,
+        jobId,
+        included: true,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       allow_promotion_codes: true,

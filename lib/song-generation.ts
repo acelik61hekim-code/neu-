@@ -93,7 +93,7 @@ export function resolveLocalSongPath(
   return destination;
 }
 
-async function storeAudio(
+export async function storeSongAudio(
   jobId: string,
   audio: Buffer,
   mimeType: string,
@@ -1537,7 +1537,7 @@ export async function generateAndStoreSong(
    * MP3 in unserem eigenen Storage speichern.
    */
   const audioUri =
-    await storeAudio(
+    await storeSongAudio(
       jobId,
       candidate.audio,
       candidate.generatedAudio

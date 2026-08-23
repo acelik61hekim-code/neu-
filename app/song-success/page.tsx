@@ -16,6 +16,7 @@ type SongStatus = {
   lyricsMode?: "instrumental" | "ai" | "custom";
   generatedLyrics?: string;
   audioUrl?: string;
+  studioUrl?: string;
   errorMessage?: string;
 };
 
@@ -36,11 +37,12 @@ function SongSuccessContent() {
   const params = useSearchParams();
   const jobId = params.get("jobId");
   const sessionId = params.get("session_id");
+  const accessToken = params.get("access_token");
   const [status, setStatus] = useState<SongStatus>({ status: "pending", progressPercent: 0 });
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!jobId || !sessionId) {
+    if (!jobId || (!sessionId && !accessToken)) {
       setStatus({ status: "error", errorMessage: "Der sichere Link zu deinem Song ist unvollständig." });
       return;
     }
@@ -53,7 +55,7 @@ function SongSuccessContent() {
       if (refreshing) return;
       refreshing = true;
       try {
-        if (!confirmed) {
+        if (!confirmed && sessionId) {
           const response = await fetch("/api/confirm-song-checkout", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -63,7 +65,10 @@ function SongSuccessContent() {
           if (!response.ok && response.status !== 202) throw new Error(data.error || "Die Zahlung wird geprüft.");
           confirmed = true;
         }
-        const response = await fetch(`/api/song-status?jobId=${encodeURIComponent(jobId)}&session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
+        const accessQuery = sessionId
+          ? `session_id=${encodeURIComponent(sessionId)}`
+          : `access_token=${encodeURIComponent(accessToken!)}`;
+        const response = await fetch(`/api/song-status?jobId=${encodeURIComponent(jobId)}&${accessQuery}`, { cache: "no-store" });
         const data = await response.json() as SongStatus & { error?: string };
         if (!response.ok) throw new Error(data.error || "Der Songstatus konnte nicht geladen werden.");
         if (stopped) return;
@@ -80,7 +85,7 @@ function SongSuccessContent() {
     void refresh();
     interval = setInterval(() => void refresh(), 4000);
     return () => { stopped = true; if (interval) clearInterval(interval); };
-  }, [jobId, sessionId]);
+  }, [jobId, sessionId, accessToken]);
 
   return <Page status={status} connectionError={connectionError} />;
 }
@@ -128,7 +133,7 @@ function Page({ status, connectionError }: { status: SongStatus; connectionError
 
             {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p></div></div></div>}
 
-            <div className="mt-7 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-6"><a className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-2.5 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href="/?studio=song&revise=1">Diesen Song bearbeiten</a><a className="px-4 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:text-fuchsia-200" href="/songs">Weiteren Song erstellen</a></div>
+            <div className="mt-7 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-6"><a className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-2.5 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href={status.studioUrl || "/ki-song-erstellen#song-abos"}>{status.studioUrl ? "Im Sound Studio bearbeiten" : "Sound Studio freischalten"}</a><a className="px-4 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:text-fuchsia-200" href="/songs">Weiteren Song erstellen</a></div>
           </div>
         </section>
       </div>
