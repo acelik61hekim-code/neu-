@@ -29,6 +29,15 @@ export type StartAceDataSongInput = {
   custom?: boolean;
 };
 
+export type StartAceDataReplaceSectionInput = {
+  audioId: string;
+  startSeconds: number;
+  endSeconds: number;
+  lyrics?: string;
+  style?: string;
+  title?: string;
+};
+
 type StartSongResponse = {
   task_id?: string;
   trace_id?: string;
@@ -468,4 +477,44 @@ export async function downloadAceDataAudio(
   }
 
   return audio;
+}
+
+export async function startAceDataReplaceSection(
+  input: StartAceDataReplaceSectionInput,
+): Promise<{ taskId: string; traceId?: string }> {
+  const audioId = input.audioId.trim();
+  if (!audioId) throw new Error("Die Suno-Song-ID fehlt.");
+  if (!Number.isFinite(input.startSeconds) || !Number.isFinite(input.endSeconds) || input.startSeconds < 0 || input.endSeconds <= input.startSeconds) {
+    throw new Error("Der ausgewählte Songabschnitt ist ungültig.");
+  }
+
+  const body: Record<string, unknown> = {
+    model: getModel(),
+    action: "replace_section",
+    async: true,
+    audio_id: audioId,
+    replace_section_start: Number(input.startSeconds.toFixed(2)),
+    replace_section_end: Number(input.endSeconds.toFixed(2)),
+  };
+  const lyrics = normalizeLyrics(input.lyrics);
+  const style = normalizeStyle(input.style);
+  if (lyrics) body.lyric = lyrics;
+  if (style) body.style = style;
+  if (input.title?.trim()) body.title = input.title.trim().slice(0, 200);
+
+  const response = await fetch(`${ACEDATA_BASE_URL}/suno/audios`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const data = await parseResponse(response) as StartSongResponse;
+  if (data.error) throw new Error(data.error.message || data.error.code || "Die Abschnittsbearbeitung konnte nicht gestartet werden.");
+  const taskId = data.task_id?.trim();
+  if (!taskId) throw new Error("Der Musikdienst hat keine Bearbeitungs-ID zurückgegeben.");
+  return { taskId, traceId: data.trace_id?.trim() || undefined };
 }

@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 
 import { resolveLocalSongPath } from "@/lib/song-generation";
 import { songStore } from "@/lib/song-store";
+import { canAccessSong } from "@/lib/song-access";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,10 +14,11 @@ export async function GET(request: Request, context: { params: { jobId: string }
   const jobId = context.params.jobId?.trim();
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id")?.trim();
-  if (!jobId || !sessionId) return Response.json({ error: "Song- und Zahlungs-ID fehlen." }, { status: 400 });
+  const accessToken = url.searchParams.get("access_token")?.trim();
+  if (!jobId || (!sessionId && !accessToken)) return Response.json({ error: "Der sichere Songzugang fehlt." }, { status: 400 });
 
   const job = await songStore.get(jobId);
-  if (!job || job.stripeSessionId !== sessionId) {
+  if (!job || !canAccessSong(job, sessionId, accessToken)) {
     return Response.json({ error: "Song nicht gefunden." }, { status: 404 });
   }
   if (job.status !== "done" || !job.audioUri) {

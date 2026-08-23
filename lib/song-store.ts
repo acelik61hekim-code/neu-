@@ -36,6 +36,9 @@ export type SongJob = {
   qualityRetryUsed?: boolean;
   qualityRepairAttempts?: number;
   stripeSessionId?: string;
+  subscriptionId?: string;
+  subscriptionPlanId?: "creator" | "pro" | "studio-max";
+  accessTokenHash?: string;
   workflowRunId?: string;
 
     provider?: "acedata" | "lyria";
@@ -62,7 +65,7 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
     })
   : null;
 
-const JOB_TTL_SECONDS = 60 * 60 * 24 * 7;
+const JOB_TTL_SECONDS = 60 * 60 * 24 * 90;
 const memoryJobs = new Map<string, SongJob>();
 const memoryWorkflowStates = new Map<string, { value: string; expiresAt: number }>();
 

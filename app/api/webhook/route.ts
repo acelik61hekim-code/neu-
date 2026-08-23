@@ -1164,6 +1164,22 @@ export async function POST(
     );
   }
 
+  /*
+   * Song-Abos erzeugen keinen einzelnen Renderauftrag.
+   * Die sichere Abo-Freischaltung prüft die Checkout-Session
+   * direkt bei Stripe und setzt anschließend die Studiositzung.
+   */
+  if (
+    session.metadata
+      ?.productType ===
+    "song-subscription"
+  ) {
+    return NextResponse.json({
+      received:
+        true,
+    });
+  }
+
   const jobId =
     session.metadata
       ?.jobId;

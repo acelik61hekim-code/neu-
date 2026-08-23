@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Header from "@/components/Header";
 import { ArrowIcon, LockIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
 import StudioChooser, { type StudioMode } from "@/components/StudioChooser";
+import SongPlans, { type SongSubscriptionStatus } from "@/components/SongPlans";
 import { formatEuroPrice } from "@/lib/pricing";
 import {
   SONG_PRICE_CENTS,
@@ -50,6 +51,7 @@ export default function SongStudio({
   const [recording, setRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [subscription, setSubscription] = useState<SongSubscriptionStatus>({ active: false });
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
@@ -61,6 +63,7 @@ export default function SongStudio({
   const recommendedLyricsWords = recommendedCustomLyricsWords(length, style);
   const lyricsPronunciationRisks = useMemo(() => customLyricsPronunciationRisks(lyrics), [lyrics]);
   const lyricsWordCountValid = lyricsWordCount >= minimumLyricsWords && lyricsWordCount <= maximumLyricsWords;
+  const handleSubscriptionStatus = useCallback((value: SongSubscriptionStatus) => setSubscription(value), []);
 
   useEffect(() => {
     return () => {
@@ -252,6 +255,7 @@ export default function SongStudio({
           revisionMode,
           revisionApproach: revisionMode ? revisionApproach : undefined,
           referenceRightsAccepted,
+          useSubscription: subscription.active && (subscription.songsRemaining ?? 0) > 0,
         }),
       });
       const data = await response.json() as { url?: string; error?: string };
@@ -286,6 +290,8 @@ export default function SongStudio({
             <button type="button" onClick={() => { setRevisionMode(true); setLyricsMode("custom"); setRightsAccepted(false); setVoiceIdeaConsent(false); setVoiceIdeaAnalysis(""); }} className={`flex-1 rounded-xl px-4 py-2.5 text-xs font-semibold transition ${revisionMode ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white"}`}>Fertigen Song bearbeiten</button>
           </div>
         </section>
+
+        <SongPlans onStatusChange={handleSubscriptionStatus} />
 
         <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_360px]">
           <section className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-7">
@@ -444,15 +450,15 @@ export default function SongStudio({
             </ul>
             <div className="my-6 h-px bg-white/10" />
             <div className="flex items-end justify-between">
-              <span className="text-sm text-zinc-400">Einmalig</span>
-              <span className="text-3xl font-semibold tracking-tight">{price}</span>
+              <span className="text-sm text-zinc-400">{subscription.active && (subscription.songsRemaining ?? 0) > 0 ? `${subscription.plan?.name ?? "Abo"} inklusive` : "Einmalig"}</span>
+              <span className="text-3xl font-semibold tracking-tight">{subscription.active && (subscription.songsRemaining ?? 0) > 0 ? "0,00 €" : price}</span>
             </div>
             {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-xs leading-5 text-red-200">{error}</p>}
             <button onClick={() => void checkout()} disabled={loading || analyzingVoiceIdea || recording} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-5 py-3.5 text-sm font-semibold text-white shadow-lg shadow-fuchsia-950/40 transition hover:from-fuchsia-500 hover:to-violet-500 disabled:cursor-wait disabled:opacity-60">
-              {compressingReference ? "Audiodatei wird vorbereitet ..." : analyzingVoiceIdea ? (revisionMode ? "Ausgangssong wird analysiert ..." : "Sprachidee wird analysiert ...") : loading ? "Checkout wird geöffnet ..." : revisionMode ? `Neue Version für ${price} erstellen` : `Song für ${price} erstellen`}
+              {compressingReference ? "Audiodatei wird vorbereitet ..." : analyzingVoiceIdea ? (revisionMode ? "Ausgangssong wird analysiert ..." : "Sprachidee wird analysiert ...") : loading ? (subscription.active && (subscription.songsRemaining ?? 0) > 0 ? "Song wird gestartet ..." : "Checkout wird geöffnet ...") : subscription.active && (subscription.songsRemaining ?? 0) > 0 ? `Mit Abo erstellen · ${subscription.songsRemaining} übrig` : revisionMode ? `Neue Version für ${price} erstellen` : `Song für ${price} erstellen`}
               {!loading && <ArrowIcon />}
             </button>
-            <p className="mt-4 flex items-center justify-center gap-2 text-[11px] text-zinc-500"><LockIcon /> Erst bezahlen, dann wird der Song erzeugt</p>
+            <p className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] text-zinc-500"><LockIcon /> {subscription.active && (subscription.songsRemaining ?? 0) > 0 ? "Wird sicher von deinem Monatskontingent abgezogen" : "Einzelkauf ohne Abo möglich"}</p>
           </aside>
         </div>
 
