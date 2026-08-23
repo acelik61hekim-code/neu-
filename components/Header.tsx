@@ -3,10 +3,10 @@
 import Link from "next/link";
 
 import { STUDIO_PATHS } from "@/lib/site";
-import { FilmIcon, ImageIcon, MusicIcon } from "./Icons";
+import { FilmIcon, ImageIcon, MusicIcon, SparklesIcon } from "./Icons";
 
 type HeaderProps = {
-  active?: "video" | "song" | "image";
+  active?: "video" | "song" | "image" | "studio";
   onStudioChange?: (mode: "video" | "song" | "image") => void;
 };
 
@@ -66,6 +66,13 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
           >
             <ImageIcon className="hidden sm:block" />
             Bilder
+          </Link>
+          <Link
+            href="/sound-studio"
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "studio" ? "bg-fuchsia-500/20 text-fuchsia-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+          >
+            <SparklesIcon className="hidden sm:block" />
+            Sound Studio
           </Link>
         </nav>
       </div>
