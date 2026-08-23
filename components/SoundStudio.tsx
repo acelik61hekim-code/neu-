@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import Header from "@/components/Header";
-import { LoadingIcon, MusicIcon, SparklesIcon, WarningIcon } from "@/components/Icons";
+import { LoadingIcon, LockIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
 import SongPlans from "@/components/SongPlans";
 
 type StudioSource = {
@@ -268,8 +268,8 @@ export default function SoundStudio() {
   if (!source) {
     return (
       <Shell>
-        <section className="mx-auto max-w-3xl pt-12 text-center"><div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-400/10 text-amber-200"><WarningIcon /></div><h1 className="mt-5 text-3xl font-semibold">Sound Studio</h1><p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-zinc-400">{error}</p><a href="/ki-song-erstellen" className="mt-6 inline-flex rounded-xl border border-white/10 px-5 py-3 text-sm text-zinc-200">Zur Songerstellung</a></section>
-        {needsSubscription && <SongPlans />}
+        <LockedStudioPreview message={needsSubscription ? error : "Hier siehst du das vollständige Sound Studio. Nach dem Abo öffnest du einen fertigen Song und alle Werkzeuge werden freigeschaltet."} />
+        <SongPlans />
       </Shell>
     );
   }
@@ -331,7 +331,55 @@ export default function SoundStudio() {
   );
 }
 function Shell({ children }: { children: React.ReactNode }) {
-  return <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white"><div className="pointer-events-none absolute inset-0"><div className="absolute left-[-180px] top-[-160px] h-[480px] w-[480px] rounded-full bg-fuchsia-700/20 blur-[140px]" /><div className="absolute right-[-180px] top-[160px] h-[460px] w-[460px] rounded-full bg-violet-700/15 blur-[140px]" /></div><Header active="song" /><div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16">{children}</div></main>;
+  return <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white"><div className="pointer-events-none absolute inset-0"><div className="absolute left-[-180px] top-[-160px] h-[480px] w-[480px] rounded-full bg-fuchsia-700/20 blur-[140px]" /><div className="absolute right-[-180px] top-[160px] h-[460px] w-[460px] rounded-full bg-violet-700/15 blur-[140px]" /></div><Header active="studio" /><div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16">{children}</div></main>;
+}
+
+function LockedStudioPreview({ message }: { message: string }) {
+  const bars = [28, 46, 70, 38, 82, 58, 34, 76, 94, 62, 44, 88, 52, 72, 40, 66, 90, 54, 34, 78, 60, 86, 48, 70, 32, 56, 80, 42, 68, 36, 74, 50, 84, 64, 38, 72, 92, 58, 44, 76, 52, 86, 34, 62, 78, 46, 68, 40];
+  return (
+    <>
+      <section className="mx-auto max-w-3xl text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-400/20 bg-fuchsia-400/10 px-3 py-1.5 text-xs font-medium text-fuchsia-200"><LockIcon /> Öffentliche Studio-Vorschau</div>
+        <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Sieh das Sound Studio vor dem Abo</h1>
+        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-400">{message}</p>
+        <p className="mt-3 text-xs text-fuchsia-200">Ansehen ist kostenlos · Bearbeiten wird erst mit einem aktiven Abo freigeschaltet</p>
+      </section>
+
+      <div className="relative mt-10 grid gap-6 xl:grid-cols-[1fr_360px]">
+        <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/30 sm:p-7">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fuchsia-500/15 text-fuchsia-200"><MusicIcon /></div><div><p className="font-semibold">Demo-Song · Studiovorschau</p><p className="mt-1 text-xs text-zinc-500">Moderner Pop · 2:48 Minuten</p></div></div>
+            <select disabled className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-zinc-400"><option>Original</option><option>Version 1</option></select>
+          </div>
+
+          <div className="mt-6 flex items-center gap-4 rounded-xl border border-white/10 bg-black/25 p-3 opacity-70"><button type="button" disabled className="flex h-9 w-9 items-center justify-center rounded-full bg-fuchsia-600 text-xs">▶</button><div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10"><div className="h-full w-[38%] rounded-full bg-fuchsia-500" /></div><span className="text-[11px] text-zinc-400">1:04 / 2:48</span></div>
+          <div className="relative mt-5 flex h-48 items-center gap-1 overflow-hidden rounded-2xl border border-white/10 bg-black/25 px-3">
+            <div className="absolute inset-y-0 left-[28%] right-[44%] border-x border-fuchsia-300/70 bg-fuchsia-500/15" />
+            {bars.map((height, index) => <span key={index} className="z-10 flex-1 rounded-full bg-gradient-to-t from-violet-500/55 to-fuchsia-300/90" style={{ height: `${height}%` }} />)}
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-2"><PreviewControl label="Start" value="0:47.2" /><PreviewControl label="Ende" value="1:04.8" /></div>
+          <div className="mt-4 flex flex-wrap items-center gap-3 opacity-65"><button type="button" disabled className="rounded-xl bg-fuchsia-600 px-4 py-2.5 text-xs font-semibold">Markierung anhören</button><span className="text-xs text-zinc-400">☑ Als Schleife abspielen</span><span className="ml-auto text-xs text-fuchsia-200">17,6 Sek.</span></div>
+          <div className="my-7 h-px bg-white/10" />
+          <h2 className="text-lg font-semibold">Manueller Feinschliff</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3"><PreviewControl label="Lautstärke" value="100 %" /><PreviewControl label="Fade-in" value="1,5 s" /><PreviewControl label="Fade-out" value="2,0 s" /></div>
+          <div className="mt-5 flex flex-wrap gap-3 opacity-55"><button disabled className="rounded-xl border border-white/10 px-4 py-2.5 text-xs">Markierung als WAV</button><button disabled className="rounded-xl border border-white/10 px-4 py-2.5 text-xs">Ganzen Song als WAV</button></div>
+          <div className="absolute inset-0 flex items-end justify-center bg-gradient-to-t from-[#09090e]/95 via-transparent to-transparent p-6 pointer-events-none"><div className="rounded-full border border-fuchsia-400/25 bg-[#111018]/95 px-4 py-2 text-xs font-semibold text-fuchsia-100 shadow-xl"><LockIcon /> Werkzeuge werden mit deinem Abo freigeschaltet</div></div>
+        </section>
+
+        <aside className="h-fit rounded-3xl border border-fuchsia-400/20 bg-gradient-to-b from-fuchsia-500/[0.11] to-violet-500/[0.04] p-6 xl:sticky xl:top-6">
+          <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">KI-Abschnitt ersetzen</p><h2 className="mt-2 text-xl font-semibold">Nur diese Sekunden neu</h2><p className="mt-2 text-xs leading-5 text-zinc-400">Der Kunde beschreibt die Änderung. Die KI erstellt eine neue Version, ohne dass der ganze Song neu begonnen werden muss.</p>
+          <label className="mt-5 block text-xs font-medium text-zinc-300">Was soll sich ändern?</label><textarea disabled rows={5} value="Refrain größer und emotionaler, kräftigere Drums und eine klare Stimme ohne Adlibs." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-500" />
+          <label className="mt-4 block text-xs font-medium text-zinc-300">Neue Lyrics <span className="text-zinc-600">optional</span></label><textarea disabled rows={4} value="Neue Zeilen können genau für diese Stelle eingetragen werden." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-600" />
+          <a href="#song-abos" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold"><LockIcon /> Mit Abo freischalten</a>
+          <p className="mt-3 text-center text-[11px] text-zinc-500">Danach einen fertigen Song auswählen und direkt loslegen</p>
+        </aside>
+      </div>
+    </>
+  );
+}
+
+function PreviewControl({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-xl border border-white/10 bg-black/20 p-3 opacity-70"><span className="flex items-center justify-between text-xs text-zinc-400"><span>{label}</span><span className="font-medium text-fuchsia-200">{value}</span></span><div className="relative mt-3 h-1.5 rounded-full bg-white/10"><span className="absolute left-0 top-0 h-full w-[58%] rounded-full bg-fuchsia-500" /><span className="absolute left-[58%] top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white bg-fuchsia-500" /></div></div>;
 }
 
 function Range({ label, value, onChange, min = 0, max, step = 0.1, time = true }: { label: string; value: number; onChange: (value: number) => void; min?: number; max: number; step?: number; time?: boolean }) {
