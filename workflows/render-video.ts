@@ -34,6 +34,17 @@ type PlannedSegment = {
   continuationPrompts: string[];
 };
 
+type ViralBeatSource = {
+  source: Record<string, unknown>;
+  dialogues: Record<string, unknown>[];
+};
+
+type ViralPreparedShot = {
+  targetSeconds: number;
+  prompt: string;
+  dialogues: Record<string, unknown>[];
+};
+
 type PreparedRender = {
   jobId: string;
   duration: VideoDurationSeconds;
@@ -250,6 +261,7 @@ export async function renderVideoWorkflow(
           segment.chapterNumber,
           completedExtensions,
           prepared.totalExtensions,
+          segment.targetSeconds,
         );
 
       chapterUris.push(
@@ -416,6 +428,7 @@ async function startOpeningWithProviderRetry(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  clipDurationSeconds: number,
   webhookUrl: string,
 ): Promise<StartedProviderOperation> {
   for (
@@ -435,6 +448,7 @@ async function startOpeningWithProviderRetry(
         prompt,
         aspectRatio,
         chapterNumber,
+        clipDurationSeconds,
         webhookUrl,
         plannedRetryDelayMs,
       );
@@ -586,6 +600,7 @@ async function completeOpeningWithOperationRecovery(
   chapterNumber: number,
   completedExtensions: number,
   totalExtensions: number,
+  clipDurationSeconds: number,
 ): Promise<string> {
   for (
     let attempt = 0;
@@ -602,6 +617,7 @@ async function completeOpeningWithOperationRecovery(
         prompt,
         aspectRatio,
         chapterNumber,
+        clipDurationSeconds,
         webhook.url,
       );
 
@@ -960,6 +976,8 @@ async function prepareRecoveryFinalizationStep(
       ? buildDialogueCuesFromStoredPrompt(
           job.prompt,
           job.targetDurationSeconds,
+          job.videoModel ??
+            "seedance-2-fast",
         )
       : [];
 
@@ -1142,6 +1160,10 @@ async function prepareRenderJobStep(
       job.targetDurationSeconds,
     );
 
+  const videoModel =
+    job.videoModel ??
+    "seedance-2-fast";
+
   const segments:
     PlannedSegment[] = [];
 
@@ -1269,81 +1291,6 @@ async function prepareRenderJobStep(
       ...openingDialogueTurns,
     ];
 
-    const safeOpening = {
-      ...opening,
-
-      dialogue: {
-        enabled:
-          false,
-
-        speaker:
-          "",
-
-        text:
-          "",
-
-        language:
-          "",
-
-        voiceDirection:
-          "",
-      },
-
-      dialogueTurns:
-        [],
-
-      veoPrompt:
-        removeVisibleTextRenderingInstructions(
-          readString(
-            opening.veoPrompt,
-
-            "moviePlan.opening.veoPrompt fehlt.",
-          ),
-        ),
-    };
-
-    const shotCount =
-      Math.max(
-        1,
-
-        Math.ceil(
-          job.targetDurationSeconds /
-            SEEDANCE_CLIP_DURATION_SECONDS,
-        ),
-      );
-
-    const openingPrompt = [
-      buildOpeningPrompt(
-        safeOpening,
-        "9:16",
-        "social",
-        selectedAudioDirection,
-      ),
-
-      buildViralReferenceDirection(
-        story,
-      ),
-
-      buildViralVisualDialogueDirection(
-        openingDialogues,
-        nativeCharacterDialogue,
-        nativeDialogueAudioRetry,
-      ),
-
-      buildViralTrashTvDirection(
-        trashTvReactionBoost,
-      ),
-
-      buildViralMicrodramaBeatDirection(
-        1,
-        shotCount,
-      ),
-
-      "SHOT 1: Open with the central conflict visibly understandable within the first two seconds.",
-    ].join(
-      "\n\n",
-    );
-
     const rawContinuations =
       Array.isArray(
         moviePlan.continuations,
@@ -1351,10 +1298,10 @@ async function prepareRenderJobStep(
         ? moviePlan.continuations
         : [];
 
-    const candidateShots = [
+    const viralBeats = [
       {
-        prompt:
-          openingPrompt,
+        source:
+          opening,
 
         dialogues:
           openingDialogues,
@@ -1383,21 +1330,8 @@ async function prepareRenderJobStep(
               : [];
 
           return {
-            prompt:
-              buildViralIndependentShotPrompt(
-                story,
-                continuation,
-                index + 2,
-
-                rawContinuations
-                  .length +
-                  1,
-
-                selectedAudioDirection,
-                nativeCharacterDialogue,
-                nativeDialogueAudioRetry,
-                trashTvReactionBoost,
-              ),
+            source:
+              continuation,
 
             dialogues: [
               asRecord(
@@ -1476,11 +1410,31 @@ async function prepareRenderJobStep(
         3,
       );
 
+    const providerShotSeconds =
+      getViralProviderShotSeconds(
+        job.targetDurationSeconds,
+        videoModel,
+      );
+
+    const shotCount =
+      Math.max(
+        viralBeats.length,
+        Math.ceil(
+          job.targetDurationSeconds /
+            providerShotSeconds,
+        ),
+      );
+
     const selectedShots =
-      selectViralShotsIncludingCharacters(
-        candidateShots,
+      buildViralPreparedShots(
+        story,
+        viralBeats,
         shotCount,
-        selectedCharacterNames,
+        providerShotSeconds,
+        selectedAudioDirection,
+        nativeCharacterDialogue,
+        nativeDialogueAudioRetry,
+        trashTvReactionBoost,
       );
 
     selectedShots.forEach(
@@ -1493,7 +1447,7 @@ async function prepareRenderJobStep(
             index + 1,
 
           targetSeconds:
-            SEEDANCE_CLIP_DURATION_SECONDS,
+            shot.targetSeconds,
 
           openingPrompt:
             shot.prompt,
@@ -1506,11 +1460,7 @@ async function prepareRenderJobStep(
 
     dialogueCues =
       buildViralDialogueCues(
-        selectedShots.map(
-          (shot) =>
-            shot.dialogues,
-        ),
-
+        selectedShots,
         job.targetDurationSeconds,
       );
 
@@ -1950,10 +1900,6 @@ async function prepareRenderJobStep(
     );
   }
 
-  const videoModel =
-    job.videoModel ??
-    "seedance-2-fast";
-
   const totalExtensions =
     segments.reduce(
       (
@@ -2235,6 +2181,56 @@ async function startVeoOpeningStep(
         )
       : undefined;
 
+  let storedStory:
+    Record<
+      string,
+      unknown
+    > = {};
+
+  try {
+    storedStory =
+      JSON.parse(
+        job.prompt,
+      ) as Record<
+        string,
+        unknown
+      >;
+  } catch {
+    /* prepareRenderJobStep validates the stored story before this step. */
+  }
+
+  const viralStoryMode =
+    storedStory.creationMode ===
+    "viral-story";
+
+  const referenceImages =
+    viralStoryMode
+      ? await (
+          await import(
+            "@/lib/video-backend/images"
+          )
+        ).loadViralCharacterReferences(
+          Array.isArray(
+            storedStory.characters,
+          )
+            ? storedStory.characters
+                .map(
+                  (value) =>
+                    asRecord(
+                      value,
+                    ).name,
+                )
+                .filter(
+                  (
+                    value,
+                  ): value is string =>
+                    typeof value ===
+                    "string",
+                )
+            : [],
+        )
+      : undefined;
+
   const operationName =
     await startVideoGeneration(
       prompt,
@@ -2244,7 +2240,11 @@ async function startVeoOpeningStep(
             ? "fast"
             : "standard",
         aspectRatio,
-        referenceImage,
+        referenceImage:
+          referenceImages?.length
+            ? undefined
+            : referenceImage,
+        referenceImages,
         maxAttempts: 4,
       },
     );
@@ -2423,6 +2423,7 @@ async function startOpeningVideoStep(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  clipDurationSeconds: number,
   webhookUrl: string,
   plannedRetryDelayMs: number,
 ): Promise<ProviderStartResult> {
@@ -2594,19 +2595,8 @@ async function startOpeningVideoStep(
 
           webhookUrl,
 
-          /*
-           * Neue Seedance-Jobs laufen
-           * grundsätzlich mit 15 Sekunden.
-           *
-           * Ein alter 8-Sekunden-Job kann
-           * weiterhin mit 8 Sekunden
-           * wiederaufgenommen werden.
-           */
           durationSeconds:
-            job.targetDurationSeconds ===
-            8
-              ? 8
-              : 15,
+            clipDurationSeconds,
         },
       );
   } catch (error) {
@@ -4405,18 +4395,363 @@ function buildViralStudioVoiceDirection(
     .join(" ");
 }
 
-/*
- * Viral-Modus:
- * Jeder Shot = 15 Sekunden.
- */
+function getViralProviderShotSeconds(
+  targetDurationSeconds: number,
+  videoModel: VideoModelId,
+): number {
+  if (
+    videoModel === "google-veo" ||
+    videoModel === "google-veo-fast"
+  ) {
+    return 8;
+  }
+
+  if (targetDurationSeconds <= 8) {
+    return 8;
+  }
+
+  if (targetDurationSeconds <= 30) {
+    return 5;
+  }
+
+  if (targetDurationSeconds <= 60) {
+    return 10;
+  }
+
+  return 15;
+}
+
+function distributeViralBeatShotCounts(
+  beatCount: number,
+  shotCount: number,
+): number[] {
+  const safeBeatCount =
+    Math.max(1, beatCount);
+
+  const safeShotCount =
+    Math.max(
+      safeBeatCount,
+      shotCount,
+    );
+
+  const baseCount =
+    Math.floor(
+      safeShotCount /
+        safeBeatCount,
+    );
+
+  const extraCount =
+    safeShotCount %
+    safeBeatCount;
+
+  return Array.from(
+    {
+      length:
+        safeBeatCount,
+    },
+    (
+      _,
+      index,
+    ) =>
+      baseCount +
+      (index < extraCount
+        ? 1
+        : 0),
+  );
+}
+
+function distributeViralDialogues(
+  dialogues:
+    readonly Record<
+      string,
+      unknown
+    >[],
+  phaseCount: number,
+): Record<string, unknown>[][] {
+  const chunks =
+    Array.from(
+      {
+        length:
+          Math.max(
+            1,
+            phaseCount,
+          ),
+      },
+      () =>
+        [] as Record<
+          string,
+          unknown
+        >[],
+    );
+
+  const validDialogues =
+    dialogues.filter(
+      (dialogue) =>
+        readViralDialogue(
+          dialogue,
+        ) !== null,
+    );
+
+  validDialogues.forEach(
+    (
+      dialogue,
+      index,
+    ) => {
+      const destination =
+        Math.min(
+          chunks.length - 1,
+          Math.floor(
+            index *
+              chunks.length /
+              Math.max(
+                1,
+                validDialogues.length,
+              ),
+          ),
+        );
+
+      chunks[destination].push(
+        dialogue,
+      );
+    },
+  );
+
+  return chunks;
+}
+
+function buildViralFocusedPhaseDirection(
+  phaseIndex: number,
+  phaseCount: number,
+  isFinalShot: boolean,
+): string {
+  if (phaseCount <= 1) {
+    return [
+      "Play exactly one coherent reality-TV story beat with no unrelated subplot.",
+      "Use at most three motivated shots: the concrete action or proof, the direct reaction, then one answer or reveal.",
+      isFinalShot
+        ? "End on the episode's unresolved physical cliffhanger and hold the shocked reaction."
+        : "End on a clear reaction that motivates the next clip.",
+    ].join(" ");
+  }
+
+  if (phaseIndex === 0) {
+    return [
+      "Show the causal event itself first, then the exact instant a character witnesses or discovers it.",
+      "Do not begin with an explanation, phone, receipt or generic shocked face.",
+      "End on the witness understanding what happened.",
+    ].join(" ");
+  }
+
+  if (
+    phaseIndex ===
+    phaseCount - 1
+  ) {
+    return [
+      "Show the immediate counter-reveal, visible consequence or unmistakable new evidence.",
+      isFinalShot
+        ? "Finish on one unresolved physical cliffhanger and the strongest readable reaction of the episode."
+        : "Finish on a concrete reaction or action that continues the same conflict.",
+      "Do not reconcile or add a new unrelated secret.",
+    ].join(" ");
+  }
+
+  return [
+    "Stage the direct accusation and its immediate relevant answer.",
+    "Keep the active speaker's face readable and let the other character react silently.",
+    "Do not change subject, location or evidence.",
+  ].join(" ");
+}
+
+function buildViralFocusedShotPrompt(
+  story:
+    Record<
+      string,
+      unknown
+    >,
+  source:
+    Record<
+      string,
+      unknown
+    >,
+  dialogues:
+    readonly Record<
+      string,
+      unknown
+    >[],
+  shotNumber: number,
+  totalShots: number,
+  beatNumber: number,
+  totalBeats: number,
+  phaseIndex: number,
+  phaseCount: number,
+  targetSeconds: number,
+  selectedAudioDirection: string,
+  nativeCharacterDialogue: boolean,
+  nativeDialogueAudioRetry: boolean,
+  trashTvReactionBoost: boolean,
+): string {
+  const title =
+    typeof story.title ===
+      "string"
+      ? story.title
+      : "TikTok microdrama";
+
+  const summary =
+    typeof story.summary ===
+      "string"
+      ? story.summary
+      : "";
+
+  const visibleBeat = [
+    source.hook,
+    source.storyBeat,
+    source.action,
+    source.actionContinuation,
+  ]
+    .filter(
+      (
+        value,
+      ): value is string =>
+        typeof value ===
+          "string" &&
+        value.trim().length >
+          0,
+    )
+    .join(" ");
+
+  const emotionalBeat =
+    typeof source.emotionalBeat ===
+      "string"
+      ? source.emotionalBeat
+      : "Tense, emotionally readable reality-TV conflict.";
+
+  const isFinalShot =
+    shotNumber ===
+    totalShots;
+
+  return [
+    `EXACTLY ${targetSeconds} SECONDS. Vertical 9:16 social-video shot ${shotNumber} of ${totalShots}, story beat ${beatNumber} of ${totalBeats}.`,
+
+    `STORY: ${title}. ${summary}`,
+
+    buildViralReferenceDirection(
+      story,
+    ),
+
+    `CURRENT VISIBLE BEAT: ${visibleBeat || summary}`,
+
+    `EMOTION: ${emotionalBeat}`,
+
+    buildViralFocusedPhaseDirection(
+      phaseIndex,
+      phaseCount,
+      isFinalShot,
+    ),
+
+    "ONE CAUSAL MOMENT ONLY: every gesture, reaction and camera cut must serve this exact beat. Do not compress the entire episode into this clip. Do not repeat an earlier beat.",
+
+    "REALITY-TV PERFORMANCE: natural conversational timing with sharp interruptions, accusing looks, defensive posture and one strong readable reaction. Nobody presents to camera or stands neutrally. Keep the conflict non-violent.",
+
+    trashTvReactionBoost
+      ? "REACTION BOOST: make the final facial and body reaction bold and instantly readable on a phone screen without distorting anatomy."
+      : "Keep expressions emotionally strong but anatomically stable.",
+
+    buildViralVisualDialogueDirection(
+      dialogues,
+      nativeCharacterDialogue,
+      nativeDialogueAudioRetry,
+    ),
+
+    selectedAudioDirection,
+
+    "CAMERA: one or two motivated shots maximum for clips under eight seconds; stable eyelines, readable faces, no random montage, no whip-pan chaos and no unnecessary establishing shot.",
+
+    "QUALITY LOCK: stable fruit heads and faces, exact outfits, realistic hands, clean lip movement, stable lighting, no humans, no extra characters, no duplicated bodies, no morphing, no text, no subtitles, no logos and no watermark.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function buildViralPreparedShots(
+  story:
+    Record<
+      string,
+      unknown
+    >,
+  beats:
+    readonly ViralBeatSource[],
+  shotCount: number,
+  targetSeconds: number,
+  selectedAudioDirection: string,
+  nativeCharacterDialogue: boolean,
+  nativeDialogueAudioRetry: boolean,
+  trashTvReactionBoost: boolean,
+): ViralPreparedShot[] {
+  const shotCounts =
+    distributeViralBeatShotCounts(
+      beats.length,
+      shotCount,
+    );
+
+  const shots:
+    ViralPreparedShot[] = [];
+
+  beats.forEach(
+    (
+      beat,
+      beatIndex,
+    ) => {
+      const phaseCount =
+        shotCounts[
+          beatIndex
+        ];
+
+      const dialogueChunks =
+        distributeViralDialogues(
+          beat.dialogues,
+          phaseCount,
+        );
+
+      dialogueChunks.forEach(
+        (
+          dialogues,
+          phaseIndex,
+        ) => {
+          const shotNumber =
+            shots.length + 1;
+
+          shots.push({
+            targetSeconds,
+            dialogues,
+            prompt:
+              buildViralFocusedShotPrompt(
+                story,
+                beat.source,
+                dialogues,
+                shotNumber,
+                shotCount,
+                beatIndex + 1,
+                beats.length,
+                phaseIndex,
+                phaseCount,
+                targetSeconds,
+                selectedAudioDirection,
+                nativeCharacterDialogue,
+                nativeDialogueAudioRetry,
+                trashTvReactionBoost,
+              ),
+          });
+        },
+      );
+    },
+  );
+
+  return shots;
+}
+
 function buildViralDialogueCues(
   dialogueShots:
-    readonly (
-      readonly Record<
-        string,
-        unknown
-      >[]
-    )[],
+    readonly ViralPreparedShot[],
 
   targetDurationSeconds:
     number,
@@ -4430,13 +4765,21 @@ function buildViralDialogueCues(
       string
     >();
 
+  let elapsedSeconds =
+    0;
+
   dialogueShots.forEach(
     (
-      values,
-      shotIndex,
+      shot,
     ) => {
+      const shotStartSeconds =
+        elapsedSeconds;
+
+      elapsedSeconds +=
+        shot.targetSeconds;
+
       const dialogues =
-        values
+        shot.dialogues
           .map(
             readViralDialogue,
           )
@@ -4459,17 +4802,17 @@ function buildViralDialogueCues(
         return;
       }
 
-      const shotStartSeconds =
-        shotIndex *
-        SEEDANCE_CLIP_DURATION_SECONDS;
-
       const firstCueStartSeconds =
         shotStartSeconds +
         0.45;
 
       const dialogueWindowSeconds =
         Math.min(
-          14.1,
+          Math.max(
+            1.2,
+            shot.targetSeconds -
+              0.9,
+          ),
 
           Math.max(
             2,
@@ -4684,6 +5027,7 @@ function buildExtensionDialogueCues(
 function buildDialogueCuesFromStoredPrompt(
   prompt: string,
   targetDurationSeconds: number,
+  videoModel: VideoModelId,
 ): DialogueCue[] {
   try {
     const story =
@@ -4760,22 +5104,61 @@ function buildDialogueCuesFromStoredPrompt(
       story.creationMode ===
       "viral-story"
     ) {
+      const providerShotSeconds =
+        getViralProviderShotSeconds(
+          targetDurationSeconds,
+          videoModel,
+        );
+
       const shotCount =
         Math.max(
-          1,
+          dialogueShots.length,
 
           Math.ceil(
             targetDurationSeconds /
-              SEEDANCE_CLIP_DURATION_SECONDS,
+              providerShotSeconds,
           ),
         );
 
-      return buildViralDialogueCues(
-        selectEvenlyIncludingFinal(
-          dialogueShots,
+      const shotCounts =
+        distributeViralBeatShotCounts(
+          dialogueShots.length,
           shotCount,
-        ),
+        );
 
+      const preparedShots:
+        ViralPreparedShot[] = [];
+
+      dialogueShots.forEach(
+        (
+          dialogues,
+          beatIndex,
+        ) => {
+          const dialogueChunks =
+            distributeViralDialogues(
+              dialogues,
+              shotCounts[
+                beatIndex
+              ],
+            );
+
+          dialogueChunks.forEach(
+            (chunk) => {
+              preparedShots.push({
+                targetSeconds:
+                  providerShotSeconds,
+                prompt:
+                  "",
+                dialogues:
+                  chunk,
+              });
+            },
+          );
+        },
+      );
+
+      return buildViralDialogueCues(
+        preparedShots,
         targetDurationSeconds,
       );
     }

@@ -21,6 +21,7 @@ const extensionByMimeType: Record<string, string> = {
 export type StoredImage = {
   data: string;
   mimeType: "image/jpeg" | "image/png" | "image/webp";
+  label?: string;
 };
 
 function normalizeMimeType(value: string): StoredImage["mimeType"] {
@@ -161,6 +162,7 @@ export async function loadViralCharacterReferences(
       return {
         data: bytes.toString("base64"),
         mimeType: "image/webp" as const,
+        label: character.name,
       };
     }),
   );

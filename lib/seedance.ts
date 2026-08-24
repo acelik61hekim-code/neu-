@@ -39,6 +39,7 @@ type SeedanceImageReference = {
     | "image/jpeg"
     | "image/png"
     | "image/webp";
+  label?: string;
 };
 
 export type SeedanceGenerationOptions = {
@@ -520,31 +521,7 @@ export async function startVideoGeneration(
 
     aspect_ratio: aspectRatio,
     generate_audio: true,
-    /*
-     * Fast bleibt wirtschaftlich bei 720p, aber der High-Bitrate-
-     * Encode bewahrt Gesichter, Fruchttexturen und schnelle
-     * Reaktionsschnitte deutlich sauberer.
-     */
-    bitrate_mode: "high",
   };
-
-  if (options.referenceImage) {
-    return submitSeedance(
-      seedanceModelId(
-        modelTier,
-        "image-to-video",
-      ),
-      {
-        ...commonInput,
-        prompt: cleanedPrompt,
-
-        image_url: toDataUri(
-          options.referenceImage,
-        ),
-      },
-      options.webhookUrl,
-    );
-  }
 
   if (
     options.referenceImages &&
@@ -561,8 +538,13 @@ export async function startVideoGeneration(
     const identityInstructions =
       options.referenceImages
         .map(
-          (_, index) =>
-            `@Image${index + 1} is a locked identity reference. Preserve this character's exact visual identity throughout the shot.`,
+          (reference, index) => {
+            const label =
+              reference.label?.trim() ||
+              `character ${index + 1}`;
+
+            return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact fruit species, head geometry, face, body proportions, outfit, colors, shoes and accessories throughout the shot.`;
+          },
         )
         .join("\n");
 
@@ -584,6 +566,24 @@ export async function startVideoGeneration(
           options.referenceImages.map(
             toDataUri,
           ),
+      },
+      options.webhookUrl,
+    );
+  }
+
+  if (options.referenceImage) {
+    return submitSeedance(
+      seedanceModelId(
+        modelTier,
+        "image-to-video",
+      ),
+      {
+        ...commonInput,
+        prompt: cleanedPrompt,
+
+        image_url: toDataUri(
+          options.referenceImage,
+        ),
       },
       options.webhookUrl,
     );
@@ -663,8 +663,6 @@ export async function startVideoExtension(
         options.aspectRatio ?? "9:16",
 
       generate_audio: true,
-
-      bitrate_mode: "high",
     },
     options.webhookUrl,
   );

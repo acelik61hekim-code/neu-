@@ -3472,6 +3472,10 @@ VERBINDLICHE AUFGABE
 - Jede Antwort reagiert direkt auf die vorige Zeile und ergänzt eine neue konkrete Information.
 - Verwende konkrete Handlungen, Orte, Zeitpunkte oder sichtbare Beweise statt allgemeiner Dramawörter.
 - Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
+- Schreibe wie tatsächlich gesprochene deutsche Reality-TV-Sprache: kurze Hauptsätze oder Satzfragmente, spontane Reaktionen und klare Unterbrechungen statt höflicher Erklärprosa.
+- Jede Figur besitzt einen eigenen Wortschatz und eine eigene Haltung. Wenn zwei Sprecher ihre Zeilen tauschen könnten, schreibe beide Zeilen neu.
+- Mindestens eine Zeile muss kurz, eigenständig verständlich und zitierfähig sein, ohne wie ein Werbespruch zu klingen.
+- Keine Begrüßungen, Zusammenfassungen, Moderation, Therapiesprache oder Kundendienstformulierungen.
 - Bei Untreue wird die verbotene Handlung selbst sichtbar entdeckt; ein Handy oder Beleg ist nur eine zusätzliche Bestätigung.
 - Keine Ziffern, Abkürzungen, Hashtags, Schrägstriche, Untertitel, Erzähler oder Offscreen-Sprache.
 - speaker ist exakt einer der vorgegebenen Namen.
@@ -3656,13 +3660,16 @@ async function writeDialogueWithTerra(
     );
 
   const minimumTurns =
-    Math.min(
-      maximumTurns,
-      Math.max(
-        speakerNames.length,
-        beatCount * 2,
-      ),
-    );
+    creationMode ===
+      "viral-story"
+      ? maximumTurns
+      : Math.min(
+          maximumTurns,
+          Math.max(
+            speakerNames.length,
+            beatCount * 2,
+          ),
+        );
 
   let lastError:
     unknown;
