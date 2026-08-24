@@ -1,4 +1,4 @@
-const CACHE_NAME = "ki-video-studio-v1";
+const CACHE_NAME = "ki-video-studio-v2";
 const OFFLINE_URL = "/offline";
 
 self.addEventListener("install", (event) => {

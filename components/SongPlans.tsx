@@ -104,7 +104,7 @@ export default function SongPlans({ onStatusChange }: { onStatusChange?: (status
               <div className="my-5 h-px bg-white/10" />
               <ul className="flex-1 space-y-3 text-sm text-zinc-300">
                 <PlanBenefit>{plan.nearUnlimited ? "Nahezu unbegrenzt: " : ""}<strong>{plan.songsPerMonth} vollständige Songs</strong></PlanBenefit>
-                <PlanBenefit><strong>{plan.aiEditsPerMonth} KI-Bearbeitungen</strong> einzelner Stellen</PlanBenefit>
+                <PlanBenefit><strong>{plan.aiEditsPerMonth} KI-Bearbeitungen</strong> für Songstellen oder eigene Uploads</PlanBenefit>
                 <PlanBenefit>Komplettes Sound Studio</PlanBenefit>
                 <PlanBenefit>Manuelle Bearbeitung und Exporte unbegrenzt</PlanBenefit>
               </ul>

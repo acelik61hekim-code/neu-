@@ -1,5 +1,7 @@
 "use client";
 
+import { upload } from "@vercel/blob/client";
+
 import {
   type ChangeEvent,
   useCallback,
@@ -34,7 +36,10 @@ type Version = {
   audioUrl: string;
   editId?: string;
   editToken?: string;
+  uploadPathname?: string;
 };
+
+type UploadAiMode = "cover" | "extend";
 
 export default function SoundStudio() {
   const [source, setSource] = useState<StudioSource | null>(null);
@@ -54,12 +59,16 @@ export default function SoundStudio() {
   const [replacementLyrics, setReplacementLyrics] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editMessage, setEditMessage] = useState("");
+  const [uploadAiMode, setUploadAiMode] = useState<UploadAiMode>("cover");
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [confirmedAudioRights, setConfirmedAudioRights] = useState(false);
   const [editsRemaining, setEditsRemaining] = useState(0);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
   const [uploadAccess, setUploadAccess] = useState<UploadAccess | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const createdAudioUrls = useRef<string[]>([]);
+  const ownAudioFileRef = useRef<File | null>(null);
 
   const params = useMemo(() => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search), []);
   const jobId = params.get("jobId") || "";
@@ -234,6 +243,7 @@ export default function SoundStudio() {
 
     const audioUrl = URL.createObjectURL(file);
     createdAudioUrls.current.push(audioUrl);
+    ownAudioFileRef.current = file;
 
     const title = file.name.replace(/\.[^.]+$/, "").trim() || "Eigene Audiodatei";
     const access = uploadAccess ?? {
@@ -258,7 +268,10 @@ export default function SoundStudio() {
     setFadeOut(0);
     setInstruction("");
     setReplacementLyrics("");
-    setEditMessage("Eigene Audiodatei geladen. Du kannst jetzt schneiden, stummschalten, Lautstärke und Blenden ändern oder als WAV exportieren.");
+    setUploadAiMode("cover");
+    setUploadProgress(0);
+    setConfirmedAudioRights(false);
+    setEditMessage("Eigene Audiodatei geladen. Du kannst sie manuell bearbeiten, mit KI neu arrangieren oder ab einem gewählten Zeitpunkt erweitern.");
     setError("");
   }
 
@@ -305,38 +318,131 @@ export default function SoundStudio() {
     }
   }
 
+  async function ensureCurrentVersionUploaded(): Promise<string> {
+    if (!currentVersion) {
+      throw new Error("Bitte öffne zuerst eine Audiodatei.");
+    }
+
+    const targetVersionIndex = versionIndex;
+
+    if (currentVersion.uploadPathname) {
+      return currentVersion.uploadPathname;
+    }
+
+    let body: Blob;
+    let originalName: string;
+
+    if (versionIndex === 0 && ownAudioFileRef.current) {
+      body = ownAudioFileRef.current;
+      originalName = ownAudioFileRef.current.name;
+    } else {
+      const response = await fetch(currentVersion.audioUrl, { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Die aktuelle Studioversion konnte nicht für die KI vorbereitet werden.");
+      }
+      body = await response.blob();
+      originalName = `${source?.title || "song"}-${currentVersion.label}.mp3`;
+    }
+
+    if (body.size > 200 * 1024 * 1024) {
+      throw new Error("Für die KI darf die Audiodatei höchstens 200 MB groß sein.");
+    }
+
+    const contentType = inferAudioContentType(originalName, body.type);
+    const extension = audioExtensionForContentType(contentType, originalName);
+    setUploadProgress(1);
+
+    const blob = await upload(
+      `song-studio-uploads/${Date.now()}-${safeFilename(source?.title || "song")}.${extension}`,
+      body,
+      {
+        access: "private",
+        handleUploadUrl: "/api/song-studio/upload-audio",
+        multipart: true,
+        contentType,
+        onUploadProgress: ({ percentage }) => {
+          setUploadProgress(Math.max(1, Math.round(percentage)));
+        },
+      },
+    );
+
+    setVersions((current) => current.map((version, index) =>
+      index === targetVersionIndex
+        ? { ...version, uploadPathname: blob.pathname }
+        : version,
+    ));
+    setUploadProgress(100);
+    return blob.pathname;
+  }
+
   async function regenerateSelection() {
     if (!source || !instruction.trim()) {
       setError("Beschreibe bitte zuerst, wie die markierte Stelle verändert werden soll.");
       return;
     }
-    if (selectionEnd - selectionStart < 1 || selectionEnd - selectionStart > 30) {
+    if (source.sourceKind !== "upload" && (selectionEnd - selectionStart < 1 || selectionEnd - selectionStart > 30)) {
       setError("Markiere für die KI-Bearbeitung einen Abschnitt zwischen 1 und 30 Sekunden.");
       return;
     }
+    if (source.sourceKind === "upload" && !confirmedAudioRights) {
+      setError("Bitte bestätige zuerst, dass du diese Audiodatei verwenden und bearbeiten darfst.");
+      return;
+    }
     setEditLoading(true);
-    setEditMessage("Die neue Version wird komponiert …");
+    setEditMessage(
+      source.sourceKind === "upload"
+        ? "Die aktuelle Studioversion wird sicher hochgeladen und von der KI verarbeitet …"
+        : "Die neue Version wird komponiert …",
+    );
     setError("");
     try {
-      const response = await fetch("/api/song-studio/edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobId,
-          sessionId: sessionId || undefined,
-          accessToken: accessToken || undefined,
-          sourceEditId: currentVersion?.editId,
-          sourceEditToken: currentVersion?.editToken,
-          startSeconds: selectionStart,
-          endSeconds: selectionEnd,
-          instruction,
-          lyrics: replacementLyrics,
-        }),
-      });
+      const isOwnUpload = source.sourceKind === "upload";
+      const pathname = isOwnUpload
+        ? await ensureCurrentVersionUploaded()
+        : undefined;
+      const response = await fetch(
+        isOwnUpload ? "/api/song-studio/upload-ai" : "/api/song-studio/edit",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            isOwnUpload
+              ? {
+                  pathname,
+                  mode: uploadAiMode,
+                  instruction,
+                  lyrics: replacementLyrics,
+                  continueAtSeconds: selectionEnd,
+                  durationSeconds: duration,
+                  title: source.title,
+                  rightsConfirmed: true,
+                }
+              : {
+                  jobId,
+                  sessionId: sessionId || undefined,
+                  accessToken: accessToken || undefined,
+                  sourceEditId: currentVersion?.editId,
+                  sourceEditToken: currentVersion?.editToken,
+                  startSeconds: selectionStart,
+                  endSeconds: selectionEnd,
+                  instruction,
+                  lyrics: replacementLyrics,
+                },
+          ),
+        },
+      );
       const data = await response.json() as { editId?: string; editToken?: string; editsRemaining?: number; error?: string };
       if (!response.ok || !data.editId || !data.editToken) throw new Error(data.error || "Die KI-Bearbeitung konnte nicht gestartet werden.");
       setEditsRemaining(data.editsRemaining ?? editsRemaining);
-      await waitForEdit(data.editId, data.editToken);
+      await waitForEdit(
+        data.editId,
+        data.editToken,
+        isOwnUpload
+          ? uploadAiMode === "cover"
+            ? "KI-Arrangement"
+            : "KI-Erweiterung"
+          : "Version",
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Die KI-Bearbeitung ist fehlgeschlagen.");
       setEditLoading(false);
@@ -344,18 +450,26 @@ export default function SoundStudio() {
     }
   }
 
-  async function waitForEdit(editId: string, editToken: string) {
+  async function waitForEdit(editId: string, editToken: string, labelPrefix = "Version") {
     const startedAt = Date.now();
     while (Date.now() - startedAt < 10 * 60 * 1000) {
       const response = await fetch(`/api/song-studio/edit-status?editId=${encodeURIComponent(editId)}&edit_token=${encodeURIComponent(editToken)}`, { cache: "no-store" });
       const data = await response.json() as { status?: string; audioUrl?: string; error?: string };
       if (!response.ok || data.status === "error") throw new Error(data.error || "Die KI-Bearbeitung ist fehlgeschlagen.");
       if (data.status === "done" && data.audioUrl) {
-        const next: Version = { label: `Version ${versions.length}`, audioUrl: data.audioUrl, editId, editToken };
-        setVersions((current) => [...current, next]);
-        setVersionIndex(versions.length);
+        setVersions((current) => {
+          const next: Version = {
+            label: `${labelPrefix} ${current.length}`,
+            audioUrl: data.audioUrl!,
+            editId,
+            editToken,
+          };
+          setVersionIndex(current.length);
+          return [...current, next];
+        });
         setInstruction("");
         setReplacementLyrics("");
+        setUploadProgress(0);
         setEditMessage("Neue Studioversion ist fertig.");
         setEditLoading(false);
         return;
@@ -435,8 +549,12 @@ export default function SoundStudio() {
     <Shell>
       <section className="mx-auto max-w-3xl text-center">
         <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-400/20 bg-fuchsia-400/10 px-3 py-1.5 text-xs font-medium text-fuchsia-200"><SparklesIcon /> {source.planName} Sound Studio</div>
-        <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Dein Song. Sekundengenau.</h1>
-        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-400">Markiere die Stelle direkt in der Wellenform, höre sie als Schleife und generiere nur diesen Abschnitt neu. Manuelle Bearbeitungen und WAV-Exporte sind unbegrenzt.</p>
+        <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">Dein Song. Dein Studio.</h1>
+        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
+          {source.sourceKind === "upload"
+            ? "Bearbeite deine eigene Audiodatei manuell oder erstelle mit KI ein neues Arrangement und passende Erweiterungen. Jede Fassung bleibt als eigene Version erhalten."
+            : "Markiere die Stelle direkt in der Wellenform, höre sie als Schleife und generiere nur diesen Abschnitt neu. Manuelle Bearbeitungen und WAV-Exporte sind unbegrenzt."}
+        </p>
       </section>
 
       <div className="mt-10 grid gap-6 xl:grid-cols-[1fr_360px]">
@@ -488,21 +606,111 @@ export default function SoundStudio() {
         </section>
 
         <aside className="h-fit rounded-3xl border border-fuchsia-400/20 bg-gradient-to-b from-fuchsia-500/[0.11] to-violet-500/[0.04] p-6 xl:sticky xl:top-6">
-          <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">KI-Abschnitt ersetzen</p>
-          <h2 className="mt-2 text-xl font-semibold">Nur diese Sekunden neu</h2>
-          <p className="mt-2 text-xs leading-5 text-zinc-400">Die restliche Songidee bleibt erhalten. Beschreibe konkret Instrumente, Energie, Stimme oder Übergang der markierten Stelle.</p>
-          <label className="mt-5 block text-xs font-medium text-zinc-300">Was soll sich ändern?</label>
-          <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={5} maxLength={1000} placeholder="Zum Beispiel: Refrain größer und emotionaler, kräftigere Drums, Stimme klar und ohne Adlibs, weicher Übergang zurück zur Strophe …" className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40" />
-          <label className="mt-4 block text-xs font-medium text-zinc-300">Neue Lyrics für diese Stelle <span className="text-zinc-600">optional</span></label>
-          <textarea value={replacementLyrics} onChange={(event) => setReplacementLyrics(event.target.value)} rows={4} maxLength={4000} placeholder="Wenn der Text gleich bleiben soll, leer lassen." className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40" />
-          {!source.canRegenerate && (
-            <p className="mt-4 rounded-xl border border-blue-400/15 bg-blue-400/[0.07] px-3 py-3 text-xs leading-5 text-blue-100">
-              Eigene Uploads kannst du vollständig schneiden, stummschalten, in der Lautstärke ändern, ein- und ausblenden sowie exportieren. Die KI-Neugenerierung einzelner Sekunden ist technisch nur für Songs verfügbar, die direkt mit der Song-KI erstellt wurden.
+          <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">
+            {source.sourceKind === "upload" ? "KI für eigene Audiodatei" : "KI-Abschnitt ersetzen"}
+          </p>
+          <h2 className="mt-2 text-xl font-semibold">
+            {source.sourceKind === "upload" ? "Verändern oder erweitern" : "Nur diese Sekunden neu"}
+          </h2>
+          <p className="mt-2 text-xs leading-5 text-zinc-400">
+            {source.sourceKind === "upload"
+              ? "Die KI arbeitet mit der aktuell ausgewählten Studioversion. Dein Original wird niemals überschrieben."
+              : "Die restliche Songidee bleibt erhalten. Beschreibe konkret Instrumente, Energie, Stimme oder Übergang der markierten Stelle."}
+          </p>
+
+          {source.sourceKind === "upload" && (
+            <div className="mt-5 grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/20 p-1.5">
+              <button
+                type="button"
+                onClick={() => setUploadAiMode("cover")}
+                className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${uploadAiMode === "cover" ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                Neu arrangieren
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadAiMode("extend")}
+                className={`rounded-xl px-3 py-2.5 text-xs font-semibold transition ${uploadAiMode === "extend" ? "bg-fuchsia-600 text-white" : "text-zinc-400 hover:text-white"}`}
+              >
+                Song erweitern
+              </button>
+            </div>
+          )}
+
+          {source.sourceKind === "upload" && (
+            <p className="mt-3 rounded-xl border border-blue-400/15 bg-blue-400/[0.07] px-3 py-3 text-xs leading-5 text-blue-100">
+              {uploadAiMode === "cover"
+                ? "Erstellt eine vollständige neue Studioversion mit dem gewünschten Stil, Arrangement, Instrumenten oder Gesang."
+                : `Setzt den Song ab dem Ende deiner Markierung bei ${formatTime(selectionEnd)} musikalisch passend fort.`}
             </p>
+          )}
+
+          <label className="mt-5 block text-xs font-medium text-zinc-300">
+            {source.sourceKind === "upload"
+              ? uploadAiMode === "cover"
+                ? "Wie soll die neue Version klingen?"
+                : "Was soll die KI hinzufügen?"
+              : "Was soll sich ändern?"}
+          </label>
+          <textarea
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            rows={5}
+            maxLength={1000}
+            placeholder={source.sourceKind === "upload"
+              ? uploadAiMode === "cover"
+                ? "Zum Beispiel: Moderner emotionaler Pop, warme Live-Drums, breiter Refrain, klare weibliche Stimme und hochwertiger Radio-Mix …"
+                : "Zum Beispiel: Nach dem Refrain ein achttaktiges Gitarrensolo ergänzen, danach mit ruhigem Piano in einen letzten großen Refrain überleiten …"
+              : "Zum Beispiel: Refrain größer und emotionaler, kräftigere Drums, Stimme klar und ohne Adlibs, weicher Übergang zurück zur Strophe …"}
+            className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40"
+          />
+          <label className="mt-4 block text-xs font-medium text-zinc-300">
+            {source.sourceKind === "upload" && uploadAiMode === "extend" ? "Lyrics für die Erweiterung" : "Neue Lyrics"} <span className="text-zinc-600">optional</span>
+          </label>
+          <textarea
+            value={replacementLyrics}
+            onChange={(event) => setReplacementLyrics(event.target.value)}
+            rows={4}
+            maxLength={12000}
+            placeholder={source.sourceKind === "upload"
+              ? "Leer lassen, wenn die KI instrumental arbeiten oder selbst passende Vocals gestalten soll."
+              : "Wenn der Text gleich bleiben soll, leer lassen."}
+            className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40"
+          />
+
+          {source.sourceKind === "upload" && (
+            <label className="mt-4 flex items-start gap-2 rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-[11px] leading-5 text-zinc-400">
+              <input
+                type="checkbox"
+                checked={confirmedAudioRights}
+                onChange={(event) => setConfirmedAudioRights(event.target.checked)}
+                className="mt-0.5 accent-fuchsia-500"
+              />
+              <span>Ich darf diese Audiodatei verwenden, bearbeiten und an die Musik-KI übergeben.</span>
+            </label>
           )}
           {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-3 text-xs leading-5 text-red-200">{error}</p>}
           {editMessage && <p className="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-3 text-xs leading-5 text-emerald-200">{editMessage}</p>}
-          <button type="button" onClick={() => void regenerateSelection()} disabled={editLoading || !source.canRegenerate || editsRemaining <= 0} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">{editLoading ? <><LoadingIcon className="animate-spin" /> Stelle wird neu erstellt …</> : source.canRegenerate ? "Markierte Stelle neu generieren" : "KI-Neugenerierung nur für KI-Songs"}</button>
+          {editLoading && source.sourceKind === "upload" && uploadProgress > 0 && uploadProgress < 100 && (
+            <div className="mt-4">
+              <div className="flex items-center justify-between text-[11px] text-zinc-500"><span>Audiodatei wird vorbereitet</span><span>{uploadProgress} %</span></div>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10"><div className="h-full rounded-full bg-fuchsia-500 transition-all" style={{ width: `${uploadProgress}%` }} /></div>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => void regenerateSelection()}
+            disabled={editLoading || editsRemaining <= 0 || (source.sourceKind === "upload" && !confirmedAudioRights)}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {editLoading
+              ? <><LoadingIcon className="animate-spin" /> KI-Version wird erstellt …</>
+              : source.sourceKind === "upload"
+                ? uploadAiMode === "cover"
+                  ? "Neue KI-Version erstellen"
+                  : "Song ab Markierung erweitern"
+                : "Markierte Stelle neu generieren"}
+          </button>
           <p className="mt-3 text-center text-[11px] text-zinc-500">{editsRemaining} KI-Bearbeitungen in diesem Monat übrig</p>
         </aside>
       </div>
@@ -527,9 +735,9 @@ function UploadAudioEntry({
           Deinen eigenen Song bearbeiten
         </h1>
         <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
-          Lade eine eigene Audiodatei hoch. Danach siehst du sofort die Wellenform,
-          kannst sekundengenau schneiden, Stellen stummschalten, Lautstärke und
-          Blenden einstellen und neue WAV-Versionen exportieren.
+          Lade eine eigene Audiodatei hoch. Danach kannst du sie sekundengenau
+          bearbeiten, mit KI neu arrangieren oder ab einer gewählten Stelle
+          musikalisch passend erweitern.
         </p>
       </section>
 
@@ -540,8 +748,8 @@ function UploadAudioEntry({
         <h2 className="mt-5 text-2xl font-semibold">Audiodatei auswählen</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-zinc-400">
           Unterstützt werden MP3, WAV, M4A, AAC, OGG und FLAC bis 200 MB.
-          Deine Originaldatei bleibt unverändert; Bearbeitungen werden als neue
-          Versionen angelegt.
+          Deine Originaldatei bleibt unverändert; manuelle und KI-Bearbeitungen
+          werden immer als neue Versionen angelegt.
         </p>
 
         <label className="mt-7 inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-6 py-3.5 text-sm font-semibold text-white transition hover:brightness-110">
@@ -556,9 +764,9 @@ function UploadAudioEntry({
 
         <div className="mt-7 grid gap-3 text-left sm:grid-cols-3">
           {[
-            ["Sekundengenau", "Start und Ende direkt in der Wellenform markieren."],
-            ["Sicher arbeiten", "Original behalten und beliebig viele manuelle Versionen erstellen."],
-            ["Fertig exportieren", "Ausschnitt oder kompletten Song als WAV herunterladen."],
+            ["KI-Arrangement", "Stil, Instrumente, Energie und Gesang als neue Version gestalten."],
+            ["Song erweitern", "Ab dem gewählten Zeitpunkt einen passenden neuen Teil hinzufügen."],
+            ["Manuell & Export", "Schneiden, blenden, Lautstärke ändern und als WAV herunterladen."],
           ].map(([title, description]) => (
             <div key={title} className="rounded-2xl border border-white/10 bg-black/20 p-4">
               <p className="text-xs font-semibold text-white">{title}</p>
@@ -608,11 +816,12 @@ function LockedStudioPreview({ message }: { message: string }) {
         </section>
 
         <aside className="h-fit rounded-3xl border border-fuchsia-400/20 bg-gradient-to-b from-fuchsia-500/[0.11] to-violet-500/[0.04] p-6 xl:sticky xl:top-6">
-          <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">KI-Abschnitt ersetzen</p><h2 className="mt-2 text-xl font-semibold">Nur diese Sekunden neu</h2><p className="mt-2 text-xs leading-5 text-zinc-400">Der Kunde beschreibt die Änderung. Die KI erstellt eine neue Version, ohne dass der ganze Song neu begonnen werden muss.</p>
-          <label className="mt-5 block text-xs font-medium text-zinc-300">Was soll sich ändern?</label><textarea disabled rows={5} value="Refrain größer und emotionaler, kräftigere Drums und eine klare Stimme ohne Adlibs." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-500" />
+          <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-300">KI für jeden Song</p><h2 className="mt-2 text-xl font-semibold">Verändern oder erweitern</h2><p className="mt-2 text-xs leading-5 text-zinc-400">Eigene Audiodatei hochladen, als neue Studioversion arrangieren oder ab einem gewählten Zeitpunkt musikalisch fortsetzen.</p>
+          <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-black/20 p-1.5 opacity-70"><button disabled className="rounded-lg bg-fuchsia-600 px-2 py-2 text-[11px] font-semibold">Neu arrangieren</button><button disabled className="rounded-lg px-2 py-2 text-[11px] text-zinc-400">Song erweitern</button></div>
+          <label className="mt-4 block text-xs font-medium text-zinc-300">Wie soll die neue Version klingen?</label><textarea disabled rows={5} value="Moderner emotionaler Pop, warme Live-Drums, breiter Refrain und hochwertiger Radio-Mix." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-500" />
           <label className="mt-4 block text-xs font-medium text-zinc-300">Neue Lyrics <span className="text-zinc-600">optional</span></label><textarea disabled rows={4} value="Neue Zeilen können genau für diese Stelle eingetragen werden." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-600" />
           <a href="#song-abos" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold"><LockIcon /> Mit Abo freischalten</a>
-          <p className="mt-3 text-center text-[11px] text-zinc-500">Danach eine eigene Datei hochladen oder einen fertigen Song auswählen</p>
+          <p className="mt-3 text-center text-[11px] text-zinc-500">Eigene Uploads und erstellte KI-Songs als neue Versionen bearbeiten</p>
         </aside>
       </div>
     </>
@@ -635,6 +844,44 @@ function formatTime(seconds: number): string {
 
 function safeFilename(value: string): string {
   return value.normalize("NFKD").replace(/[^a-zA-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "song";
+}
+
+function inferAudioContentType(filename: string, suppliedType: string): string {
+  const normalized = suppliedType.trim().toLowerCase();
+  const supported = new Set([
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/aac",
+    "audio/ogg",
+    "audio/flac",
+    "audio/x-flac",
+  ]);
+
+  if (supported.has(normalized)) return normalized;
+  const extension = filename.split(".").pop()?.toLowerCase();
+  if (extension === "wav") return "audio/wav";
+  if (extension === "m4a") return "audio/mp4";
+  if (extension === "aac") return "audio/aac";
+  if (extension === "ogg") return "audio/ogg";
+  if (extension === "flac") return "audio/flac";
+  return "audio/mpeg";
+}
+
+function audioExtensionForContentType(contentType: string, filename: string): string {
+  if (contentType.includes("wav")) return "wav";
+  if (contentType.includes("mp4") || contentType.includes("m4a")) return "m4a";
+  if (contentType.includes("aac")) return "aac";
+  if (contentType.includes("ogg")) return "ogg";
+  if (contentType.includes("flac")) return "flac";
+  const original = filename.split(".").pop()?.toLowerCase();
+  if (original && ["mp3", "wav", "m4a", "aac", "ogg", "flac"].includes(original)) {
+    return original;
+  }
+  return "mp3";
 }
 
 function editAudioBuffer(

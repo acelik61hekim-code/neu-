@@ -38,6 +38,15 @@ export type StartAceDataReplaceSectionInput = {
   title?: string;
 };
 
+export type StartAceDataUploadedEditInput = {
+  audioId: string;
+  action: "upload_cover" | "upload_extend";
+  instruction: string;
+  continueAtSeconds?: number;
+  lyrics?: string;
+  title?: string;
+};
+
 type StartSongResponse = {
   task_id?: string;
   trace_id?: string;
@@ -66,6 +75,18 @@ type TaskResponse = {
     };
   };
 
+  error?: {
+    code?: string;
+    message?: string;
+  };
+};
+
+type UploadSongResponse = {
+  success?: boolean | string;
+  data?: {
+    audio_id?: string;
+    id?: string;
+  };
   error?: {
     code?: string;
     message?: string;
@@ -517,4 +538,118 @@ export async function startAceDataReplaceSection(
   const taskId = data.task_id?.trim();
   if (!taskId) throw new Error("Der Musikdienst hat keine Bearbeitungs-ID zurückgegeben.");
   return { taskId, traceId: data.trace_id?.trim() || undefined };
+}
+
+export async function uploadAceDataReferenceAudio(
+  audioUrl: string,
+): Promise<{ audioId: string }> {
+  const cleanAudioUrl = audioUrl.trim();
+
+  if (!cleanAudioUrl) {
+    throw new Error("Die URL der hochgeladenen Audiodatei fehlt.");
+  }
+
+  const response = await fetch(`${ACEDATA_BASE_URL}/suno/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ audio_url: cleanAudioUrl }),
+    cache: "no-store",
+  });
+
+  const data = await parseResponse(response) as UploadSongResponse;
+
+  if (data.error) {
+    throw new Error(
+      data.error.message ||
+        data.error.code ||
+        "Die Audiodatei konnte nicht an die Musik-KI übergeben werden.",
+    );
+  }
+
+  const audioId = (data.data?.audio_id || data.data?.id || "").trim();
+
+  if (!audioId) {
+    throw new Error("Der Musikdienst hat keine Audio-ID für den Upload zurückgegeben.");
+  }
+
+  return { audioId };
+}
+
+export async function startAceDataUploadedEdit(
+  input: StartAceDataUploadedEditInput,
+): Promise<{ taskId: string; traceId?: string }> {
+  const audioId = input.audioId.trim();
+  const instruction = normalizeStyle(input.instruction);
+
+  if (!audioId) {
+    throw new Error("Die Audio-ID des eigenen Songs fehlt.");
+  }
+
+  if (!instruction) {
+    throw new Error("Bitte beschreibe, was die KI am Song verändern soll.");
+  }
+
+  const body: Record<string, unknown> = {
+    model: getModel(),
+    action: input.action,
+    async: true,
+    audio_id: audioId,
+    custom: true,
+    variation_category: "normal",
+  };
+
+  const operationDirection = input.action === "upload_cover"
+    ? "Rearrange the uploaded song according to this direction while keeping its core timing, musical identity and coherent song structure. Produce a polished full-song studio version."
+    : "Continue the uploaded song seamlessly from the chosen point. Match its key, tempo, groove, vocal character and production quality, then develop the requested new musical idea with a natural transition.";
+
+  body.style = normalizeStyle(`${instruction}. ${operationDirection}`);
+
+  const lyrics = normalizeLyrics(input.lyrics);
+  if (lyrics) body.lyric = lyrics;
+
+  if (input.title?.trim()) {
+    body.title = input.title.trim().slice(0, 200);
+  }
+
+  if (input.action === "upload_extend") {
+    const continueAt = Number(input.continueAtSeconds);
+    if (!Number.isFinite(continueAt) || continueAt < 1) {
+      throw new Error("Der Zeitpunkt für die Song-Erweiterung ist ungültig.");
+    }
+    body.continue_at = Number(continueAt.toFixed(2));
+  }
+
+  const response = await fetch(`${ACEDATA_BASE_URL}/suno/audios`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getApiKey()}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  const data = await parseResponse(response) as StartSongResponse;
+  if (data.error) {
+    throw new Error(
+      data.error.message ||
+        data.error.code ||
+        "Die KI-Bearbeitung des Uploads konnte nicht gestartet werden.",
+    );
+  }
+
+  const taskId = data.task_id?.trim();
+  if (!taskId) {
+    throw new Error("Der Musikdienst hat keine Bearbeitungs-ID zurückgegeben.");
+  }
+
+  return {
+    taskId,
+    traceId: data.trace_id?.trim() || undefined,
+  };
 }
