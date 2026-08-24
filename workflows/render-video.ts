@@ -1193,7 +1193,7 @@ async function prepareRenderJobStep(
         : audioRecoveryFallback
           ? "RECOVERY AUDIO FALLBACK (highest priority): Generate only clean visual footage with quiet, neutral, non-vocal ambience and simple Foley. Do not generate dialogue, narration, singing, humming, vocalizations or music. Ignore every earlier audio or speech instruction. Exact voices are added during final post-production."
           : viralStoryMode
-            ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the Seedance clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
+            ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the provider clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
             : postProducedDialogue
               ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE (highest priority): Generate quiet non-vocal ambience, Foley and restrained music only. Do not synthesize audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. The visible active character performs the exact planned line with natural sentence-paced mouth, jaw, facial and body movement. A distinct fixed studio voice for each character is mixed scene-synchronously during final finishing."
               : buildSelectedAudioDirection(
@@ -4862,7 +4862,7 @@ function buildViralVisualDialogueDirection(
 
     nativeCharacterDialogue
       ? "The named visible characters themselves must say these exact words audibly, in this order, one at a time. Show each active speaker's face and mouth clearly and synchronize natural mouth, jaw and facial movement to their own voice. Never turn these lines into narration, voice-over, off-screen speech or speech by another character."
-      : "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the Seedance clip. The fixed studio voices are added later.",
+      : "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the provider clip. The fixed studio voices are added later.",
   ].join(
     "\n",
   );

@@ -1175,7 +1175,7 @@ If dialogue.enabled is true:
 
 VIDEO PROMPT REQUIREMENTS
 
-The field is still called veoPrompt for backward compatibility inside the application, but the content must be a production-ready English Seedance 2.0 Fast prompt.
+The field is still called veoPrompt for backward compatibility inside the application, but the content must be a production-ready English prompt that preserves the same scene for Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast and Seedance 2 Original.
 
 veoPrompt must be fully written in English.
 
@@ -1207,9 +1207,9 @@ The opening moment must immediately preserve continuity from the previous clip.
 
 The final moment must settle into the precise ending frame or a natural continuation state for the next segment.
 
-For a 15-second Seedance segment, use the extra duration for meaningful action progression, reactions, camera movement and continuity rather than stretching a single static action.
+For a 15-second story segment, use the available duration for meaningful action progression, reactions, camera movement and continuity rather than stretching a single static action. A provider may render that segment through one or more connected clips.
 
-Seedance may support multiple motivated shots inside one generation, but every cut must preserve character identity, wardrobe, environment, screen direction, lighting and story continuity.
+The selected video model may support multiple motivated shots inside one generation, but every cut must preserve character identity, wardrobe, environment, screen direction, lighting and story continuity.
 
 AUDIO PROMPT REQUIREMENTS
 
@@ -1271,7 +1271,7 @@ sceneId:
 Return the exact current scene ID.
 
 veoPrompt:
-A production-ready English Seedance 2.0 Fast video prompt. The legacy field name veoPrompt must remain unchanged.
+A production-ready model-neutral English video prompt. The legacy field name veoPrompt must remain unchanged.
 
 audioPrompt:
 A production-ready English audio prompt.
@@ -1300,7 +1300,7 @@ Before returning JSON, verify:
 
 - sceneId matches the current scene
 - veoPrompt is in English
-- veoPrompt is written for a ${segmentDuration}-second Seedance segment
+- veoPrompt is written for the complete ${segmentDuration}-second story segment and remains usable by every selectable video model
 - audioPrompt is in English
 - all character identity traits match the production bible
 - clothing and accessories are preserved

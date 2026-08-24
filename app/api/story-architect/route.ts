@@ -10,6 +10,10 @@ import {
 
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
+import {
+  DIALOGUE_WRITER_MODEL,
+  generateStructuredDialoguePlan,
+} from "@/lib/openai-dialogue";
 
 import {
   STUDIO_BRAND_CONTEXT,
@@ -2045,13 +2049,13 @@ function hasMandatoryDialoguePlan(
         : 1;
 
     if (
-      isViralDialogue &&
+      isVagueDramaLine(
+        dialogue.text,
+      ) ||
       (
+        isViralDialogue &&
         consecutiveSpeakerLines >
-          2 ||
-        isVagueDramaLine(
-          dialogue.text,
-        )
+          2
       )
     ) {
       return false;
@@ -3313,6 +3317,53 @@ async function generateStoryWithFallback(
   );
 }
 
+async function generateDialogueStoryWithTerra(
+  apiKey: string,
+  prompt: string,
+  validateCandidate:
+    (
+      parsed: unknown,
+    ) => boolean,
+): Promise<GeneratedStory> {
+  console.log(
+    `Story Architect Dialog-Autor: ${DIALOGUE_WRITER_MODEL}`,
+  );
+
+  const rawText =
+    await generateStructuredDialoguePlan(
+      apiKey,
+      prompt,
+    );
+
+  const parsedResult =
+    tryParseJson(
+      rawText,
+    );
+
+  if (!parsedResult) {
+    throw new Error(
+      "GPT-5.6 Terra hat keinen gültigen JSON-Filmplan erzeugt.",
+    );
+  }
+
+  if (
+    !validateCandidate(
+      parsedResult.parsed,
+    )
+  ) {
+    throw new Error(
+      "GPT-5.6 Terra hat noch keinen vollständig ausführbaren Dialogplan erzeugt.",
+    );
+  }
+
+  return {
+    rawText:
+      parsedResult.cleanedText,
+    model:
+      DIALOGUE_WRITER_MODEL,
+  };
+}
+
 function buildStoryPrompt(
   story: StoryDraft,
   targetDurationSeconds:
@@ -3443,7 +3494,7 @@ AUTORENRAUM VOR DER AUSGABE
 - Schreibe danach den Dialog einmal vollständig in zeitlicher Reihenfolge. Prüfe, ob jede Antwort ohne zusätzliches Wissen verständlich auf die vorige Zeile reagiert.
 - Streiche jede Zeile, die weder den Konflikt voranbringt noch eine Figur erkennbar macht. Erfinde während des Gesprächs keine neuen Gegenstände, Beziehungen oder Orte, die nicht zur Faktenkette gehören.
 
-- Jeder neue Seedance-Abschnitt dauert grundsätzlich 15 Sekunden.
+- Jeder neue Story-Abschnitt dauert grundsätzlich 15 Sekunden und wird anschließend an das ausgewählte Videomodell übergeben.
 - In jedem 15-Sekunden-Abschnitt geschieht eine neue konkrete Handlung oder Enthüllung; Streit und ein kurzer echter Gefühlsmoment wechseln sich sinnvoll ab.
 - Plane klare übertriebene Reaktionen: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder große Doppeltakes.
 - Niemand steht ruhig erklärend herum.
@@ -3678,7 +3729,7 @@ SCHNITTSTIL: SOCIAL / REELS
   const selectedAudioDirection =
     creationMode ===
     "viral-story"
-      ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short German lines and clear sentence-paced mouth, jaw, face and body performance for each visible assigned character. Seedance creates only restrained non-vocal ambience and music; fixed studio-quality German character voices are mixed scene-synchronously during finishing. No narrator, no voice-over, no off-screen speech and no subtitles."
+      ? "POST-PRODUCED CHARACTER DIALOGUE: Plan exact short German lines and clear sentence-paced mouth, jaw, face and body performance for each visible assigned character. The selected video model creates only restrained non-vocal ambience and music; fixed studio-quality German character voices are mixed scene-synchronously during finishing. No narrator, no voice-over, no off-screen speech and no subtitles."
       : activeMusicTrack
         ? "ORIGINAL UPLOADED SONG: Generate visuals with no audible dialogue, singing, narration or extra music. The complete customer song is added as the only final soundtrack during finishing. Plan visible performance and edit rhythm from the supplied musical analysis."
       : voiceMode ===
@@ -3709,6 +3760,12 @@ ${
 - Danach wechseln sich die Sprecher natürlich ab.
 - Jeder Dialogtext umfasst höchstens zwölf Wörter.
 - speaker enthält exakt den Namen der Figur.
+- Lege vor dem Schreiben intern eine unveränderliche Faktenkette fest: Beziehung oder Ziel, sichtbare auslösende Handlung, direkte Wahrnehmung, Vorwurf, konkrete Antwort, überprüfbarer Widerspruch, persönliche Konsequenz und gegebenenfalls Cliffhanger.
+- Jede Antwort reagiert eindeutig auf die unmittelbar vorherige Zeile. Niemand wechselt grundlos das Thema.
+- Jede Zeile nennt bei Bedarf den konkreten Gegenstand, Ort, Zeitpunkt oder die beobachtete Handlung. Vermeide leere Standardsätze wie „Das ändert alles“, „Du verstehst das nicht“ oder „Warte ab“.
+- Ein Beweis wird sichtbar ausgespielt: Bei Fremdgehen sieht die betroffene Figur beispielsweise den Kuss oder die vertraute Berührung selbst. Ein Handy darf nur ein zusätzliches Detail bestätigen.
+- action, hook, storyBeat und die englischen Video-Prompts müssen genau dieselbe sichtbare Handlung und Faktenkette zeigen wie der Dialog.
+- Schreibe genau EINEN verbindlichen Dialogplan. Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original erhalten später denselben Wortlaut, dieselben Sprecher und dieselbe Reihenfolge.
 - Kein Narrator.
 - Kein Voice-over.
 - Kein Off-screen speaker.
@@ -3724,7 +3781,9 @@ Audio Director, Continuity Director und Video Prompt Director.
 
 Du planst EIN zusammenhängendes professionelles Video-Projekt.
 
-Die aktive Video-Pipeline verwendet Seedance 2.0 Fast.
+Der Filmplan ist modellunabhängig. Er wird unverändert für Google Veo 3.1 Standard,
+Google Veo 3.1 Fast, Seedance 2 Fast oder Seedance 2 Original verwendet.
+Erzeuge niemals vier Varianten und schreibe Dialoge nie für ein einzelnes Modell um.
 
 Neue Zeitarchitektur:
 
@@ -4151,26 +4210,13 @@ export async function POST(
     );
   }
 
-  const apiKey =
+  const geminiApiKey =
     process.env
       .GEMINI_API_KEY;
 
-  if (!apiKey) {
-    return NextResponse.json(
-      {
-        success:
-          false,
-
-        error:
-          "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
-      },
-
-      {
-        status:
-          500,
-      },
-    );
-  }
+  const openAiApiKey =
+    process.env
+      .OPENAI_API_KEY;
 
   let body:
     StoryArchitectRequest;
@@ -4310,12 +4356,33 @@ export async function POST(
       musicTrack,
     );
 
-  try {
-    const ai =
-      new GoogleGenAI({
-        apiKey,
-      });
+  if (
+    voiceMode ===
+      "dialogue"
+      ? !openAiApiKey &&
+        !geminiApiKey
+      : !geminiApiKey
+  ) {
+    return NextResponse.json(
+      {
+        success:
+          false,
 
+        error:
+          voiceMode ===
+          "dialogue"
+            ? "Für die Dialogerstellung fehlt OPENAI_API_KEY. Auch der sichere Gemini-Ersatz ist nicht eingerichtet."
+            : "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
+      },
+
+      {
+        status:
+          500,
+      },
+    );
+  }
+
+  try {
     const expectedDialogueSpeakers =
       voiceMode ===
       "dialogue"
@@ -4327,60 +4394,116 @@ export async function POST(
             )
         : [];
 
-    const generationResult =
-      await generateStoryWithFallback(
-        ai,
-        prompt,
+    const validateDialogueCandidate =
+      (
+        candidate: unknown,
+      ) => {
+        const normalizedCandidate =
+          normalizeArchitectResponse(
+            candidate,
+            story,
+            targetDurationSeconds,
+            aspectRatio,
+            editingStyle,
+            voiceMode,
+          );
 
-        voiceMode ===
-          "dialogue"
-          ? (
-              candidate,
-            ) => {
-              const normalizedCandidate =
-                normalizeArchitectResponse(
-                  candidate,
-                  story,
-                  targetDurationSeconds,
-                  aspectRatio,
-                  editingStyle,
-                  voiceMode,
-                );
+        const structurallyValid =
+          validateArchitectResponse(
+            normalizedCandidate,
+          );
 
-              const structurallyValid =
-                validateArchitectResponse(
-                  normalizedCandidate,
-                );
+        const dialogueValid =
+          hasMandatoryDialoguePlan(
+            normalizedCandidate,
+            expectedDialogueSpeakers,
+            targetDurationSeconds,
+            creationMode,
+            story,
+          );
 
-              const dialogueValid =
-                hasMandatoryDialoguePlan(
-                  normalizedCandidate,
-                  expectedDialogueSpeakers,
-                  targetDurationSeconds,
-                  creationMode,
-                  story,
-                );
+        const visualPlanValid =
+          creationMode !==
+            "viral-story" ||
+          hasMandatoryViralVisualPlan(
+            normalizedCandidate,
+            story,
+          );
 
-              const visualPlanValid =
-                creationMode !==
-                  "viral-story" ||
-                hasMandatoryViralVisualPlan(
-                  normalizedCandidate,
-                  story,
-                );
+        return (
+          structurallyValid &&
+          dialogueValid &&
+          visualPlanValid
+        );
+      };
 
-              return (
-                structurallyValid &&
-                dialogueValid &&
-                visualPlanValid
-              );
-            }
-          : undefined,
-        creationMode ===
-          "viral-story"
-          ? VIRAL_STORY_MODELS
-          : STORY_MODELS,
+    let generationResult:
+      GeneratedStory | undefined;
+
+    if (
+      voiceMode ===
+        "dialogue" &&
+      openAiApiKey
+    ) {
+      try {
+        generationResult =
+          await generateDialogueStoryWithTerra(
+            openAiApiKey,
+            prompt,
+            validateDialogueCandidate,
+          );
+      } catch (terraError) {
+        console.error(
+          "GPT-5.6 Terra Dialogplanung fehlgeschlagen:",
+          getErrorDetails(
+            terraError,
+          ),
+        );
+
+        if (!geminiApiKey) {
+          throw terraError;
+        }
+
+        console.warn(
+          "Der Dialogplan wird ausfallsicher mit Gemini erneut versucht.",
+        );
+      }
+    } else if (
+      voiceMode ===
+      "dialogue"
+    ) {
+      console.warn(
+        "OPENAI_API_KEY fehlt. Der Dialogplan verwendet vorübergehend den Gemini-Ersatz.",
       );
+    }
+
+    if (!generationResult) {
+      if (!geminiApiKey) {
+        throw new Error(
+          "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
+        );
+      }
+
+      const ai =
+        new GoogleGenAI({
+          apiKey:
+            geminiApiKey,
+        });
+
+      generationResult =
+        await generateStoryWithFallback(
+          ai,
+          prompt,
+          voiceMode ===
+            "dialogue"
+            ? validateDialogueCandidate
+            : undefined,
+          creationMode ===
+            "viral-story"
+            ? VIRAL_STORY_MODELS
+            : STORY_MODELS,
+        );
+    }
 
     const cleanedText =
       cleanJsonText(

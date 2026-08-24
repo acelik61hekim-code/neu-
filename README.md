@@ -34,6 +34,7 @@ kostenlose Web-Oberflächen:
 2. "Add New" → "Project" → dein gerade erstelltes Repository auswählen
 3. Bei "Environment Variables" folgende Werte eintragen (siehe `.env.example`):
    - `GEMINI_API_KEY` – dein Google-Schlüssel
+   - `OPENAI_API_KEY` – OpenAI-Schlüssel für den zentralen GPT-5.6-Terra-Dialogautor
    - `STRIPE_SECRET_KEY` – dein Stripe Test-Secret-Key (`sk_test_...`)
    - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` – dein Stripe Test-Publishable-Key (`pk_test_...`)
    - `APP_URL` – trägst du erst nach dem ersten Deploy ein (siehe Schritt 3)
