@@ -1,0 +1,70 @@
+{
+  "expo": {
+    "name": "KI Video Studio",
+    "slug": "ki-video-studio",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/images/ki-video-studio-icon.png",
+    "scheme": "kivideostudio",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#06060c",
+    "ios": {
+      "bundleIdentifier": "de.kivideostudio.app",
+      "buildNumber": "1",
+      "supportsTablet": true,
+      "icon": "./assets/images/ki-video-studio-icon.png",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Die Kamera wird nur verwendet, wenn du ein eigenes Bild oder Video für dein KI-Projekt aufnimmst.",
+        "NSMicrophoneUsageDescription": "Das Mikrofon wird nur verwendet, wenn du Audio für dein KI-Projekt aufnimmst.",
+        "NSPhotoLibraryUsageDescription": "Deine Mediathek wird nur geöffnet, wenn du eine Datei für dein KI-Projekt auswählst."
+      }
+    },
+    "android": {
+      "package": "de.kivideostudio.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#06060c",
+        "foregroundImage": "./assets/images/ki-video-studio-foreground.png"
+      },
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO"
+      ],
+      "predictiveBackGestureEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/ki-video-studio-icon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#06060c",
+          "image": "./assets/images/ki-video-studio-foreground.png",
+          "imageWidth": 210,
+          "resizeMode": "contain",
+          "dark": {
+            "backgroundColor": "#06060c",
+            "image": "./assets/images/ki-video-studio-foreground.png"
+          }
+        }
+      ],
+      [
+        "expo-status-bar",
+        {
+          "hidden": false,
+          "style": "light"
+        }
+      ]
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

@@ -22,6 +22,16 @@ export default function PwaInstaller() {
   const [isInstalled, setIsInstalled] = useState(true);
 
   useEffect(() => {
+    if (
+      (window as Window & {
+        __KI_VIDEO_STUDIO_NATIVE_APP__?: boolean;
+      }).__KI_VIDEO_STUDIO_NATIVE_APP__ ||
+      navigator.userAgent.includes("KIVideoStudioApp")
+    ) {
+      setIsInstalled(true);
+      return;
+    }
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => undefined);
     }
