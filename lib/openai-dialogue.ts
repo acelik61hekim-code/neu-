@@ -102,7 +102,7 @@ export async function generateStructuredDialoguePlan(
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    50_000,
+    240_000,
   );
 
   try {
