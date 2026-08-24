@@ -1,0 +1,61 @@
+name: KI Video Studio Android App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "mobile-app/**"
+      - ".github/workflows/mobile-app-android.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-android-test-app:
+    name: Android-Test-App erstellen
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: mobile-app
+
+    steps:
+      - name: Projekt laden
+        uses: actions/checkout@v4
+
+      - name: Node.js vorbereiten
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Java vorbereiten
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: App-Abhängigkeiten installieren
+        run: npm ci
+
+      - name: App prüfen
+        run: npm run typecheck
+
+      - name: Android-Projekt erzeugen
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Installierbare APK erstellen
+        run: ./gradlew assembleDebug
+        working-directory: mobile-app/android
+
+      - name: APK bereitstellen
+        uses: actions/upload-artifact@v4
+        with:
+          name: ki-video-studio-android-test-app
+          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

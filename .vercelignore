@@ -23,3 +23,6 @@ download
 # Nur lokal verwendete, nicht abgesicherte Test-Endpunkte
 app/api/test-airforce/
 app/api/test-suno/
+
+# Die native App wird separat gebaut und nicht mit der Website ausgeliefert
+mobile-app/
