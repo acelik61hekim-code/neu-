@@ -7,6 +7,7 @@ import { songEditStore } from "@/lib/song-edit-store";
 import { songStore } from "@/lib/song-store";
 import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { reserveSubscriptionUsage } from "@/lib/song-subscription-usage";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,12 +35,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Markiere einen Abschnitt zwischen 1 und 30 Sekunden." }, { status: 400 });
   }
 
-  const [job, subscription] = await Promise.all([
+  const [job, subscription, user] = await Promise.all([
     songStore.get(jobId),
     getActiveSongSubscription(request).catch(() => null),
+    getCurrentUser(),
   ]);
   if (!subscription) return NextResponse.json({ error: "Für KI-Bearbeitungen brauchst du ein aktives Song-Abo." }, { status: 401 });
-  if (!job || !canAccessSong(job, sessionId, sourceAccessToken) || !job.providerSongId) {
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!canAccessSong(job, sessionId, sourceAccessToken) && !accountOwner) || !job.providerSongId) {
     return NextResponse.json({ error: "Der Ausgangssong konnte nicht sicher geöffnet werden." }, { status: 404 });
   }
 

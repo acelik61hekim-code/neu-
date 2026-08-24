@@ -3,6 +3,7 @@ import { Redis } from "@upstash/redis";
 import type { ImageAspectRatio, ImageQuality, ImageStyle } from "@/lib/image-product";
 
 export type ImageJob = {
+  userId?: string;
   status: "pending" | "processing" | "done" | "error";
   paymentStatus: "unpaid" | "paid" | "failed" | "refunded";
   renderStage: "queued" | "generating" | "uploading" | "completed" | "failed";
@@ -33,7 +34,7 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
   : null;
 const memoryJobs = new Map<string, ImageJob>();
 const memoryStarts = new Map<string, { value: string; expiresAt: number }>();
-const TTL = 60 * 60 * 24 * 7;
+const TTL = 60 * 60 * 24 * 365;
 const jobKey = (id: string) => `image-job:${id}`;
 const startKey = (id: string) => `image-job:${id}:workflow-start`;
 
@@ -50,7 +51,10 @@ export const imageStore = {
   },
   async set(id: string, job: ImageJob): Promise<void> {
     const stored = { ...job, updatedAt: Date.now() };
-    if (redis) await redis.set(jobKey(id), stored, { ex: TTL });
+    if (redis) {
+      if (stored.paymentStatus === "paid") await redis.set(jobKey(id), stored);
+      else await redis.set(jobKey(id), stored, { ex: TTL });
+    }
     else memoryJobs.set(id, stored);
   },
   async update(id: string, updater: (job: ImageJob) => ImageJob | Promise<ImageJob>): Promise<ImageJob> {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit } from "@/lib/rate-limit";
+import { getCurrentUser } from "@/lib/supabase/server";
 import { getSongPlan, isSongPlanId } from "@/lib/song-plans";
 import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { stripe } from "@/lib/stripe";
@@ -23,6 +24,10 @@ export async function POST(request: NextRequest) {
   if (!isSongPlanId(body.planId)) {
     return NextResponse.json({ error: "Bitte wähle ein gültiges Abo." }, { status: 400 });
   }
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Bitte melde dich an oder registriere dich, damit dein Abo dauerhaft gespeichert wird.", signInUrl: "/anmelden?next=/ki-song-erstellen%23song-abos" }, { status: 401 });
+  }
 
   const existingSubscription = await getActiveSongSubscription(request).catch(() => null);
   if (existingSubscription) {
@@ -35,6 +40,7 @@ export async function POST(request: NextRequest) {
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      client_reference_id: user.id,
       allow_promotion_codes: true,
       billing_address_collection: "auto",
       line_items: [{
@@ -49,8 +55,8 @@ export async function POST(request: NextRequest) {
         },
         quantity: 1,
       }],
-      metadata: { productType: "song-subscription", songPlanId: plan.id },
-      subscription_data: { metadata: { productType: "song-subscription", songPlanId: plan.id } },
+      metadata: { productType: "song-subscription", songPlanId: plan.id, userId: user.id },
+      subscription_data: { metadata: { productType: "song-subscription", songPlanId: plan.id, userId: user.id } },
       success_url: `${appUrl}/song-pro-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/ki-song-erstellen?abo=abgebrochen#song-abos`,
     });

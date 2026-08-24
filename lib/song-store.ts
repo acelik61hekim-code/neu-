@@ -12,6 +12,7 @@ export type SongPaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
 export type SongRenderStage = "queued" | "generating" | "quality-check" | "uploading" | "completed" | "failed";
 
 export type SongJob = {
+  userId?: string;
   status: SongJobStatus;
   paymentStatus: SongPaymentStatus;
   renderStage: SongRenderStage;
@@ -65,7 +66,7 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
     })
   : null;
 
-const JOB_TTL_SECONDS = 60 * 60 * 24 * 90;
+const JOB_TTL_SECONDS = 60 * 60 * 24 * 365;
 const memoryJobs = new Map<string, SongJob>();
 const memoryWorkflowStates = new Map<string, { value: string; expiresAt: number }>();
 
@@ -92,7 +93,8 @@ export const songStore = {
   async set(jobId: string, job: SongJob): Promise<void> {
     const stored = { ...job, updatedAt: Date.now() };
     if (redis) {
-      await redis.set(jobKey(jobId), stored, { ex: JOB_TTL_SECONDS });
+      if (stored.paymentStatus === "paid") await redis.set(jobKey(jobId), stored);
+      else await redis.set(jobKey(jobId), stored, { ex: JOB_TTL_SECONDS });
       return;
     }
     memoryJobs.set(jobId, stored);

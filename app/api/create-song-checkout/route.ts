@@ -21,6 +21,8 @@ import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { reserveSubscriptionUsage } from "@/lib/song-subscription-usage";
 import { stripe } from "@/lib/stripe";
 import { renderSongWorkflow } from "@/workflows/render-song";
+import { accountLibrary } from "@/lib/account-library";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -141,6 +143,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const user = await getCurrentUser();
   const useSubscription = body.useSubscription === true;
   const subscription = useSubscription ? await getActiveSongSubscription(request).catch(() => null) : null;
   if (useSubscription && !subscription) {
@@ -163,6 +166,7 @@ export async function POST(request: NextRequest) {
   const access = subscription ? createSongAccessToken() : null;
   const now = Date.now();
   await songStore.set(jobId, {
+    userId: user?.id,
     status: subscription ? "processing" : "pending",
     paymentStatus: subscription ? "paid" : "unpaid",
     renderStage: "queued",
@@ -186,6 +190,7 @@ export async function POST(request: NextRequest) {
     createdAt: now,
     updatedAt: now,
   });
+  if (user) await accountLibrary.addMedia(user.id, { kind: "song", jobId, title: title || "KI-Song", createdAt: now });
 
   const appUrl =
   process.env.APP_URL?.trim() ||
@@ -227,6 +232,7 @@ export async function POST(request: NextRequest) {
       metadata: {
         productType: "song",
         jobId,
+        userId: user?.id || "",
         songLength: body.length,
         lyricsMode: body.lyricsMode,
         language: body.language,

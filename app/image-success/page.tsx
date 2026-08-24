@@ -21,7 +21,7 @@ function ImageSuccessContent() {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   useEffect(() => {
     if (!jobId || !sessionId) { setStatus({ status: "error", errorMessage: "Der sichere Link zu deinem Bild ist unvollständig." }); return; }
-    let stopped = false; let confirmed = false; let refreshing = false; let interval: ReturnType<typeof setInterval> | undefined;
+    let stopped = false; let confirmed = false; let claimed = false; let refreshing = false; let interval: ReturnType<typeof setInterval> | undefined;
     const refresh = async () => {
       if (refreshing) return; refreshing = true;
       try {
@@ -30,6 +30,10 @@ function ImageSuccessContent() {
           const data = await response.json() as { error?: string };
           if (!response.ok && response.status !== 202) throw new Error(data.error || "Die Zahlung wird geprüft.");
           confirmed = true;
+        }
+        if (!claimed) {
+          const claimResponse = await fetch("/api/account/claim", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind: "image", jobId, sessionId }) });
+          claimed = claimResponse.ok || claimResponse.status === 401;
         }
         const response = await fetch(`/api/image-status?jobId=${encodeURIComponent(jobId)}&session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
         const data = await response.json() as ImageStatus & { error?: string };

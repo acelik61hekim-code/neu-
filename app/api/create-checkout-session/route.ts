@@ -39,6 +39,9 @@ import {
   type VideoFormat,
 } from "../../../lib/store";
 
+import { accountLibrary } from "@/lib/account-library";
+import { getCurrentUser } from "@/lib/supabase/server";
+
 import type {
   VideoAspectRatio,
   VideoAudioStyle,
@@ -1333,6 +1336,9 @@ export async function POST(
   const jobId =
     nanoid();
 
+  const user =
+    await getCurrentUser();
+
   /*
    * Hier schreiben wir nur Felder,
    * die der bestehende Job Store kennt.
@@ -1344,6 +1350,9 @@ export async function POST(
   await jobStore.set(
     jobId,
     {
+      userId:
+        user?.id,
+
       status:
         "pending",
 
@@ -1410,6 +1419,21 @@ export async function POST(
     },
   );
 
+  if (user) {
+    await accountLibrary.addMedia(
+      user.id,
+      {
+        kind:
+          "video",
+        jobId,
+        title:
+          `KI-Video · ${durationLabel(targetDurationSeconds)}`,
+        createdAt:
+          Date.now(),
+      },
+    );
+  }
+
   const appUrl =
     process.env.APP_URL ??
     "http://localhost:3000";
@@ -1444,6 +1468,9 @@ export async function POST(
 
       metadata: {
         jobId,
+
+        userId:
+          user?.id || "",
 
         targetDurationSeconds:
           String(

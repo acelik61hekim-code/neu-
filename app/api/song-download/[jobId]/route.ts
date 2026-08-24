@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { resolveLocalSongPath } from "@/lib/song-generation";
 import { songStore } from "@/lib/song-store";
 import { canAccessSong } from "@/lib/song-access";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +16,12 @@ export async function GET(request: Request, context: { params: { jobId: string }
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id")?.trim();
   const accessToken = url.searchParams.get("access_token")?.trim();
-  if (!jobId || (!sessionId && !accessToken)) return Response.json({ error: "Der sichere Songzugang fehlt." }, { status: 400 });
+  if (!jobId) return Response.json({ error: "Der Songzugang fehlt." }, { status: 400 });
 
   const job = await songStore.get(jobId);
-  if (!job || !canAccessSong(job, sessionId, accessToken)) {
+  const user = await getCurrentUser();
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!canAccessSong(job, sessionId, accessToken) && !accountOwner)) {
     return Response.json({ error: "Song nicht gefunden." }, { status: 404 });
   }
   if (job.status !== "done" || !job.audioUri) {

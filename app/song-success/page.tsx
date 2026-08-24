@@ -48,6 +48,7 @@ function SongSuccessContent() {
     }
     let stopped = false;
     let confirmed = false;
+    let claimed = false;
     let refreshing = false;
     let interval: ReturnType<typeof setInterval> | undefined;
 
@@ -64,6 +65,14 @@ function SongSuccessContent() {
           const data = await response.json() as { error?: string };
           if (!response.ok && response.status !== 202) throw new Error(data.error || "Die Zahlung wird geprüft.");
           confirmed = true;
+        }
+        if (!claimed) {
+          const claimResponse = await fetch("/api/account/claim", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ kind: "song", jobId, sessionId: sessionId || undefined, accessToken: accessToken || undefined }),
+          });
+          claimed = claimResponse.ok || claimResponse.status === 401;
         }
         const accessQuery = sessionId
           ? `session_id=${encodeURIComponent(sessionId)}`

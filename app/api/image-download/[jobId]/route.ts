@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { resolveLocalGeneratedImagePath } from "@/lib/image-generation";
 import { imageStore } from "@/lib/image-store";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +13,12 @@ export async function GET(request: Request, context: { params: { jobId: string }
   const jobId = context.params.jobId?.trim();
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id")?.trim();
-  if (!jobId || !sessionId) return Response.json({ error: "Bild- und Zahlungs-ID fehlen." }, { status: 400 });
+  if (!jobId) return Response.json({ error: "Bild-ID fehlt." }, { status: 400 });
   const job = await imageStore.get(jobId);
-  if (!job || job.stripeSessionId !== sessionId) return Response.json({ error: "Bild nicht gefunden." }, { status: 404 });
+  const user = await getCurrentUser();
+  const validSession = Boolean(sessionId && job?.stripeSessionId === sessionId);
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!validSession && !accountOwner)) return Response.json({ error: "Bild nicht gefunden." }, { status: 404 });
   if (job.status !== "done" || !job.imageUri) return Response.json({ error: "Das Bild ist noch nicht fertig." }, { status: 409 });
   const mime = job.imageMimeType || "image/jpeg";
   const ext = mime.includes("png") ? "png" : "jpg";

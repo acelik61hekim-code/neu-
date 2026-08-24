@@ -2,8 +2,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { getSongPlan, isSongPlanId, type SongPlan } from "@/lib/song-plans";
+import { accountLibrary } from "@/lib/account-library";
 import { getSubscriptionUsage } from "@/lib/song-subscription-usage";
 import { stripe } from "@/lib/stripe";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const SONG_SUBSCRIPTION_COOKIE = "kvs_song_studio";
 
@@ -54,13 +56,28 @@ function readSongSubscriptionCookie(raw: string | undefined): SubscriptionCookie
 }
 
 export async function getActiveSongSubscription(request: NextRequest): Promise<ActiveSongSubscription | null> {
+  const user = await getCurrentUser();
+  const accountLink = user ? await accountLibrary.getSubscription(user.id) : undefined;
   const cookie = readSongSubscriptionCookie(request.cookies.get(SONG_SUBSCRIPTION_COOKIE)?.value);
-  if (!cookie) return null;
+  const link = accountLink ?? cookie;
+  if (!link) return null;
 
-  const subscription = await stripe.subscriptions.retrieve(cookie.subscriptionId);
+  const subscription = await stripe.subscriptions.retrieve(link.subscriptionId);
   if (subscription.status !== "active" && subscription.status !== "trialing") return null;
   const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  if (customerId !== cookie.customerId || !isSongPlanId(subscription.metadata.songPlanId)) return null;
+  if (customerId !== link.customerId || !isSongPlanId(subscription.metadata.songPlanId)) return null;
+  if (user && !accountLink) {
+    const subscriptionUserId = subscription.metadata.userId?.trim();
+    if (subscriptionUserId) {
+      if (subscriptionUserId !== user.id) return null;
+    } else {
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerEmail = customer.deleted ? null : customer.email?.trim().toLowerCase();
+      const userEmail = user.email?.trim().toLowerCase();
+      if (!customerEmail || !userEmail || customerEmail !== userEmail) return null;
+    }
+    await accountLibrary.setSubscription(user.id, { subscriptionId: subscription.id, customerId });
+  }
 
   const periodStart = subscription.current_period_start;
   const periodEnd = subscription.current_period_end;

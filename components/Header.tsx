@@ -6,14 +6,14 @@ import { STUDIO_PATHS } from "@/lib/site";
 import { FilmIcon, ImageIcon, MusicIcon, SparklesIcon } from "./Icons";
 
 type HeaderProps = {
-  active?: "video" | "song" | "image" | "studio";
+  active?: "video" | "song" | "image" | "studio" | "account";
   onStudioChange?: (mode: "video" | "song" | "image") => void;
 };
 
 export default function Header({ active, onStudioChange }: HeaderProps) {
   return (
     <header className="relative z-10 border-b border-white/10 bg-black/20 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1500px] items-center justify-between px-5 py-4 sm:px-8">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 shadow-lg shadow-violet-950/40">
             <FilmIcon />
@@ -30,7 +30,7 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
           </div>
         </div>
 
-        <nav className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.035] p-1" aria-label="Studio auswählen">
+        <nav className="flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.035] p-1 sm:w-auto" aria-label="Studio auswählen">
           <Link
             href={STUDIO_PATHS.video}
             onClick={(event) => {
@@ -73,6 +73,12 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
           >
             <SparklesIcon className="hidden sm:block" />
             Sound Studio
+          </Link>
+          <Link
+            href="/konto"
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "account" ? "bg-violet-500/20 text-violet-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
+          >
+            Konto
           </Link>
         </nav>
       </div>
