@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { ArrowIcon, FilmIcon, LockIcon, SparklesIcon } from "@/components/Icons";
+import { getVideoOutputSecondsForQuota, VIDEO_MODELS } from "@/lib/pricing";
 import { VIDEO_PLANS, type VideoPlan, type VideoPlanId } from "@/lib/video-plans";
 
 export type VideoSubscriptionStatus = {
@@ -82,7 +83,7 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
         <div className="mx-auto mt-7 flex max-w-3xl flex-col gap-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.07] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">{status.plan.name} ist aktiv</p>
-            <p className="mt-1 text-sm text-zinc-300"><strong className="text-white">{formatVideoMinutes(status.videoSecondsRemaining ?? 0)}</strong> Monatskontingent · <strong className="text-white">{status.studioEditsRemaining ?? 0}</strong> Studio-Exporte übrig</p>
+            <p className="mt-1 text-sm text-zinc-300"><strong className="text-white">Bis zu {formatVideoMinutes(status.videoSecondsRemaining ?? 0)} mit Veo Fast</strong> · <strong className="text-white">{status.studioEditsRemaining ?? 0}</strong> Studio-Exporte übrig</p>
             {status.renewsAt && <p className="mt-1 text-[11px] text-zinc-500">{status.cancelAtPeriodEnd ? "Endet" : "Neues Kontingent"} am {new Date(status.renewsAt).toLocaleDateString("de-DE")}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -104,11 +105,11 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
               <div className="mt-5 flex items-end gap-1"><span className="text-3xl font-semibold">{(plan.priceCents / 100).toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span><span className="pb-1 text-xs text-zinc-500">/ Monat</span></div>
               <div className="my-5 h-px bg-white/10" />
               <ul className="flex-1 space-y-3 text-sm text-zinc-300">
-                <PlanBenefit>{plan.nearUnlimited ? "Sehr großes Kontingent: " : ""}<strong>{formatVideoMinutes(plan.videoSecondsPerMonth)} mit Fast-Modellen</strong></PlanBenefit>
-                <PlanBenefit><strong>{formatVideoMinutes(plan.videoSecondsPerMonth / 2)} mit Original- und Standardmodellen</strong></PlanBenefit>
+                {VIDEO_MODELS.map((model) => (
+                  <PlanBenefit key={model.id}><strong>{formatVideoMinutes(getVideoOutputSecondsForQuota(plan.videoSecondsPerMonth, model.id))}</strong> mit {model.shortName}</PlanBenefit>
+                ))}
                 <PlanBenefit><strong>{plan.studioEditsPerMonth} Video-Studio-Exporte</strong></PlanBenefit>
-                <PlanBenefit>Alle vier Videomodelle inklusive</PlanBenefit>
-                <PlanBenefit>Vollständiges Video Studio</PlanBenefit>
+                <PlanBenefit>Video Studio mit Szenen-Neugenerierung</PlanBenefit>
               </ul>
               <button type="button" disabled={Boolean(loadingPlan) || current} onClick={() => status.active ? void openPortal() : void subscribe(plan.id)} className={`mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${plan.featured ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white" : "border border-white/10 bg-white/[0.05] text-zinc-100 hover:bg-white/[0.09]"}`}>
                 {current ? "Aktuelles Abo" : loadingPlan === plan.id || (status.active && loadingPlan === "portal") ? "Wird geöffnet ..." : status.active ? "Tarif verwalten" : `${plan.name} wählen`}{!current && loadingPlan !== plan.id && <ArrowIcon />}
@@ -120,7 +121,7 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
 
       <div className="mx-auto mt-5 max-w-4xl rounded-2xl border border-white/10 bg-black/20 p-5 text-xs leading-6 text-zinc-400">
         <p className="font-semibold text-zinc-200">Deine Videominuten</p>
-        <p className="mt-1">Die große Minutenangabe gilt für Seedance 2 Fast und Google Veo 3.1 Fast. Bei Seedance 2 Original und Google Veo 3.1 Standard ist wegen der höheren Rechenkosten die Hälfte dieser Videolänge enthalten. Vor jeder Erstellung wird die genaue benötigte Minutenmenge angezeigt.</p>
+        <p className="mt-1">Jede Karte zeigt die tatsächlich mögliche Videolänge je Modell. Vor jeder Erstellung siehst du außerdem, wie viel Videolänge mit dem ausgewählten Modell noch verfügbar ist. Szenen, die du im Studio neu generierst, werden minutengenau mit demselben Modell berechnet.</p>
       </div>
       <p className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-zinc-500"><LockIcon /> Monatlich kündbar · Preise inkl. MwSt. · nicht genutzte Videominuten werden nicht übertragen</p>
       {error && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-xs text-red-200">{error}</p>}

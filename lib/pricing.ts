@@ -34,7 +34,7 @@ export type VideoModelOption = {
   description: string;
   quality: string;
   provider: "seedance" | "veo";
-  quotaMultiplier: 1 | 2;
+  quotaMultiplier: number;
   featured?: boolean;
 };
 
@@ -55,7 +55,7 @@ export const VIDEO_MODELS: readonly VideoModelOption[] = [
     description: "Sehr gute Qualität mit starkem Preis-Leistungs-Verhältnis – ideal für Reels und regelmäßige Inhalte.",
     quality: "Schnell & vielseitig",
     provider: "seedance",
-    quotaMultiplier: 1,
+    quotaMultiplier: 2.4,
   },
   {
     id: "seedance-2-original",
@@ -64,7 +64,7 @@ export const VIDEO_MODELS: readonly VideoModelOption[] = [
     description: "Das Standardmodell mit maximaler Seedance-Detailqualität und aufwendigerer Berechnung.",
     quality: "Maximale Details",
     provider: "seedance",
-    quotaMultiplier: 2,
+    quotaMultiplier: 3,
     featured: true,
   },
   {
@@ -74,7 +74,7 @@ export const VIDEO_MODELS: readonly VideoModelOption[] = [
     description: "Googles Premium-Modell für anspruchsvolle filmische Szenen, besonders realistische Bewegung und natürlichen Ton.",
     quality: "Premium-Realismus",
     provider: "veo",
-    quotaMultiplier: 2,
+    quotaMultiplier: 4,
   },
 ] as const;
 
@@ -124,10 +124,22 @@ export function getVideoModel(
 }
 
 export function getVideoQuotaSeconds(
-  duration: VideoDurationSeconds,
+  duration: number,
   modelId: VideoModelId,
 ): number {
-  return duration * getVideoModel(modelId).quotaMultiplier;
+  return Math.ceil(
+    duration * getVideoModel(modelId).quotaMultiplier,
+  );
+}
+
+export function getVideoOutputSecondsForQuota(
+  quotaSeconds: number,
+  modelId: VideoModelId,
+): number {
+  return Math.max(
+    0,
+    quotaSeconds / getVideoModel(modelId).quotaMultiplier,
+  );
 }
 
 /*

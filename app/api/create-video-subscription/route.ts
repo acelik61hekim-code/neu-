@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
           unit_amount: plan.priceCents,
           product_data: {
             name: `KI Video Studio ${plan.name}`,
-            description: `${formatVideoMinutes(plan.videoSecondsPerMonth)} mit Fast-Modellen und ${plan.studioEditsPerMonth} Studio-Exporte pro Monat`,
+            description: `Bis zu ${formatVideoMinutes(plan.videoSecondsPerMonth)} mit Veo Fast, alle 4 Videomodelle und ${plan.studioEditsPerMonth} Studio-Exporte pro Monat`,
           },
         },
         quantity: 1,

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "@/lib/supabase/server";
+import { getVideoModel } from "@/lib/pricing";
 import { jobStore } from "@/lib/store";
 import { getActiveVideoSubscription } from "@/lib/video-subscription";
+import { buildVideoStudioScenes } from "@/lib/video-studio-scenes";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,15 +43,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Dieses fertige Video wurde in deinem Konto nicht gefunden." }, { status: 404 });
   }
 
+  const videoModel = job.videoModel ?? "seedance-2-fast";
+  const durationSeconds = job.targetDurationSeconds ?? 15;
+
   return NextResponse.json({
     jobId,
-    title: `KI-Video · ${job.targetDurationSeconds ?? 15} Sekunden`,
-    durationSeconds: job.targetDurationSeconds ?? 15,
+    title: `KI-Video · ${durationSeconds} Sekunden`,
+    durationSeconds,
     videoUrl: `/api/video-download/${encodeURIComponent(jobId)}`,
+    videoModel,
+    videoModelName: getVideoModel(videoModel).name,
+    videoSecondsRemaining: Math.max(
+      0,
+      subscription.plan.videoSecondsPerMonth - subscription.usage.videoSeconds,
+    ),
     studioEditsRemaining: Math.max(
       0,
       subscription.plan.studioEditsPerMonth - subscription.usage.studioEdits,
     ),
+    scenes: buildVideoStudioScenes(durationSeconds),
+    sceneRenders: (job.studioSceneRenders ?? []).slice(-10).map((render) => ({
+      id: render.id,
+      versionId: render.versionId,
+      sceneNumber: render.sceneNumber,
+      status: render.status,
+      instruction: render.instruction,
+      errorMessage: render.errorMessage,
+    })),
     versions: (job.studioVersions ?? []).map((version) => ({
       ...version,
       videoUrl:

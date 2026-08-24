@@ -1439,7 +1439,7 @@ export async function POST(
       return NextResponse.json(
         {
           error:
-            `Für dieses Video reicht dein verbleibendes Monatskontingent nicht aus. Verfügbar sind noch ${formatQuotaMinutes(reservation.remaining)}.`,
+            `Für dieses Video reicht dein verbleibendes Monatskontingent nicht aus. Mit ${selectedVideoModel.shortName} sind noch ${formatQuotaMinutes(reservation.remaining / selectedVideoModel.quotaMultiplier)} verfügbar.`,
         },
         { status: 409 },
       );
