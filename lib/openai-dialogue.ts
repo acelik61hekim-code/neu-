@@ -2,6 +2,12 @@ const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 export const DIALOGUE_WRITER_MODEL = "gpt-5.6-terra";
 
+export type DialogueWriterOptions = {
+  speakerNames: string[];
+  minimumTurns: number;
+  maximumTurns: number;
+};
+
 type OpenAIResponseContent = {
   type?: unknown;
   text?: unknown;
@@ -98,11 +104,12 @@ function readApiErrorMessage(
 export async function generateStructuredDialoguePlan(
   apiKey: string,
   prompt: string,
+  options: DialogueWriterOptions,
 ): Promise<string> {
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    240_000,
+    110_000,
   );
 
   try {
@@ -118,8 +125,8 @@ export async function generateStructuredDialoguePlan(
           model: DIALOGUE_WRITER_MODEL,
           instructions: [
             "Du bist der zentrale professionelle Dialog- und Story-Autor für eine deutsche KI-Videoplattform.",
-            "Erzeuge einen einzigen kausalen, visuell ausführbaren Filmplan. Die Dialoge werden wortgleich an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht.",
-            "Antworte ausschließlich mit einem vollständigen JSON-Objekt, das exakt die im Nutzer-Prompt verlangten Felder enthält.",
+            "Schreibe ausschließlich den kausalen, natürlich sprechbaren Dialog für den bereits geplanten Film. Der Wortlaut wird unverändert an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht.",
+            "Antworte ausschließlich im vorgegebenen JSON-Schema. Keine Erklärung und keine zusätzlichen Felder.",
           ].join("\n"),
           input: prompt,
           reasoning: {
@@ -127,11 +134,46 @@ export async function generateStructuredDialoguePlan(
           },
           text: {
             format: {
-              type: "json_object",
+              type: "json_schema",
+              name: "video_dialogue_plan",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  turns: {
+                    type: "array",
+                    minItems: options.minimumTurns,
+                    maxItems: options.maximumTurns,
+                    items: {
+                      type: "object",
+                      properties: {
+                        speaker: {
+                          type: "string",
+                          enum: options.speakerNames,
+                        },
+                        text: {
+                          type: "string",
+                        },
+                        voiceDirection: {
+                          type: "string",
+                        },
+                      },
+                      required: [
+                        "speaker",
+                        "text",
+                        "voiceDirection",
+                      ],
+                      additionalProperties: false,
+                    },
+                  },
+                },
+                required: ["turns"],
+                additionalProperties: false,
+              },
             },
             verbosity: "medium",
           },
-          max_output_tokens: 32_000,
+          max_output_tokens: 8_000,
           store: false,
         }),
         signal: controller.signal,

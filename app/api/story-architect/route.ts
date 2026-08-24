@@ -3317,24 +3317,22 @@ async function generateStoryWithFallback(
   );
 }
 
-async function generateDialogueStoryWithTerra(
-  apiKey: string,
-  prompt: string,
-  validateCandidate:
-    (
-      parsed: unknown,
-    ) => boolean,
-): Promise<GeneratedStory> {
-  console.log(
-    `Story Architect Dialog-Autor: ${DIALOGUE_WRITER_MODEL}`,
-  );
+type TerraDialogueTurn = {
+  speaker: string;
+  text: string;
+  voiceDirection: string;
+};
 
-  const rawText =
-    await generateStructuredDialoguePlan(
-      apiKey,
-      prompt,
-    );
+type TerraDialoguePayload = {
+  turns: TerraDialogueTurn[];
+};
 
+function readTerraDialoguePayload(
+  rawText: string,
+  speakerNames: readonly string[],
+  minimumTurns: number,
+  maximumTurns: number,
+): TerraDialoguePayload {
   const parsedResult =
     tryParseJson(
       rawText,
@@ -3342,26 +3340,411 @@ async function generateDialogueStoryWithTerra(
 
   if (!parsedResult) {
     throw new Error(
-      "GPT-5.6 Terra hat keinen gültigen JSON-Filmplan erzeugt.",
+      "GPT-5.6 Terra hat kein gültiges Dialog-JSON erzeugt.",
     );
   }
 
-  if (
-    !validateCandidate(
+  const root =
+    asRecord(
       parsedResult.parsed,
+    );
+
+  const turns =
+    Array.isArray(
+      root.turns,
+    )
+      ? root.turns
+          .map(
+            (turn) => {
+              const value =
+                asRecord(
+                  turn,
+                );
+
+              return {
+                speaker:
+                  readString(
+                    value.speaker,
+                    "",
+                  ).trim(),
+                text:
+                  readString(
+                    value.text,
+                    "",
+                  ).trim(),
+                voiceDirection:
+                  readString(
+                    value.voiceDirection,
+                    "",
+                  ).trim(),
+              };
+            },
+          )
+      : [];
+
+  if (
+    turns.length <
+      minimumTurns ||
+    turns.length >
+      maximumTurns ||
+    turns.some(
+      (turn) =>
+        !speakerNames.includes(
+          turn.speaker,
+        ) ||
+        !turn.text ||
+        !turn.voiceDirection,
     )
   ) {
     throw new Error(
-      "GPT-5.6 Terra hat noch keinen vollständig ausführbaren Dialogplan erzeugt.",
+      "GPT-5.6 Terra hat die verbindliche Dialogstruktur nicht eingehalten.",
     );
   }
 
   return {
-    rawText:
-      parsedResult.cleanedText,
-    model:
-      DIALOGUE_WRITER_MODEL,
+    turns,
   };
+}
+
+function buildTerraDialoguePrompt(
+  story: StoryDraft,
+  response: ArchitectResponse,
+  targetDurationSeconds: VideoDurationSeconds,
+  creationMode: VideoCreationMode,
+  spokenLanguage: VideoSpokenLanguage,
+  speakerNames: readonly string[],
+  minimumTurns: number,
+  maximumTurns: number,
+  correctionAttempt: boolean,
+): string {
+  const maximumWordsPerLine =
+    creationMode ===
+      "viral-story"
+      ? 9
+      : 12;
+
+  const language =
+    spokenLanguage ===
+      "en"
+      ? "English"
+      : "natürliches gesprochenes Deutsch";
+
+  const visualBeats = [
+    {
+      seconds:
+        `0–${response.moviePlan.opening.endSecond}`,
+      action:
+        response.moviePlan.opening.action,
+      hook:
+        response.moviePlan.opening.hook,
+      existingDialogue:
+        response.moviePlan.opening.dialogue.text,
+    },
+    ...response.moviePlan.continuations.map(
+      (continuation) => ({
+        seconds:
+          `${continuation.startSecond}–${continuation.endSecond}`,
+        action:
+          continuation.actionContinuation,
+        hook:
+          continuation.storyBeat,
+        existingDialogue:
+          continuation.dialogue.text,
+      }),
+    ),
+  ];
+
+  return `
+Schreibe den endgültigen Dialog für ein ${targetDurationSeconds}-Sekunden-Video.
+
+GESCHLOSSENE BESETZUNG
+${speakerNames.join(", ")}
+
+SPRACHE
+${language}
+
+VERBINDLICHE AUFGABE
+
+- Erzeuge zwischen ${minimumTurns} und ${maximumTurns} Dialogzeilen in genauer zeitlicher Reihenfolge.
+- Jede genannte Figur spricht mindestens einmal.
+- Eine Zeile hat höchstens ${maximumWordsPerLine} kurze, gut aussprechbare Wörter.
+- Bei fünfzehn Sekunden dürfen alle Zeilen zusammen höchstens vierundzwanzig Wörter haben.
+- Jede Antwort reagiert direkt auf die vorige Zeile und ergänzt eine neue konkrete Information.
+- Verwende konkrete Handlungen, Orte, Zeitpunkte oder sichtbare Beweise statt allgemeiner Dramawörter.
+- Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
+- Bei Untreue wird die verbotene Handlung selbst sichtbar entdeckt; ein Handy oder Beleg ist nur eine zusätzliche Bestätigung.
+- Keine Ziffern, Abkürzungen, Hashtags, Schrägstriche, Untertitel, Erzähler oder Offscreen-Sprache.
+- speaker ist exakt einer der vorgegebenen Namen.
+- voiceDirection beschreibt knapp die konkrete Sprechhaltung und Emotion.
+- Erfinde keine Tatsachen, die der Story oder den sichtbaren Szenen widersprechen.
+${
+  correctionAttempt
+    ? "- Dies ist der Korrekturversuch: Prüfe besonders Sprecherwechsel, Wortgrenzen, direkte Antworten und konkrete Details."
+    : ""
+}
+
+STORY
+${JSON.stringify({
+  title: story.title,
+  genre: story.genre,
+  mood: story.mood,
+  setting: story.setting,
+  summary: story.summary,
+  characters:
+    story.characters.map(
+      (character) => ({
+        name:
+          character.name,
+        description:
+          character.description,
+      }),
+    ),
+})}
+
+SICHTBARER FILMPLAN
+${JSON.stringify(visualBeats)}
+`;
+}
+
+function applyTerraDialogueTurns(
+  response: ArchitectResponse,
+  turns: readonly TerraDialogueTurn[],
+  spokenLanguage: VideoSpokenLanguage,
+): ArchitectResponse {
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const chunks:
+    TerraDialogueTurn[][] = [];
+
+  let cursor =
+    0;
+
+  for (
+    let index = 0;
+    index < beatCount;
+    index += 1
+  ) {
+    const remainingTurns =
+      turns.length -
+      cursor;
+
+    const remainingBeats =
+      beatCount -
+      index;
+
+    const take =
+      Math.min(
+        4,
+        Math.max(
+          1,
+          Math.ceil(
+            remainingTurns /
+              remainingBeats,
+          ),
+        ),
+      );
+
+    chunks.push(
+      turns.slice(
+        cursor,
+        cursor + take,
+      ) as TerraDialogueTurn[],
+    );
+
+    cursor +=
+      take;
+  }
+
+  const dialogueLanguage =
+    spokenLanguage ===
+      "en"
+      ? "English"
+      : "German";
+
+  const toDialogue =
+    (
+      turn:
+        TerraDialogueTurn,
+    ): SceneDialogue => ({
+      enabled: true,
+      speaker:
+        turn.speaker,
+      text:
+        turn.text,
+      language:
+        dialogueLanguage,
+      voiceDirection:
+        turn.voiceDirection,
+    });
+
+  const openingTurns =
+    chunks[0];
+
+  const opening = {
+    ...response.moviePlan.opening,
+    dialogue:
+      toDialogue(
+        openingTurns[0],
+      ),
+    dialogueTurns:
+      openingTurns
+        .slice(1)
+        .map(
+          toDialogue,
+        ),
+  };
+
+  const continuations =
+    response.moviePlan.continuations.map(
+      (
+        continuation,
+        index,
+      ) => {
+        const beatTurns =
+          chunks[
+            index + 1
+          ];
+
+        return {
+          ...continuation,
+          dialogue:
+            toDialogue(
+              beatTurns[0],
+            ),
+          dialogueTurns:
+            beatTurns
+              .slice(1)
+              .map(
+                toDialogue,
+              ),
+        };
+      },
+    );
+
+  return {
+    ...response,
+    moviePlan: {
+      ...response.moviePlan,
+      opening,
+      continuations,
+    },
+  };
+}
+
+async function writeDialogueWithTerra(
+  apiKey: string,
+  story: StoryDraft,
+  response: ArchitectResponse,
+  targetDurationSeconds: VideoDurationSeconds,
+  creationMode: VideoCreationMode,
+  spokenLanguage: VideoSpokenLanguage,
+  speakerNames: readonly string[],
+): Promise<ArchitectResponse> {
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const maximumTurns =
+    Math.min(
+      beatCount * 4,
+      Math.max(
+        speakerNames.length,
+        beatCount * 3,
+      ),
+    );
+
+  const minimumTurns =
+    Math.min(
+      maximumTurns,
+      Math.max(
+        speakerNames.length,
+        beatCount * 2,
+      ),
+    );
+
+  let lastError:
+    unknown;
+
+  for (
+    let attempt = 1;
+    attempt <= 2;
+    attempt += 1
+  ) {
+    console.log(
+      `Story Architect Dialog-Autor: ${DIALOGUE_WRITER_MODEL}, Versuch ${attempt}/2`,
+    );
+
+    try {
+      const rawText =
+        await generateStructuredDialoguePlan(
+          apiKey,
+          buildTerraDialoguePrompt(
+            story,
+            response,
+            targetDurationSeconds,
+            creationMode,
+            spokenLanguage,
+            speakerNames,
+            minimumTurns,
+            maximumTurns,
+            attempt > 1,
+          ),
+          {
+            speakerNames: [
+              ...speakerNames,
+            ],
+            minimumTurns,
+            maximumTurns,
+          },
+        );
+
+      const payload =
+        readTerraDialoguePayload(
+          rawText,
+          speakerNames,
+          minimumTurns,
+          maximumTurns,
+        );
+
+      const candidate =
+        applyTerraDialogueTurns(
+          response,
+          payload.turns,
+          spokenLanguage,
+        );
+
+      if (
+        validateArchitectResponse(
+          candidate,
+        ) &&
+        hasMandatoryDialoguePlan(
+          candidate,
+          speakerNames,
+          targetDurationSeconds,
+          creationMode,
+          story,
+        )
+      ) {
+        return candidate;
+      }
+
+      throw new Error(
+        "GPT-5.6 Terra hat die Dialog-Qualitätskontrolle noch nicht bestanden.",
+      );
+    } catch (error) {
+      lastError =
+        error;
+    }
+  }
+
+  throw (
+    lastError ??
+    new Error(
+      "GPT-5.6 Terra konnte keinen gültigen Dialogplan erzeugen.",
+    )
+  );
 }
 
 function buildStoryPrompt(
@@ -4356,23 +4739,14 @@ export async function POST(
       musicTrack,
     );
 
-  if (
-    voiceMode ===
-      "dialogue"
-      ? !openAiApiKey &&
-        !geminiApiKey
-      : !geminiApiKey
-  ) {
+  if (!geminiApiKey) {
     return NextResponse.json(
       {
         success:
           false,
 
         error:
-          voiceMode ===
-          "dialogue"
-            ? "Für die Dialogerstellung fehlt OPENAI_API_KEY. Auch der sichere Gemini-Ersatz ist nicht eingerichtet."
-            : "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
+          "GEMINI_API_KEY fehlt für die visuelle Filmplanung in den Umgebungsvariablen.",
       },
 
       {
@@ -4437,73 +4811,25 @@ export async function POST(
         );
       };
 
-    let generationResult:
-      GeneratedStory | undefined;
+    const ai =
+      new GoogleGenAI({
+        apiKey:
+          geminiApiKey,
+      });
 
-    if (
-      voiceMode ===
-        "dialogue" &&
-      openAiApiKey
-    ) {
-      try {
-        generationResult =
-          await generateDialogueStoryWithTerra(
-            openAiApiKey,
-            prompt,
-            validateDialogueCandidate,
-          );
-      } catch (terraError) {
-        console.error(
-          "GPT-5.6 Terra Dialogplanung fehlgeschlagen:",
-          getErrorDetails(
-            terraError,
-          ),
-        );
-
-        if (!geminiApiKey) {
-          throw terraError;
-        }
-
-        console.warn(
-          "Der Dialogplan wird ausfallsicher mit Gemini erneut versucht.",
-        );
-      }
-    } else if (
-      voiceMode ===
-      "dialogue"
-    ) {
-      console.warn(
-        "OPENAI_API_KEY fehlt. Der Dialogplan verwendet vorübergehend den Gemini-Ersatz.",
+    let generationResult =
+      await generateStoryWithFallback(
+        ai,
+        prompt,
+        voiceMode ===
+          "dialogue"
+          ? validateDialogueCandidate
+          : undefined,
+        creationMode ===
+          "viral-story"
+          ? VIRAL_STORY_MODELS
+          : STORY_MODELS,
       );
-    }
-
-    if (!generationResult) {
-      if (!geminiApiKey) {
-        throw new Error(
-          "GEMINI_API_KEY fehlt in den Umgebungsvariablen.",
-        );
-      }
-
-      const ai =
-        new GoogleGenAI({
-          apiKey:
-            geminiApiKey,
-        });
-
-      generationResult =
-        await generateStoryWithFallback(
-          ai,
-          prompt,
-          voiceMode ===
-            "dialogue"
-            ? validateDialogueCandidate
-            : undefined,
-          creationMode ===
-            "viral-story"
-            ? VIRAL_STORY_MODELS
-            : STORY_MODELS,
-        );
-    }
 
     const cleanedText =
       cleanJsonText(
@@ -4554,7 +4880,7 @@ export async function POST(
       );
     }
 
-    const normalized =
+    let normalized =
       normalizeArchitectResponse(
         parsed,
         story,
@@ -4563,6 +4889,49 @@ export async function POST(
         editingStyle,
         voiceMode,
       );
+
+    if (
+      voiceMode ===
+        "dialogue" &&
+      openAiApiKey
+    ) {
+      try {
+        normalized =
+          await writeDialogueWithTerra(
+            openAiApiKey,
+            story,
+            normalized,
+            targetDurationSeconds,
+            creationMode,
+            spokenLanguage,
+            expectedDialogueSpeakers,
+          );
+
+        generationResult = {
+          ...generationResult,
+          model:
+            DIALOGUE_WRITER_MODEL,
+        };
+      } catch (terraError) {
+        console.error(
+          "GPT-5.6 Terra Dialogplanung fehlgeschlagen:",
+          getErrorDetails(
+            terraError,
+          ),
+        );
+
+        console.warn(
+          "Der geprüfte Gemini-Dialogplan bleibt als Ausfallsicherung aktiv.",
+        );
+      }
+    } else if (
+      voiceMode ===
+      "dialogue"
+    ) {
+      console.warn(
+        "OPENAI_API_KEY fehlt. Der Dialogplan verwendet vorübergehend den geprüften Gemini-Ersatz.",
+      );
+    }
 
     if (
       !validateArchitectResponse(
