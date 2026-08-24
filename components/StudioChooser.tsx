@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { FilmIcon, ImageIcon, MusicIcon } from "@/components/Icons";
+import { FilmIcon, ImageIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
 import { STUDIO_PATHS } from "@/lib/site";
 
 export type StudioMode = "video" | "song" | "image";
@@ -18,7 +18,7 @@ export default function StudioChooser({
 }) {
   return (
     <div
-      className={`grid grid-cols-1 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2 shadow-xl shadow-black/20 sm:grid-cols-3 ${compact ? "w-full max-w-2xl" : "mx-auto mt-7 w-full max-w-2xl"}`}
+      className={`grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2 shadow-xl shadow-black/20 lg:grid-cols-4 ${compact ? "w-full max-w-4xl" : "mx-auto mt-7 w-full max-w-4xl"}`}
       aria-label="Was möchtest du erstellen?"
     >
       <Link
@@ -53,6 +53,13 @@ export default function StudioChooser({
       >
         <ImageIcon />
         Bild erstellen
+      </Link>
+      <Link
+        href="/sound-studio"
+        className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-zinc-400 transition hover:bg-fuchsia-500/10 hover:text-fuchsia-100"
+      >
+        <SparklesIcon />
+        Sound Studio
       </Link>
     </div>
   );

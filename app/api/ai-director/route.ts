@@ -61,6 +61,7 @@ type ApiErrorLike = {
 };
 
 const MODEL_NAME = "gemini-3.5-flash-lite";
+const VIRAL_MODEL_NAME = "gemini-3.5-flash";
 
 const MAX_ATTEMPTS = 4;
 
@@ -147,6 +148,10 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Die Zusammenfassung muss ein echtes abwechselndes Gespräch ermöglichen. Kein Monolog, kein Erzähler, kein Voice-over und keine Offscreen-Stimme.
 - Lege den Konflikt vor dem Dialog konkret fest: Beziehung, Auslöser, sichtbares Beweisstück, verborgenes Wissen und Konsequenz.
 - Jede Antwort reagiert direkt auf den vorherigen Satz und ergänzt eine neue überprüfbare Information. Vermeide austauschbare Platzhaltersätze wie „Das ist alles anders“, „Du verstehst das nicht“, „Warte ab“ oder „Das ist erst der Anfang“.
+- Lege intern vor dem Schreiben eine unveränderliche Faktenkette fest: Beziehung, sichtbare Handlung, direkter Zeuge, genaue Lüge, widerlegendes Detail, Konsequenz und Cliffhanger.
+- Jede Dialogzeile erfüllt genau eine Funktion: Vorwurf, Antwort, Widerspruch, Teilgeständnis, Entscheidung oder Enthüllung. Eine Antwort darf nie das Thema wechseln oder ein unverbundenes neues Geheimnis erfinden.
+- Die Figuren brauchen unterscheidbare Sprechhaltungen passend zu ihrer Persönlichkeit. Wenn zwei Figuren ihre Sätze problemlos tauschen könnten, ist der Dialog noch nicht gut genug.
+- Beispiel für eine klare Kette: „Ich sah euren Kuss am Pool.“ – „Ora küsste mich, ich wich zurück.“ – „Nein, du trägst meinen Ring seit Montag.“
 - Bei Fremdgehen oder Verrat muss die Zusammenfassung eindeutig sagen, wer wen mit wem betrogen hat, wodurch es auffliegt und welche konkrete Gegenenthüllung folgt.
 - Der zentrale Regelbruch wird sichtbar als Handlung gezeigt. Bei Fremdgehen sieht die betrogene Figur den Kuss, die vertraute Umarmung, das Händchenhalten oder das gemeinsame Verlassen eines Zimmers selbst. Handy, Chat, Foto, Brief oder Rechnung sind höchstens zusätzliche Bestätigung, nie der einzige Hauptbeweis.
 - Plane Ursache, Entdeckung und Reaktion kausal: konkrete Handlung im Bild, entdeckende Figur, unmittelbarer Vorwurf, überprüfbare Antwort, Widerspruch und Konsequenz.
@@ -525,6 +530,7 @@ async function generateWithRetry(
   }>,
   dialogueMode = false,
   musicTrack?: MusicVideoTrackContext,
+  viralStory = false,
 ) {
   let lastError: unknown;
 
@@ -539,7 +545,7 @@ async function generateWithRetry(
       );
 
       return await ai.models.generateContent({
-        model: MODEL_NAME,
+        model: viralStory ? VIRAL_MODEL_NAME : MODEL_NAME,
         contents: conversation,
         config: {
           systemInstruction:
@@ -740,6 +746,12 @@ export async function POST(
       apiKey,
     });
 
+    const viralCharacterIds = Array.isArray(body.viralCharacterIds)
+      ? body.viralCharacterIds.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [];
+
     const response =
       await generateWithRetry(
         ai,
@@ -750,6 +762,7 @@ export async function POST(
         )
           ? body.musicTrack
           : undefined,
+        viralCharacterIds.length >= 2,
       );
 
     const responseText =
@@ -799,12 +812,6 @@ export async function POST(
     const brandedResult = isStudioWebsiteAdvertisement(userConversation)
       ? enforceStudioAdvertisement(result)
       : result;
-
-    const viralCharacterIds = Array.isArray(body.viralCharacterIds)
-      ? body.viralCharacterIds.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : [];
 
     const finalResult = enforceViralStory(brandedResult, viralCharacterIds);
 

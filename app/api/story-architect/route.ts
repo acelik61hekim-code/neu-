@@ -52,6 +52,12 @@ const STORY_MODELS = [
   "gemini-3.5-flash",
 ] as const;
 
+const VIRAL_STORY_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+] as const;
+
 const RETRIES_PER_MODEL = 2;
 const INITIAL_RETRY_DELAY_MS = 1500;
 
@@ -365,7 +371,8 @@ function normalizeDialogue(
 
     text:
       readString(
-        record.text,
+        record.text ??
+          record.line,
         "Was passiert hier?",
       ),
 
@@ -377,7 +384,9 @@ function normalizeDialogue(
 
     voiceDirection:
       readString(
-        record.voiceDirection,
+        record.voiceDirection ??
+          record.deliveryStyle ??
+          record.emotion,
         "Natural, believable, concise delivery.",
       ),
   };
@@ -404,7 +413,8 @@ function normalizeDialogueTurns(
           record.speaker,
         ).length > 0 &&
         readLooseString(
-          record.text,
+          record.text ??
+            record.line,
         ).length > 0;
 
       return normalizeDialogue(
@@ -1072,7 +1082,10 @@ function normalizeMoviePlan(
 
     dialogueTurns:
       normalizeDialogueTurns(
-        rawOpening.dialogueTurns,
+        rawOpening.dialogueTurns ??
+          asRecord(
+            rawOpening.dialogue,
+          ).dialogueTurns,
         voiceMode === "dialogue",
       ),
 
@@ -1286,7 +1299,10 @@ function normalizeMoviePlan(
 
           dialogueTurns:
             normalizeDialogueTurns(
-              source.dialogueTurns,
+              source.dialogueTurns ??
+                asRecord(
+                  source.dialogue,
+                ).dialogueTurns,
               voiceMode === "dialogue",
             ),
 
@@ -1737,7 +1753,7 @@ function isVagueDramaLine(
         " ",
       );
 
-  return [
+  const exactPlaceholder = [
     /^das ist (?:doch )?(?:alles )?(?:völlig |ganz )?anders$/,
     /^du verstehst das nicht$/,
     /^frag .{0,24} nicht(?: zu viel)?$/,
@@ -1747,6 +1763,11 @@ function isVagueDramaLine(
     /^es ist nicht so(?: wie du denkst)?$/,
     /^du weißt gar nichts$/,
     /^glaub mir$/,
+    /^(?:bitte )?sag (?:mir )?(?:endlich )?die wahrheit$/,
+    /^(?:hör auf zu lügen|du lügst|du bist ein lügner)$/,
+    /^(?:wie konntest du|ich habe dir vertraut)$/,
+    /^(?:was soll das|was ist hier los)$/,
+    /^(?:das kann nicht sein|das glaub ich nicht)$/,
     /^was machst du (?:mit .+ )?hier$/,
     /^das gehört (?:niemals )?(?:nicht )?(?:euch|dir|ihm|ihr)(?: beiden)?$/,
     /^(?:aber )?(?:das|dies|das hier|dies hier) (?:ändert|verändert|beweist|erklärt) (?:einfach )?(?:alles|nichts)$/,
@@ -1755,6 +1776,27 @@ function isVagueDramaLine(
       pattern.test(
         normalized,
       ),
+  );
+
+  if (
+    exactPlaceholder
+  ) {
+    return true;
+  }
+
+  const containsGenericReaction =
+    /(?:lüg|wahrheit|wie konntest|verstehst (?:mich|das) nicht|sag .{0,20}nichts|glaub(?:e)? .{0,12}(?:mir|dir)|was ist hier los|was soll das|kann das erklären|nicht wie es aussieht|ändert alles)/i.test(
+      normalized,
+    );
+
+  const containsConcreteDetail =
+    /(?:küss|kuss|umarm|zimmer|pool|terrasse|feuerkorb|ring|armband|kette|schmuck|jacke|koffer|ticket|schlüssel|umschlag|geld|preis|challenge|requisit|team|allianz|hochzeit|ehe|verlob|wohnung|geschenk|treffen|nacht|morgen|gestern|montag|dienstag|mittwoch|donnerstag|freitag|samstag|sonntag|woche|monat|jahr|seit|vorabend|uhr|gesehen|erwischt|getragen|gegeben|genommen|vertauscht|versprochen|geküsst|verlassen)/i.test(
+      normalized,
+    );
+
+  return (
+    containsGenericReaction &&
+    !containsConcreteDetail
   );
 }
 
@@ -1781,12 +1823,12 @@ function buildViralDialogueArc(
     return `
 VERBINDLICHER EINMINÜTIGER DIALOGBOGEN – VIER 15-SEKUNDEN-BEATS
 
-1. Opening 0–15: Zeige zuerst die verbotene Handlung selbst oder wie sie unmittelbar entdeckt wird. Die betrogene Figur benennt danach den konkreten Kuss, die Umarmung, das Zimmer oder den Gegenstand. Eine direkte Antwort oder Gegenreaktion darf über dialogueTurns folgen.
-2. Fortsetzung 15–30: Die beschuldigte Figur antwortet direkt und nennt ein überprüfbares Detail oder eine konkrete Ausrede.
-3. Fortsetzung 30–45: Die dritte Figur oder der Gegenpart enthüllt einen Widerspruch, ein Beweisstück oder ein Teilgeständnis.
-4. Fortsetzung 45–60: Konsequenz, Gegenenthüllung und ein konkret benannter Cliffhanger. Der letzte Satz oder die letzte Reaktion öffnet die nächste mögliche Episode.
+1. Opening 0–15: Zeige zuerst die verbotene Handlung selbst oder wie sie unmittelbar entdeckt wird. Die betroffene Figur benennt konkret, was sie gerade gesehen hat. Die Antwort nennt ein überprüfbares Detail statt einer leeren Ausrede.
+2. Fortsetzung 15–30: Ein klares Ziel kollidiert mit dem Gegeninteresse. Ort, Zeitpunkt oder Besitz eines Gegenstands machen die Aussage überprüfbar.
+3. Fortsetzung 30–45: Die dritte Figur enthüllt einen Widerspruch oder ein Teilgeständnis. Ein kurzer echter Gefühlsmoment zeigt, warum der Konflikt persönlich wichtig ist.
+4. Fortsetzung 45–60: Eine konkrete Entscheidung hat eine sichtbare Konsequenz. Der letzte Satz benennt ein neues Beweisstück, Ereignis oder Geheimnis als Cliffhanger.
 
-Die Dialoge ergeben zusammen EIN verständliches Gespräch. Keine Zeile darf aus einer anderen Geschichte stammen.`;
+Die Dialoge ergeben zusammen EIN verständliches Gespräch. Jede Zeile erfüllt genau eine Funktion: Vorwurf, Antwort, Widerspruch, Geständnis, Entscheidung oder Enthüllung. Keine Zeile darf aus einer anderen Geschichte stammen.`;
   }
 
   return `
@@ -1796,7 +1838,8 @@ VERBINDLICHER DIALOGBOGEN
 - Beginne mit einem konkret benannten Skandal oder Beweis.
 - Lass jede Antwort den unmittelbar vorherigen Vorwurf beantworten und eine neue Information ergänzen.
 - Nutze dialogueTurns innerhalb eines 15-Sekunden-Clips, wenn mehrere Figuren unmittelbar reagieren müssen.
-- Steigere über Geständnis, Widerspruch und Konsequenz zu einem konkret benannten Cliffhanger.`;
+- Steigere über Geständnis, Widerspruch und Konsequenz zu einem konkret benannten Cliffhanger.
+- Gib jeder Figur eine erkennbare Sprechhaltung: direkt, kontrolliert, ausweichend, trocken oder verletzlich. Vertauschte Zeilen dürfen nicht gleich gut funktionieren.`;
 }
 
 function hasMandatoryDialoguePlan(
@@ -1932,6 +1975,9 @@ function hasMandatoryDialoguePlan(
   let consecutiveSpeakerLines =
     0;
 
+  const usedDialogueLines =
+    new Set<string>();
+
   const maximumWordsPerLine =
     isViralDialogue
       ? 9
@@ -1960,6 +2006,13 @@ function hasMandatoryDialoguePlan(
         .filter(Boolean)
         .length;
 
+    const normalizedDialogueLine =
+      dialogue.text
+        .trim()
+        .toLocaleLowerCase("de-DE")
+        .replace(/[„“"'!?.,…:;]+/g, "")
+        .replace(/\s+/g, " ");
+
     if (
       !speaker ||
       forbiddenSpeaker.test(
@@ -1972,10 +2025,17 @@ function hasMandatoryDialoguePlan(
         dialogue.text,
       ) ||
       dialogue.text.length >
-        140
+        140 ||
+      usedDialogueLines.has(
+        normalizedDialogueLine,
+      )
     ) {
       return false;
     }
+
+    usedDialogueLines.add(
+      normalizedDialogueLine,
+    );
 
     consecutiveSpeakerLines =
       normalizedSpeaker ===
@@ -3033,13 +3093,16 @@ async function generateStoryWithFallback(
     (
       parsed: unknown,
     ) => boolean,
+  models:
+    readonly string[] =
+      STORY_MODELS,
 ): Promise<GeneratedStory> {
   let lastError:
     unknown;
 
   for (
     const model
-    of STORY_MODELS
+    of models
   ) {
     for (
       let attempt = 1;
@@ -3374,8 +3437,14 @@ VERBINDLICHER ORIGINALSONG
       ? `
 VERBINDLICHER TIKTOK-STORY-MODUS MIT FESTEN FIGUREN
 
+AUTORENRAUM VOR DER AUSGABE
+
+- Lege intern zuerst diese sieben Fakten fest und ändere sie danach nicht mehr: bestehende Beziehung, verbotene Handlung, direkter Zeuge, genaue Lüge, widerlegendes Detail, persönliche Konsequenz und konkreter Cliffhanger.
+- Schreibe danach den Dialog einmal vollständig in zeitlicher Reihenfolge. Prüfe, ob jede Antwort ohne zusätzliches Wissen verständlich auf die vorige Zeile reagiert.
+- Streiche jede Zeile, die weder den Konflikt voranbringt noch eine Figur erkennbar macht. Erfinde während des Gesprächs keine neuen Gegenstände, Beziehungen oder Orte, die nicht zur Faktenkette gehören.
+
 - Jeder neue Seedance-Abschnitt dauert grundsätzlich 15 Sekunden.
-- In jedem 15-Sekunden-Abschnitt wird aktiv gestritten.
+- In jedem 15-Sekunden-Abschnitt geschieht eine neue konkrete Handlung oder Enthüllung; Streit und ein kurzer echter Gefühlsmoment wechseln sich sinnvoll ab.
 - Plane klare übertriebene Reaktionen: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder große Doppeltakes.
 - Niemand steht ruhig erklärend herum.
 - Nutze schnelle Gegenaufnahmen und enge Reaktionsbilder.
@@ -3416,10 +3485,23 @@ DIALOGSTRUKTUR
 - Jede ausgewählte Figur muss mindestens einmal sprechen.
 - Jede einzelne Dialogzeile hat höchstens neun gut sprechbare Wörter.
 - Nutze kurze deutsche Hauptsätze, Alltagswörter und ausgeschriebene Zahlen. Keine Abkürzungen, Ziffern, Hashtags, Schrägstriche oder künstlichen Wortzusammensetzungen.
+- Jede Zeile hat genau eine Aufgabe: konkreter Vorwurf, direkte Antwort, überprüfbarer Widerspruch, Teilgeständnis, Entscheidung oder neue Enthüllung.
+- Die beschuldigte Figur beantwortet die gestellte Frage tatsächlich. Ein Themenwechsel, eine allgemeine Empörung oder ein plötzliches neues Geheimnis ohne Verbindung ist verboten.
+- Namen, Ort, Zeitpunkt und sichtbares Beweisstück bleiben über alle Abschnitte widerspruchsfrei. Pronomen wie „das“, „es“ oder „alles“ dürfen nie einen ungenannten Sachverhalt ersetzen.
+- Figuren sprechen verschieden: Eine direkte Figur benennt den Vorwurf knapp, eine kontrollierte Figur antwortet präzise, eine ausweichende Figur nennt eine falsifizierbare Ausrede. Tausche niemals beliebige Standardsätze zwischen den Figuren aus.
+- SCHLECHT: „Das ändert alles.“ – „Du verstehst das nicht.“ – „Warte ab.“
+- GUT: „Ich sah euren Kuss am Pool.“ – „Ora küsste mich, ich wich sofort zurück.“ – „Nein, du trägst meinen Ring seit Montag.“
 - Kein Erzähler.
 - Kein Voice-over.
 - Keine Offscreen-Sprache.
 - Keine Untertitel.
+
+EXAKTES JSON-DIALOGFORMAT
+
+- opening.dialogue und jede continuation.dialogue sind Objekte mit exakt diesen Feldern: enabled, speaker, text, language, voiceDirection.
+- opening.dialogueTurns und jede continuation.dialogueTurns sind eigenständige Arrays direkt neben dialogue, niemals innerhalb von dialogue.
+- Jeder Eintrag in dialogueTurns nutzt ebenfalls enabled, speaker, text, language und voiceDirection.
+- Nutze immer das Feld text, niemals line. Nutze voiceDirection, niemals deliveryStyle.
 `
       : "";
 
@@ -4294,6 +4376,10 @@ export async function POST(
               );
             }
           : undefined,
+        creationMode ===
+          "viral-story"
+          ? VIRAL_STORY_MODELS
+          : STORY_MODELS,
       );
 
     const cleanedText =

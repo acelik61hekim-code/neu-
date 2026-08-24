@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
-import { STUDIO_PATHS } from "@/lib/site";
-import { FilmIcon, ImageIcon, MusicIcon, SparklesIcon } from "./Icons";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { ArrowIcon, FilmIcon, LockIcon } from "./Icons";
 
 type HeaderProps = {
   active?: "video" | "song" | "image" | "studio" | "account";
@@ -11,11 +13,38 @@ type HeaderProps = {
 };
 
 export default function Header({ active, onStudioChange }: HeaderProps) {
+  const [signedIn, setSignedIn] = useState(false);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured()) return;
+
+    const supabase = createSupabaseBrowserClient();
+    let mounted = true;
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (mounted) setSignedIn(Boolean(data.session));
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setSignedIn(Boolean(session));
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  void active;
+  void onStudioChange;
+
   return (
-    <header className="relative z-10 border-b border-white/10 bg-black/20 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-[1500px] flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 shadow-lg shadow-violet-950/40">
+    <header className="relative z-20 border-b border-white/[0.08] bg-[#07070b]/80 backdrop-blur-2xl">
+      <div className="mx-auto flex h-[72px] max-w-[1500px] items-center justify-between px-5 sm:px-8">
+        <Link href="/" className="group flex items-center gap-3" aria-label="KI Video Studio Startseite">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 shadow-lg shadow-violet-950/40 transition group-hover:scale-[1.03]">
             <FilmIcon />
           </div>
 
@@ -25,62 +54,19 @@ export default function Header({ active, onStudioChange }: HeaderProps) {
             </p>
 
             <p className="text-xs text-zinc-500">
-              Videos, Songs und Bilder mit KI
+              Deine Ideen. Professionell erstellt.
             </p>
           </div>
-        </div>
+        </Link>
 
-        <nav className="flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.035] p-1 sm:w-auto" aria-label="Studio auswählen">
-          <Link
-            href={STUDIO_PATHS.video}
-            onClick={(event) => {
-              if (!onStudioChange) return;
-              event.preventDefault();
-              onStudioChange("video");
-            }}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "video" ? "bg-violet-500/20 text-violet-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
-          >
-            <FilmIcon className="hidden sm:block" />
-            Video
-          </Link>
-          <Link
-            href={STUDIO_PATHS.song}
-            onClick={(event) => {
-              if (!onStudioChange) return;
-              event.preventDefault();
-              onStudioChange("song");
-            }}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "song" ? "bg-fuchsia-500/20 text-fuchsia-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
-          >
-            <MusicIcon className="hidden sm:block" />
-            Songs
-          </Link>
-          <Link
-            href={STUDIO_PATHS.image}
-            onClick={(event) => {
-              if (!onStudioChange) return;
-              event.preventDefault();
-              onStudioChange("image");
-            }}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "image" ? "bg-cyan-500/20 text-cyan-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
-          >
-            <ImageIcon className="hidden sm:block" />
-            Bilder
-          </Link>
-          <Link
-            href="/sound-studio"
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "studio" ? "bg-fuchsia-500/20 text-fuchsia-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
-          >
-            <SparklesIcon className="hidden sm:block" />
-            Sound Studio
-          </Link>
-          <Link
-            href="/konto"
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition sm:text-sm ${active === "account" ? "bg-violet-500/20 text-violet-100" : "text-zinc-400 hover:bg-white/5 hover:text-white"}`}
-          >
-            Konto
-          </Link>
-        </nav>
+        <Link
+          href={signedIn ? "/konto" : "/anmelden?next=/konto"}
+          className="group inline-flex min-w-[122px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-black/20 transition hover:border-violet-400/30 hover:bg-violet-500/10"
+        >
+          <LockIcon className="text-violet-300" />
+          {signedIn ? "Mein Konto" : "Anmelden"}
+          <ArrowIcon className="hidden text-zinc-500 transition group-hover:translate-x-0.5 group-hover:text-violet-300 sm:block" />
+        </Link>
       </div>
     </header>
   );
