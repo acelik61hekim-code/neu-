@@ -13,6 +13,7 @@ export async function GET(request: Request, context: { params: { jobId: string }
   const jobId = context.params.jobId?.trim();
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id")?.trim();
+  const versionId = url.searchParams.get("version")?.trim();
 
   if (!jobId) {
     return Response.json({ error: "Video-ID fehlt." }, { status: 400 });
@@ -25,18 +26,23 @@ export async function GET(request: Request, context: { params: { jobId: string }
   if (!job || (!validSession && !accountOwner)) {
     return Response.json({ error: "Video nicht gefunden." }, { status: 404 });
   }
+  const selectedVersion = versionId
+    ? job.studioVersions?.find((version) => version.id === versionId)
+    : undefined;
+  const videoUri = versionId ? selectedVersion?.videoUri : job.videoUri;
+
   if (
     job.status !== "done" ||
-    (!job.videoUri?.startsWith("blob:") && !job.videoUri?.startsWith("local:"))
+    (!videoUri?.startsWith("blob:") && !videoUri?.startsWith("local:"))
   ) {
-    return Response.json({ error: "Video ist noch nicht fertig." }, { status: 409 });
+    return Response.json({ error: versionId ? "Diese Studio-Version wurde nicht gefunden." : "Video ist noch nicht fertig." }, { status: versionId ? 404 : 409 });
   }
 
   const range = request.headers.get("range");
   const disposition = url.searchParams.get("download") === "1" ? "attachment" : "inline";
 
-  if (job.videoUri.startsWith("local:")) {
-    const filename = resolveLocalVideoPath(job.videoUri);
+  if (videoUri.startsWith("local:")) {
+    const filename = resolveLocalVideoPath(videoUri);
     const file = await stat(filename);
     let start = 0;
     let end = file.size - 1;
@@ -58,7 +64,7 @@ export async function GET(request: Request, context: { params: { jobId: string }
       "Cache-Control": "private, no-store",
       "Accept-Ranges": "bytes",
       "Content-Length": String(end - start + 1),
-      "Content-Disposition": `${disposition}; filename="video-${jobId}.mp4"`,
+      "Content-Disposition": `${disposition}; filename="video-${versionId || jobId}.mp4"`,
     });
     if (status === 206) headers.set("Content-Range", `bytes ${start}-${end}/${file.size}`);
 
@@ -66,7 +72,7 @@ export async function GET(request: Request, context: { params: { jobId: string }
     return new Response(Readable.toWeb(stream) as ReadableStream<Uint8Array>, { status, headers });
   }
 
-  const result = await get(job.videoUri.slice("blob:".length), {
+  const result = await get(videoUri.slice("blob:".length), {
     access: "private",
     headers: range ? { Range: range } : undefined,
   });
@@ -82,7 +88,7 @@ export async function GET(request: Request, context: { params: { jobId: string }
   if (contentLength) headers.set("Content-Length", contentLength);
   if (contentRange) headers.set("Content-Range", contentRange);
   if (etag) headers.set("ETag", etag);
-  headers.set("Content-Disposition", `${disposition}; filename="video-${jobId}.mp4"`);
+  headers.set("Content-Disposition", `${disposition}; filename="video-${versionId || jobId}.mp4"`);
 
   return new Response(result.stream, {
     status: contentRange ? 206 : 200,

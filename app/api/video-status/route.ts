@@ -40,6 +40,7 @@ export async function GET(req: NextRequest) {
     audioStyle: job.audioStyle,
     voiceMode: job.voiceMode,
     spokenLanguage: job.spokenLanguage,
+    videoModel: job.videoModel ?? "seedance-2-fast",
     musicVideoAudioName: job.musicVideoAudioName,
     musicVideoAudioDurationSeconds: job.musicVideoAudioDurationSeconds,
     hasOriginalSong: Boolean(job.musicVideoAudioUri),

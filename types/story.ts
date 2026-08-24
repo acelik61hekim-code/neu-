@@ -67,6 +67,26 @@ export type VideoProvider =
   | "runway"
   | "seedance";
 
+export const VIDEO_MODEL_IDS = [
+  "seedance-2-fast",
+  "seedance-2-original",
+  "google-veo",
+] as const;
+
+export type VideoModelId =
+  (typeof VIDEO_MODEL_IDS)[number];
+
+export function isVideoModelId(
+  value: unknown,
+): value is VideoModelId {
+  return (
+    typeof value === "string" &&
+    VIDEO_MODEL_IDS.includes(
+      value as VideoModelId,
+    )
+  );
+}
+
 export type VideoGenerationStrategy =
   | "single-shot"
   | "extension-chain"
@@ -414,6 +434,8 @@ export type MoviePlan = {
   editingStyle?: VideoEditingStyle;
 
   provider?: VideoProvider;
+
+  videoModel?: VideoModelId;
 
   generationStrategy?: VideoGenerationStrategy;
 

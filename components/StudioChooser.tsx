@@ -18,7 +18,7 @@ export default function StudioChooser({
 }) {
   return (
     <div
-      className={`grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2 shadow-xl shadow-black/20 lg:grid-cols-4 ${compact ? "w-full max-w-4xl" : "mx-auto mt-7 w-full max-w-4xl"}`}
+      className={`grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-black/25 p-2 shadow-xl shadow-black/20 lg:grid-cols-5 ${compact ? "w-full max-w-5xl" : "mx-auto mt-7 w-full max-w-5xl"}`}
       aria-label="Was möchtest du erstellen?"
     >
       <Link
@@ -60,6 +60,13 @@ export default function StudioChooser({
       >
         <SparklesIcon />
         Sound Studio
+      </Link>
+      <Link
+        href="/video-studio"
+        className="flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-zinc-400 transition hover:bg-blue-500/10 hover:text-blue-100"
+      >
+        <FilmIcon />
+        Video Studio
       </Link>
     </div>
   );

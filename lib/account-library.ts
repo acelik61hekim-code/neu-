@@ -20,9 +20,11 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
   : null;
 const memoryMedia = new Map<string, AccountMediaRecord[]>();
 const memorySubscriptions = new Map<string, AccountSubscriptionLink>();
+const memoryVideoSubscriptions = new Map<string, AccountSubscriptionLink>();
 const mediaKey = (userId: string) => `account:${userId}:media`;
 const mediaIdsKey = (userId: string) => `account:${userId}:media-ids`;
 const subscriptionKey = (userId: string) => `account:${userId}:song-subscription`;
+const videoSubscriptionKey = (userId: string) => `account:${userId}:video-subscription`;
 
 export const accountLibrary = {
   async addMedia(userId: string, record: AccountMediaRecord): Promise<void> {
@@ -55,5 +57,16 @@ export const accountLibrary = {
   async getSubscription(userId: string): Promise<AccountSubscriptionLink | undefined> {
     if (redis) return (await redis.get<AccountSubscriptionLink>(subscriptionKey(userId))) ?? undefined;
     return memorySubscriptions.get(userId);
+  },
+
+  async setVideoSubscription(userId: string, link: Omit<AccountSubscriptionLink, "updatedAt">): Promise<void> {
+    const value = { ...link, updatedAt: Date.now() };
+    if (redis) await redis.set(videoSubscriptionKey(userId), value);
+    else memoryVideoSubscriptions.set(userId, value);
+  },
+
+  async getVideoSubscription(userId: string): Promise<AccountSubscriptionLink | undefined> {
+    if (redis) return (await redis.get<AccountSubscriptionLink>(videoSubscriptionKey(userId))) ?? undefined;
+    return memoryVideoSubscriptions.get(userId);
   },
 };

@@ -20,7 +20,6 @@ import { FatalError } from "workflow";
 
 import {
   buildSongPrompt,
-  songDurationMinutes,
   type SongLanguage,
   type SongLength,
 } from "@/lib/song";
@@ -464,11 +463,6 @@ function safeFallbackGenre(
 function safeFallbackPrompt(
   job: SongJob,
 ): string {
-  const durationMinutes =
-    songDurationMinutes(
-      job.length,
-    );
-
   const language =
     isGermanStreetRap(
       job.style,
@@ -490,9 +484,9 @@ function safeFallbackPrompt(
             : "one consistent natural lead singer";
 
   return [
-    `Create a complete original ${durationMinutes}-minute song in ${safeFallbackGenre(
+    `Create a complete original song in ${safeFallbackGenre(
       job.style,
-    )}.`,
+    )}. Let the musical structure determine its natural duration; do not target a fixed minute length.`,
 
     `Use ${singer}. Write all lyrics entirely in ${language}.`,
 
@@ -647,9 +641,7 @@ async function polishGermanStreetRapLyrics(
 
         `Thema und Kundenwunsch: ${job.description}`,
 
-        `Stimmung: ${job.mood}. Gewünschte Länge: ${songDurationMinutes(
-          job.length,
-        )} Minuten. Zielumfang: ungefähr ${streetRapLyricsWords(
+        `Stimmung: ${job.mood}. Schreibe einen vollständigen Song mit natürlicher Länge. Zielumfang: ungefähr ${streetRapLyricsWords(
           job.length,
         )} Wörter.`,
 
@@ -733,9 +725,7 @@ async function polishLyricsForPerformance(
 
         `Edit the draft into natural, release-ready lyrics entirely in ${language} for a ${job.style} song with a ${job.mood} mood.`,
 
-        `Keep the customer's subject and intended story. Target roughly ${requestedWords} words for ${songDurationMinutes(
-          job.length,
-        )} minutes; do not make the text denser merely to fill time.`,
+        `Keep the customer's subject and intended story. Target roughly ${requestedWords} words for a complete song; let the natural structure determine the duration and do not make the text denser merely to fill time.`,
 
         "Use only [Intro], [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Bridge], [Final Chorus] and [Outro] section tags. Do not add timestamps, stage directions or production notes.",
 
@@ -836,9 +826,7 @@ async function generatePlannedLyrics(
       input: [
         `Write original, release-ready song lyrics in ${language}.`,
 
-        `Target about ${requestedWords} words for a ${songDurationMinutes(
-          job.length,
-        )}-minute song.`,
+        `Target about ${requestedWords} words for a complete song whose natural musical structure determines the duration.`,
 
         `Song topic and wishes: ${job.description}`,
 

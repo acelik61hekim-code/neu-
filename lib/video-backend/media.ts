@@ -30,6 +30,16 @@ export type DialogueCue = {
   voiceDirection: string;
 };
 
+export type VideoStudioEditOptions = {
+  startSeconds: number;
+  endSeconds: number;
+  playbackRate: number;
+  volume: number;
+  muted: boolean;
+  fadeInSeconds: number;
+  fadeOutSeconds: number;
+};
+
 type GeneratedNarration = {
   pathname: string;
   mimeType: string;
@@ -1451,4 +1461,116 @@ export async function mergeAndStore(
       );
     },
   );
+}
+
+export async function createVideoStudioVersion(
+  source: string,
+  pathname: string,
+  options: VideoStudioEditOptions,
+): Promise<{ pathname: string; durationSeconds: number }> {
+  const binary = ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "Die Video-Bearbeitung ist auf diesem Server nicht verfügbar.",
+    );
+  }
+
+  const startSeconds = Math.max(0, options.startSeconds);
+  const endSeconds = Math.max(startSeconds + 0.5, options.endSeconds);
+  const playbackRate = Math.min(2, Math.max(0.5, options.playbackRate));
+  const inputDuration = endSeconds - startSeconds;
+  const outputDuration = inputDuration / playbackRate;
+  const fadeInSeconds = Math.min(Math.max(0, options.fadeInSeconds), outputDuration / 2);
+  const fadeOutSeconds = Math.min(Math.max(0, options.fadeOutSeconds), outputDuration / 2);
+  const volume = Math.min(2, Math.max(0, options.volume));
+
+  return withTemp(async (dir) => {
+    const input = join(dir, "studio-input.mp4");
+    const output = join(dir, "studio-output.mp4");
+
+    await download(source, input);
+
+    const sourceDuration = await inspectContainerDuration(binary, input);
+    if (!sourceDuration || startSeconds >= sourceDuration) {
+      throw new Error("Der gewählte Startpunkt liegt außerhalb des Videos.");
+    }
+
+    const safeEnd = Math.min(endSeconds, sourceDuration);
+    const safeInputDuration = safeEnd - startSeconds;
+    const safeOutputDuration = safeInputDuration / playbackRate;
+    const videoFilters = [`setpts=PTS/${playbackRate.toFixed(4)}`];
+
+    if (fadeInSeconds > 0.01) {
+      videoFilters.push(`fade=t=in:st=0:d=${fadeInSeconds.toFixed(3)}`);
+    }
+    if (fadeOutSeconds > 0.01) {
+      videoFilters.push(
+        `fade=t=out:st=${Math.max(0, safeOutputDuration - fadeOutSeconds).toFixed(3)}:d=${fadeOutSeconds.toFixed(3)}`,
+      );
+    }
+
+    const args = [
+      "-y",
+      "-ss",
+      startSeconds.toFixed(3),
+      "-i",
+      input,
+      "-t",
+      safeInputDuration.toFixed(3),
+      "-vf",
+      videoFilters.join(","),
+      "-map",
+      "0:v:0",
+    ];
+
+    if (options.muted) {
+      args.push("-an");
+    } else {
+      const audioFilters = [
+        `atempo=${playbackRate.toFixed(4)}`,
+        `volume=${volume.toFixed(3)}`,
+      ];
+      if (fadeInSeconds > 0.01) {
+        audioFilters.push(`afade=t=in:st=0:d=${fadeInSeconds.toFixed(3)}`);
+      }
+      if (fadeOutSeconds > 0.01) {
+        audioFilters.push(
+          `afade=t=out:st=${Math.max(0, safeOutputDuration - fadeOutSeconds).toFixed(3)}:d=${fadeOutSeconds.toFixed(3)}`,
+        );
+      }
+      args.push(
+        "-map",
+        "0:a:0?",
+        "-af",
+        audioFilters.join(","),
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-ar",
+        "48000",
+      );
+    }
+
+    args.push(
+      "-c:v",
+      "libx264",
+      "-preset",
+      "fast",
+      "-crf",
+      "18",
+      "-movflags",
+      "+faststart",
+      output,
+    );
+
+    await exec(binary, args, { maxBuffer: 32 * 1024 * 1024 });
+    const stored = await upload(pathname, output);
+
+    return {
+      pathname: stored.pathname,
+      durationSeconds: safeOutputDuration,
+    };
+  });
 }

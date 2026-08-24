@@ -5,11 +5,14 @@ import {
 
 import { nanoid } from "nanoid";
 import { head } from "@vercel/blob";
+import { start } from "workflow/api";
 
 import { stripe } from "../../../lib/stripe";
 
 import {
   CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
+  getVideoModel,
+  getVideoCreditCost,
   getVideoPriceCents,
   isReleasedVideoDuration,
 } from "../../../lib/pricing";
@@ -41,12 +44,21 @@ import {
 
 import { accountLibrary } from "@/lib/account-library";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { getActiveVideoSubscription } from "@/lib/video-subscription";
+import { releaseVideoSubscriptionUsage, reserveVideoSubscriptionUsage } from "@/lib/video-subscription-usage";
+import { buildVideoDurationPlan } from "@/lib/veo";
+import { renderVideoWorkflow } from "@/workflows/render-video";
+
+import {
+  isVideoModelId,
+} from "@/types/story";
 
 import type {
   VideoAspectRatio,
   VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoModelId,
   VideoSpokenLanguage,
   VideoVoiceMode,
 } from "@/types/story";
@@ -98,6 +110,8 @@ type CheckoutRequest = {
 
   targetDurationSeconds?: unknown;
 
+  videoModel?: unknown;
+
   aspectRatio?: unknown;
 
   editingStyle?: unknown;
@@ -121,6 +135,8 @@ type CheckoutRequest = {
   musicVideoAudioName?: unknown;
   musicVideoAudioDurationSeconds?: unknown;
   musicVideoAudioAnalysis?: unknown;
+
+  useSubscription?: unknown;
 };
 
 function missingProductionServices():
@@ -311,6 +327,22 @@ function durationLabel(
     1
     ? "1 Minute"
     : `${minutes} Minuten`;
+}
+
+function countPlannedExtensions(
+  chapterTargets: VideoDurationSeconds[],
+  videoModel: VideoModelId,
+): number {
+  return chapterTargets.reduce(
+    (total, seconds) =>
+      total +
+      (
+        videoModel === "google-veo"
+          ? Math.max(0, Math.ceil((seconds - 8) / 7))
+          : Math.max(0, Math.ceil((seconds - 15) / 15))
+      ),
+    0,
+  );
 }
 
 function editingStyleLabel(
@@ -906,6 +938,24 @@ export async function POST(
       body.format,
     );
 
+  const videoModel: VideoModelId =
+    isVideoModelId(body.videoModel)
+      ? body.videoModel
+      : "seedance-2-fast";
+
+  if (
+    body.videoModel !== undefined &&
+    !isVideoModelId(body.videoModel)
+  ) {
+    return NextResponse.json(
+      {
+        error:
+          "Bitte wähle Seedance 2 Fast, Seedance 2 Original oder Google Veo.",
+      },
+      { status: 400 },
+    );
+  }
+
   const editingStyle =
     normalizeEditingStyle(
       body.editingStyle,
@@ -1315,7 +1365,11 @@ export async function POST(
   const priceCents =
     getVideoPriceCents(
       targetDurationSeconds,
+      videoModel,
     );
+
+  const selectedVideoModel =
+    getVideoModel(videoModel);
 
   const productName = [
     "KI-generiertes Video",
@@ -1329,6 +1383,8 @@ export async function POST(
     editingStyleLabel(
       editingStyle,
     ),
+
+    selectedVideoModel.name,
   ].join(
     " · ",
   );
@@ -1338,6 +1394,54 @@ export async function POST(
 
   const user =
     await getCurrentUser();
+
+  const useSubscription =
+    body.useSubscription === true;
+
+  const subscription =
+    useSubscription
+      ? await getActiveVideoSubscription(req).catch(() => null)
+      : null;
+
+  if (useSubscription && (!user || !subscription)) {
+    return NextResponse.json(
+      {
+        error:
+          "Bitte melde dich mit dem Kundenkonto an, zu dem dein Video-Abo gehört.",
+      },
+      { status: 401 },
+    );
+  }
+
+  const creditsRequired =
+    getVideoCreditCost(targetDurationSeconds, videoModel);
+
+  if (subscription) {
+    const reservation =
+      await reserveVideoSubscriptionUsage({
+        subscriptionId: subscription.subscriptionId,
+        periodStart: subscription.periodStart,
+        periodEnd: subscription.periodEnd,
+        kind: "credits",
+        amount: creditsRequired,
+        limit: subscription.plan.creditsPerMonth,
+      });
+
+    if (!reservation.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            `Für dieses Video werden ${creditsRequired} Credits benötigt. In deinem Monatskontingent sind noch ${reservation.remaining} verfügbar.`,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  const durationPlan =
+    buildVideoDurationPlan(targetDurationSeconds);
+
+  const now = Date.now();
 
   /*
    * Hier schreiben wir nur Felder,
@@ -1354,7 +1458,7 @@ export async function POST(
         user?.id,
 
       status:
-        "pending",
+        subscription ? "processing" : "pending",
 
       prompt,
 
@@ -1366,6 +1470,63 @@ export async function POST(
       voiceMode,
 
       spokenLanguage,
+
+      videoModel,
+
+      provider:
+        selectedVideoModel.provider,
+
+      targetDurationSeconds,
+
+      aspectRatio,
+
+      editingStyle,
+
+      generationStrategy:
+        durationPlan.generationStrategy,
+
+      paymentStatus:
+        subscription ? "paid" : undefined,
+
+      paidAt:
+        subscription ? now : undefined,
+
+      subscriptionId:
+        subscription?.subscriptionId,
+
+      subscriptionPlanId:
+        subscription?.plan.id,
+
+      renderStage:
+        subscription ? "queued" : undefined,
+
+      progressPercent:
+        subscription ? 0 : undefined,
+
+      currentChapter:
+        subscription ? 0 : undefined,
+
+      totalChapters:
+        subscription
+          ? durationPlan.chapterTargets.length
+          : undefined,
+
+      currentExtension:
+        subscription ? 0 : undefined,
+
+      totalExtensions:
+        subscription
+          ? countPlannedExtensions(durationPlan.chapterTargets, videoModel)
+          : undefined,
+
+      retryCount:
+        subscription ? 0 : undefined,
+
+      maxRetries:
+        subscription ? 12 : undefined,
+
+      nextAttemptAt:
+        subscription ? now : undefined,
 
       musicVideoAudioUri:
         musicVideoMode
@@ -1415,7 +1576,7 @@ export async function POST(
       referenceImageMimeType,
 
       createdAt:
-        Date.now(),
+        now,
     },
   );
 
@@ -1429,9 +1590,84 @@ export async function POST(
         title:
           `KI-Video · ${durationLabel(targetDurationSeconds)}`,
         createdAt:
-          Date.now(),
+          now,
       },
     );
+  }
+
+  if (subscription) {
+    let workflowStarted = false;
+
+    try {
+      const claimId =
+        `video-subscription:${subscription.subscriptionId}:${jobId}`;
+
+      const claimed =
+        await jobStore.claimWorkflowStart(jobId, claimId);
+
+      if (!claimed) {
+        throw new Error("Der Video-Workflow konnte nicht reserviert werden.");
+      }
+
+      const run =
+        await start(renderVideoWorkflow, [jobId]);
+
+      workflowStarted = true;
+
+      await jobStore.confirmWorkflowStarted(jobId, run.runId);
+
+      await jobStore.update(jobId, (current) => ({
+        ...current,
+        workerId: run.runId,
+        claimedAt: current.claimedAt ?? Date.now(),
+      }));
+
+      return NextResponse.json({
+        url:
+          `/success?jobId=${encodeURIComponent(jobId)}&included=1`,
+        checkoutUrl:
+          `/success?jobId=${encodeURIComponent(jobId)}&included=1`,
+        jobId,
+        included: true,
+        creditsRequired,
+        targetDurationSeconds,
+        aspectRatio,
+        editingStyle,
+        videoModel,
+        priceCents: 0,
+      });
+    } catch (error) {
+      console.error("Video aus dem Abo konnte nicht gestartet werden:", error);
+
+      if (!workflowStarted) {
+        await releaseVideoSubscriptionUsage({
+          subscriptionId: subscription.subscriptionId,
+          periodStart: subscription.periodStart,
+          kind: "credits",
+          amount: creditsRequired,
+        }).catch(() => undefined);
+      }
+
+      await jobStore.update(jobId, (current) => ({
+        ...current,
+        status: "error",
+        renderStage: "failed",
+        errorMessage:
+          workflowStarted
+            ? "Das Video wurde gestartet, aber der Status konnte nicht vollständig gespeichert werden. Der Support kann den Auftrag weiter prüfen."
+            : "Das Video konnte nicht gestartet werden. Die reservierten Credits wurden wieder freigegeben.",
+      }));
+
+      return NextResponse.json(
+        {
+          error:
+            workflowStarted
+              ? "Das Video wurde gestartet, aber die Bestätigung ist fehlgeschlagen. Bitte prüfe gleich dein Konto."
+              : "Das Video konnte gerade nicht gestartet werden. Deine Credits wurden nicht verbraucht.",
+        },
+        { status: 500 },
+      );
+    }
   }
 
   const appUrl =
@@ -1467,6 +1703,9 @@ export async function POST(
       ],
 
       metadata: {
+        productType:
+          "video",
+
         jobId,
 
         userId:
@@ -1476,6 +1715,8 @@ export async function POST(
           String(
             targetDurationSeconds,
           ),
+
+        videoModel,
 
         aspectRatio,
 
@@ -1542,6 +1783,8 @@ export async function POST(
     aspectRatio,
 
     editingStyle,
+
+    videoModel,
 
     priceCents,
   });

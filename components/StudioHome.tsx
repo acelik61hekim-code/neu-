@@ -18,6 +18,9 @@ import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
 import SongStudio from "@/components/SongStudio";
 import ImageStudio from "@/components/ImageStudio";
+import VideoPlans, {
+  type VideoSubscriptionStatus,
+} from "@/components/VideoPlans";
 
 import StudioChooser, {
   type StudioMode,
@@ -25,8 +28,11 @@ import StudioChooser, {
 
 import {
   formatEuroPrice,
+  getVideoCreditCost,
+  getVideoModel,
   getVideoPriceCents,
   isReleasedVideoDuration,
+  VIDEO_MODELS,
 } from "@/lib/pricing";
 
 import {
@@ -55,6 +61,7 @@ import type {
   VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoModelId,
   MusicVideoTrackContext,
   VideoSpokenLanguage,
   VideoVoiceMode,
@@ -619,6 +626,22 @@ export default function StudioHome({
     );
 
   const [
+    videoModel,
+    setVideoModel,
+  ] =
+    useState<VideoModelId>(
+      "seedance-2-fast",
+    );
+
+  const [
+    videoSubscription,
+    setVideoSubscription,
+  ] =
+    useState<VideoSubscriptionStatus>({
+      active: false,
+    });
+
+  const [
     aspectRatio,
     setAspectRatio,
   ] =
@@ -899,6 +922,26 @@ export default function StudioHome({
     );
 
     resetPlannedProject();
+  }
+
+  function selectVideoModel(
+    value:
+      VideoModelId,
+  ) {
+    if (
+      value ===
+      videoModel
+    ) {
+      return;
+    }
+
+    setVideoModel(
+      value,
+    );
+
+    setError(
+      null,
+    );
   }
 
   function selectAspectRatio(
@@ -1984,6 +2027,8 @@ export default function StudioHome({
 
                 targetDurationSeconds,
 
+                videoModel,
+
                 aspectRatio,
 
                 editingStyle,
@@ -2037,6 +2082,17 @@ export default function StudioHome({
 
                 referenceImageMimeType:
                   previewReferenceMimeType,
+
+                useSubscription:
+                  videoSubscription.active &&
+                  (
+                    videoSubscription.creditsRemaining ??
+                    0
+                  ) >=
+                    getVideoCreditCost(
+                      targetDurationSeconds,
+                      videoModel,
+                    ),
               }),
           },
         );
@@ -2179,6 +2235,101 @@ export default function StudioHome({
             </p>
           </div>
 
+          <div className="border-b border-white/10 p-5 sm:p-6">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
+                  1. Videomodell wählen
+                </p>
+
+                <h3 className="mt-1 text-base font-semibold text-white">
+                  Bestimme Qualität und Preis
+                </h3>
+              </div>
+
+              <span className="text-xs text-zinc-500">
+                Der Preis ändert sich sofort mit deiner Auswahl
+              </span>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              {VIDEO_MODELS.map(
+                (model) => {
+                  const selected =
+                    videoModel === model.id;
+
+                  const credits =
+                    getVideoCreditCost(
+                      targetDurationSeconds,
+                      model.id,
+                    );
+
+                  return (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() =>
+                        selectVideoModel(
+                          model.id,
+                        )
+                      }
+                      disabled={loading}
+                      aria-pressed={selected}
+                      className={`relative rounded-2xl border p-4 text-left transition disabled:opacity-50 ${
+                        selected
+                          ? "border-violet-400/50 bg-gradient-to-br from-violet-500/15 to-blue-500/[0.08] shadow-lg shadow-violet-950/20"
+                          : "border-white/10 bg-black/20 hover:border-white/20 hover:bg-white/[0.04]"
+                      }`}
+                    >
+                      {model.featured && (
+                        <span className="absolute right-3 top-3 rounded-full bg-violet-400/15 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-violet-200">
+                          Beste Qualität
+                        </span>
+                      )}
+
+                      <p className="pr-20 text-sm font-semibold text-white">
+                        {model.name}
+                      </p>
+
+                      <p className="mt-1 text-[11px] font-medium text-violet-300">
+                        {model.quality}
+                      </p>
+
+                      <p className="mt-3 min-h-12 text-xs leading-5 text-zinc-500">
+                        {model.description}
+                      </p>
+
+                      <div className="mt-4 flex items-end justify-between gap-3 border-t border-white/[0.07] pt-3">
+                        <span className="text-[11px] text-zinc-500">
+                          {videoDurationLabel(
+                            targetDurationSeconds,
+                          )}
+                        </span>
+
+                        <span className="text-lg font-semibold text-white">
+                          {videoSubscription.active
+                            ? `${credits} Credit${credits === 1 ? "" : "s"}`
+                            : formatEuroPrice(
+                                getVideoPriceCents(
+                                  targetDurationSeconds,
+                                  model.id,
+                                ),
+                              )}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                },
+              )}
+            </div>
+
+            {videoSubscription.active && (
+              <p className="mt-3 text-xs text-emerald-300">
+                Dein {videoSubscription.plan?.name ?? "Video-Abo"} ist aktiv · {videoSubscription.creditsRemaining ?? 0} Credits verfügbar
+              </p>
+            )}
+          </div>
+
           <div className="grid gap-6 p-5 sm:p-6 xl:grid-cols-3">
             <div>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -2215,6 +2366,7 @@ export default function StudioHome({
                           {formatEuroPrice(
                             getVideoPriceCents(
                               targetDurationSeconds,
+                              videoModel,
                             ),
                           )}
                         </p>
@@ -2269,6 +2421,7 @@ export default function StudioHome({
                           {formatEuroPrice(
                             getVideoPriceCents(
                               option.value,
+                              videoModel,
                             ),
                           )}
                         </span>
@@ -2938,6 +3091,14 @@ export default function StudioHome({
                     }
                   </span>
 
+                  <span className="rounded-lg bg-violet-400/10 px-2.5 py-1 text-xs text-violet-200">
+                    {
+                      getVideoModel(
+                        videoModel,
+                      ).name
+                    }
+                  </span>
+
                   <span className="rounded-lg bg-white/5 px-2.5 py-1 text-xs text-zinc-400">
                     {
                       VIDEO_STYLE_OPTIONS.find(
@@ -3184,13 +3345,27 @@ export default function StudioHome({
                           className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           {loading
-                            ? "Stripe wird geöffnet ..."
-                            : "🎬 Video erstellen & bezahlen"}
+                            ? videoSubscription.active &&
+                                (videoSubscription.creditsRemaining ?? 0) >=
+                                  getVideoCreditCost(targetDurationSeconds, videoModel)
+                              ? "Video wird gestartet ..."
+                              : "Stripe wird geöffnet ..."
+                            : videoSubscription.active &&
+                                (videoSubscription.creditsRemaining ?? 0) >=
+                                  getVideoCreditCost(
+                                    targetDurationSeconds,
+                                    videoModel,
+                                  )
+                              ? `🎬 Mit ${getVideoCreditCost(targetDurationSeconds, videoModel)} Credits erstellen`
+                              : `🎬 Für ${formatEuroPrice(getVideoPriceCents(targetDurationSeconds, videoModel))} erstellen`}
                         </button>
 
                         <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
-                          Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay
-                          oder Link – je nach Verfügbarkeit.
+                          {videoSubscription.active &&
+                          (videoSubscription.creditsRemaining ?? 0) >=
+                            getVideoCreditCost(targetDurationSeconds, videoModel)
+                            ? "Wird sicher von deinem monatlichen Videokontingent abgezogen."
+                            : "Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay oder Link – je nach Verfügbarkeit."}
                         </p>
                       </div>
                     )}
@@ -3234,6 +3409,12 @@ export default function StudioHome({
             </section>
           </div>
         </section>
+
+        <VideoPlans
+          onStatusChange={
+            setVideoSubscription
+          }
+        />
 
       </div>
     </main>
