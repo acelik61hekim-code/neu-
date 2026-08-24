@@ -1,9 +1,18 @@
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
+import PwaInstaller from "@/components/PwaInstaller";
 import SiteFooter from "@/components/SiteFooter";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+
+export const viewport: Viewport = {
+  themeColor: "#08080f",
+  colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -13,6 +22,36 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: SITE_NAME,
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  icons: {
+    icon: [
+      {
+        url: "/app-icon/192",
+        type: "image/png",
+        sizes: "192x192",
+      },
+      {
+        url: "/app-icon/512",
+        type: "image/png",
+        sizes: "512x512",
+      },
+    ],
+    apple: [
+      {
+        url: "/app-icon/180",
+        type: "image/png",
+        sizes: "180x180",
+      },
+    ],
+  },
   keywords: [
     "KI Video erstellen",
     "KI Song erstellen",
@@ -74,6 +113,7 @@ export default function RootLayout({
         />
         {children}
         <SiteFooter />
+        <PwaInstaller />
         <Analytics />
       </body>
     </html>

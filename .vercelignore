@@ -1,0 +1,25 @@
+.env*
+!.env.example
+
+.git/
+.next/
+.swc/
+.video-backend-backups/
+.release-song/
+node_modules/
+output/
+
+*.mp4
+*.log
+*.tsbuildinfo
+
+acedata-*.json
+suno-request.json
+debug-seedance.mjs
+dir debug-seedance.mjs
+test-fast-extension.ps1
+download
+
+# Nur lokal verwendete, nicht abgesicherte Test-Endpunkte
+app/api/test-airforce/
+app/api/test-suno/
