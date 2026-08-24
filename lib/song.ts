@@ -9,10 +9,10 @@ export type SongLanguage = (typeof SONG_LANGUAGES)[number];
 export type SongVocalStyle = (typeof SONG_VOCAL_STYLES)[number];
 
 export const SONG_PRICE_CENTS: Record<SongLength, number> = {
-  clip: 149,
-  full2: 399,
-  full3: 499,
-  full4: 599,
+  clip: 200,
+  full2: 200,
+  full3: 200,
+  full4: 200,
 };
 
 export function isSongLength(value: unknown): value is SongLength {
@@ -32,8 +32,8 @@ export function isSongVocalStyle(value: unknown): value is SongVocalStyle {
 }
 
 export function songLengthLabel(value: SongLength): string {
-  if (value === "clip") return "30-Sekunden-Song";
-  return `${songDurationMinutes(value)}-Minuten-Song`;
+  void value;
+  return "Vollständiger KI-Song";
 }
 
 export function songModel(value: SongLength): string {
@@ -152,19 +152,16 @@ export function countLyricsWords(lyrics: string): number {
 function vocalTimingDirection(lyrics: string | undefined, length: SongLength, style: string): string {
   if (!lyrics?.trim() || length === "clip") return "";
   const words = countLyricsWords(lyrics);
-  const durationSeconds = songDurationMinutes(length) * 60;
   const normalizedStyle = style.toLocaleLowerCase("de-DE");
   const targetRate = normalizedStyle.includes("rap") || normalizedStyle.includes("hip-hop")
     ? 138
     : normalizedStyle.includes("arabesk") || normalizedStyle.includes("fantezi")
       ? 82
       : 105;
-  const requiredVocalSeconds = Math.max(38, Math.min(durationSeconds - 18, Math.round(words / targetRate * 60)));
-  const instrumentalSeconds = Math.max(12, durationSeconds - requiredVocalSeconds);
   return [
-    `VOCAL PACING PLAN: The supplied lyrics contain about ${words} words. Allocate about ${requiredVocalSeconds} seconds of the song to clearly intelligible vocals and about ${instrumentalSeconds} seconds to intro, transitions, instrumental development and outro.`,
+    `VOCAL PACING PLAN: The supplied lyrics contain about ${words} words. Let their natural phrasing and the musical structure determine the complete song duration.`,
     `Aim for an average delivery near ${targetRate} words per minute during vocal passages, with no section below ${Math.round(targetRate * 0.58)} or above ${Math.round(targetRate * 1.35)} words per minute.`,
-    "Give longer lyric sections proportionally more musical time and shorter sections less time. Do not force every verse or chorus into identical fixed-length windows.",
+    "Give longer lyric sections proportionally more musical time and shorter sections less time. Use instrumental development where it serves the song; never stretch or compress the arrangement to hit a fixed minute target.",
   ].join(" ");
 }
 
@@ -216,15 +213,12 @@ export function buildSongPrompt(input: {
           ].join("; ")
         : input.style.trim() || "modern, polished production";
 
-  const durationMinutes = songDurationMinutes(input.length);
   const timingDirection = input.lyricsMode === "custom" ? vocalTimingDirection(input.lyrics, input.length, input.style) : "";
-  const duration = input.length === "clip"
-    ? "Create an exactly 30-second polished music clip."
-    : [
-        `Create a complete song targeting ${durationMinutes} minutes (${durationMinutes * 60} seconds), with a tolerance of no more than 10 seconds.`,
-        "This must be a real full song, not a short clip or teaser.",
-        "Use the section order [Intro] -> [Verse 1] -> [Chorus] -> [Verse 2] -> [Bridge or instrumental development] -> [Final Chorus] -> [Outro]. Distribute section durations according to the actual lyric word count and natural phrasing instead of forcing fixed timestamp windows.",
-      ].join(" ");
+  const duration = [
+    "Create a complete, fully developed song, not a short clip or teaser.",
+    "Let the composition, lyric phrasing and genre determine the natural final duration automatically; do not target a fixed number of minutes or seconds.",
+    "Use a coherent full-song structure with intro, verses, chorus, musical development and a clean outro. Distribute sections according to the actual lyric word count and natural phrasing.",
+  ].join(" ");
 
   const vocalDirection = input.lyricsMode === "instrumental"
     ? "Instrumental only. No singing, spoken words, chants or vocal samples."

@@ -2,14 +2,21 @@ import { fal } from "@fal-ai/client";
 
 import type { VideoAspectRatio } from "@/types/story";
 
-const TEXT_TO_VIDEO_MODEL =
-  "bytedance/seedance-2.0/fast/text-to-video";
+export type SeedanceModelTier =
+  | "fast"
+  | "original";
 
-const IMAGE_TO_VIDEO_MODEL =
-  "bytedance/seedance-2.0/fast/image-to-video";
-
-const REFERENCE_TO_VIDEO_MODEL =
-  "bytedance/seedance-2.0/fast/reference-to-video";
+function seedanceModelId(
+  tier: SeedanceModelTier,
+  endpoint:
+    | "text-to-video"
+    | "image-to-video"
+    | "reference-to-video",
+): string {
+  return tier === "fast"
+    ? `bytedance/seedance-2.0/fast/${endpoint}`
+    : `bytedance/seedance-2.0/${endpoint}`;
+}
 
 const OPERATION_PREFIX = "fal-seedance";
 
@@ -35,6 +42,7 @@ type SeedanceImageReference = {
 };
 
 export type SeedanceGenerationOptions = {
+  modelTier?: SeedanceModelTier;
   aspectRatio?: VideoAspectRatio;
   referenceImage?: SeedanceImageReference;
   referenceImages?: SeedanceImageReference[];
@@ -57,6 +65,7 @@ export type SeedanceGenerationOptions = {
 };
 
 export type SeedanceExtensionOptions = {
+  modelTier?: SeedanceModelTier;
   aspectRatio?: VideoAspectRatio;
   extensionNumber?: number;
   maxAttempts?: number;
@@ -491,6 +500,9 @@ export async function startVideoGeneration(
   const aspectRatio =
     options.aspectRatio ?? "9:16";
 
+  const modelTier =
+    options.modelTier ?? "fast";
+
   const durationSeconds =
     normalizeDurationSeconds(
       options.durationSeconds,
@@ -518,7 +530,10 @@ export async function startVideoGeneration(
 
   if (options.referenceImage) {
     return submitSeedance(
-      IMAGE_TO_VIDEO_MODEL,
+      seedanceModelId(
+        modelTier,
+        "image-to-video",
+      ),
       {
         ...commonInput,
         prompt: cleanedPrompt,
@@ -552,7 +567,10 @@ export async function startVideoGeneration(
         .join("\n");
 
     return submitSeedance(
-      REFERENCE_TO_VIDEO_MODEL,
+      seedanceModelId(
+        modelTier,
+        "reference-to-video",
+      ),
       {
         ...commonInput,
 
@@ -572,7 +590,10 @@ export async function startVideoGeneration(
   }
 
   return submitSeedance(
-    TEXT_TO_VIDEO_MODEL,
+    seedanceModelId(
+      modelTier,
+      "text-to-video",
+    ),
     {
       ...commonInput,
       prompt: cleanedPrompt,
@@ -610,7 +631,10 @@ export async function startVideoExtension(
     );
 
   return submitSeedance(
-    REFERENCE_TO_VIDEO_MODEL,
+    seedanceModelId(
+      options.modelTier ?? "fast",
+      "reference-to-video",
+    ),
     {
       prompt: [
         "@Video1 is the immediately preceding shot.",

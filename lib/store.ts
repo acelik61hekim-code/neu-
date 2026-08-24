@@ -14,6 +14,7 @@ import type {
   VideoDurationSeconds,
   VideoEditingStyle,
   VideoGenerationStrategy,
+  VideoModelId,
   VideoProvider,
   VideoSpokenLanguage,
   VideoVoiceMode,
@@ -142,6 +143,20 @@ export type VideoJob = {
 
   provider?:
     VideoProvider;
+
+  videoModel?:
+    VideoModelId;
+
+  subscriptionId?: string;
+  subscriptionPlanId?: string;
+
+  studioVersions?: Array<{
+    id: string;
+    videoUri: string;
+    title: string;
+    createdAt: number;
+    durationSeconds?: number;
+  }>;
 
   generationStrategy?:
     VideoGenerationStrategy;

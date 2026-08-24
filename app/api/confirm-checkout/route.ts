@@ -34,6 +34,11 @@ import type {
   VideoAspectRatio,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoModelId,
+} from "@/types/story";
+
+import {
+  isVideoModelId,
 } from "@/types/story";
 
 export const runtime =
@@ -118,27 +123,18 @@ function isEditingStyle(
 function countExtensions(
   chapterTargets:
     VideoDurationSeconds[],
+  videoModel: VideoModelId,
 ): number {
   return chapterTargets.reduce(
     (
       total,
       seconds,
     ) => {
-      if (
-        seconds <= 15
-      ) {
-        return total;
-      }
-
       return (
         total +
-        Math.ceil(
-          (
-            seconds -
-            15
-          ) /
-            15,
-        )
+        (videoModel === "google-veo"
+          ? Math.max(0, Math.ceil((seconds - 8) / 7))
+          : Math.max(0, Math.ceil((seconds - 15) / 15)))
       );
     },
     0,
@@ -563,6 +559,13 @@ export async function POST(
           ?.editingStyle ??
         "";
 
+      const rawVideoModel: VideoModelId | null =
+        session.metadata?.videoModel === undefined
+          ? "seedance-2-fast"
+          : isVideoModelId(session.metadata.videoModel)
+            ? session.metadata.videoModel
+            : null;
+
       if (
         !Number.isInteger(
           rawDuration,
@@ -575,7 +578,8 @@ export async function POST(
         ) ||
         !isEditingStyle(
           rawEditingStyle,
-        )
+        ) ||
+        !rawVideoModel
       ) {
         await jobStore.set(
           jobId,
@@ -680,8 +684,13 @@ export async function POST(
                 ?.spokenLanguage,
             ),
 
+          videoModel:
+            rawVideoModel,
+
           provider:
-            "auto",
+            rawVideoModel === "google-veo"
+              ? "veo"
+              : "seedance",
 
           generationStrategy:
             durationPlan
@@ -717,6 +726,7 @@ export async function POST(
             countExtensions(
               durationPlan
                 .chapterTargets,
+              rawVideoModel,
             ),
 
           retryCount:

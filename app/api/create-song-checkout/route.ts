@@ -5,7 +5,6 @@ import { start } from "workflow/api";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   isSongLanguage,
-  isSongLength,
   isSongLyricsMode,
   isSongVocalStyle,
   countLyricsWords,
@@ -89,11 +88,12 @@ export async function POST(request: NextRequest) {
   const revisionApproach = body.revisionApproach === "character" || body.revisionApproach === "new-melody" || body.revisionApproach === "free"
     ? body.revisionApproach
     : undefined;
+  const songLength = "full3" as const;
 
   if (description.length < 10 && voiceIdeaAnalysis.length < 20) {
     return NextResponse.json({ error: "Bitte beschreibe deine Songidee oder füge eine analysierte Sprachidee hinzu." }, { status: 400 });
   }
-  if (!isSongLength(body.length) || !isSongLyricsMode(body.lyricsMode) ||
+  if (!isSongLyricsMode(body.lyricsMode) ||
       !isSongLanguage(body.language) || !isSongVocalStyle(body.vocalStyle)) {
     return NextResponse.json({ error: "Bitte prüfe die Song-Einstellungen." }, { status: 400 });
   }
@@ -103,28 +103,22 @@ export async function POST(request: NextRequest) {
   if (revisionMode && body.referenceRightsAccepted !== true) {
     return NextResponse.json({ error: "Bitte bestätige, dass du den hochgeladenen Song verwenden und neu bearbeiten darfst." }, { status: 400 });
   }
-  if (body.length === "full4") {
-    return NextResponse.json(
-      { error: "Die 4-Minuten-Version befindet sich noch in der Qualitätsprüfung. Es wurde nichts berechnet." },
-      { status: 409 },
-    );
-  }
   if (body.lyricsMode === "custom" && lyrics.length < 10) {
     return NextResponse.json({ error: "Bitte gib deine Lyrics ein." }, { status: 400 });
   }
-  if (body.lyricsMode === "custom" && isSongLength(body.length)) {
-    const minimumWords = minimumCustomLyricsWords(body.length);
-    const maximumWords = maximumCustomLyricsWords(body.length, style);
+  if (body.lyricsMode === "custom") {
+    const minimumWords = minimumCustomLyricsWords(songLength);
+    const maximumWords = maximumCustomLyricsWords(songLength, style);
     const wordCount = countLyricsWords(lyrics);
     if (wordCount < minimumWords) {
       return NextResponse.json(
-        { error: `Für diese Songlänge ist der Text zu kurz (${wordCount} von mindestens ${minimumWords} Wörtern). Ein längerer Text verhindert, dass ganze Strophen unnötig wiederholt werden.` },
+        { error: `Für einen vollständigen Song ist der Text zu kurz (${wordCount} von mindestens ${minimumWords} Wörtern). Ein längerer Text verhindert, dass ganze Strophen unnötig wiederholt werden.` },
         { status: 400 },
       );
     }
     if (wordCount > maximumWords) {
       return NextResponse.json(
-        { error: `Für diese Songlänge ist der Text zu lang (${wordCount} von höchstens ${maximumWords} Wörtern). Bitte kürze ihn, damit die Wörter nicht zu schnell gesungen werden.` },
+        { error: `Für einen natürlich gesungenen Song ist der Text zu lang (${wordCount} von höchstens ${maximumWords} Wörtern). Bitte kürze ihn, damit die Wörter nicht zu schnell gesungen werden.` },
         { status: 400 },
       );
     }
@@ -175,7 +169,7 @@ export async function POST(request: NextRequest) {
     description: description || "Song nach der analysierten Sprachidee des Kunden",
     style: style || "Modern und hochwertig produziert",
     mood: mood || "Emotional und eingängig",
-    length: body.length,
+    length: songLength,
     lyricsMode: body.lyricsMode,
     lyrics: body.lyricsMode === "custom" ? lyrics : undefined,
     language: body.language,
@@ -216,7 +210,7 @@ export async function POST(request: NextRequest) {
         price_data: {
           currency: "eur",
           product_data: {
-            name: `${revisionMode ? "Song-Neuinterpretation" : "KI-Song"} · ${songLengthLabel(body.length)} · MP3`,
+            name: `${revisionMode ? "Song-Neuinterpretation" : "KI-Song"} · ${songLengthLabel(songLength)} · MP3`,
             description: revisionMode
               ? "Neue Originalversion nach der analysierten Klangidee deines Songs"
               : body.lyricsMode === "instrumental"
@@ -225,7 +219,7 @@ export async function POST(request: NextRequest) {
                 ? "Originaler KI-Song mit deinen Lyrics"
                 : "Originaler KI-Song mit neu geschriebenen Lyrics",
           },
-          unit_amount: SONG_PRICE_CENTS[body.length],
+          unit_amount: SONG_PRICE_CENTS[songLength],
         },
         quantity: 1,
       }],
@@ -233,7 +227,7 @@ export async function POST(request: NextRequest) {
         productType: "song",
         jobId,
         userId: user?.id || "",
-        songLength: body.length,
+        songLength,
         lyricsMode: body.lyricsMode,
         language: body.language,
         vocalStyle: body.lyricsMode === "instrumental" ? "auto" : body.vocalStyle,

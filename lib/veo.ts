@@ -18,8 +18,17 @@ const GEMINI_API_KEY =
 const BASE_URL =
   "https://generativelanguage.googleapis.com/v1beta";
 
-const VIDEO_MODEL =
-  "veo-3.1-fast-generate-preview";
+export type VeoModelTier =
+  | "fast"
+  | "standard";
+
+function veoModelId(
+  tier: VeoModelTier = "fast",
+): string {
+  return tier === "standard"
+    ? "veo-3.1-generate-preview"
+    : "veo-3.1-fast-generate-preview";
+}
 
 const TEXT_MODEL =
   "gemini-3.5-flash-lite";
@@ -292,6 +301,7 @@ type VideoOperationResponse =
   };
 
 export type VeoGenerationOptions = {
+  modelTier?: VeoModelTier;
   aspectRatio?: VideoAspectRatio;
 
   referenceImage?: {
@@ -318,6 +328,7 @@ export type VeoGenerationOptions = {
 };
 
 export type VeoExtensionOptions = {
+  modelTier?: VeoModelTier;
   aspectRatio?: VideoAspectRatio;
   extensionNumber?: number;
 
@@ -911,7 +922,7 @@ export async function startVideoGeneration(
 
     const response =
       await fetch(
-        `${BASE_URL}/models/${VIDEO_MODEL}:predictLongRunning`,
+        `${BASE_URL}/models/${veoModelId(options.modelTier)}:predictLongRunning`,
         {
           method:
             "POST",
@@ -1473,7 +1484,7 @@ export async function startVideoExtension(
   ) {
     const response =
       await fetch(
-        `${BASE_URL}/models/${VIDEO_MODEL}:predictLongRunning`,
+        `${BASE_URL}/models/${veoModelId(options.modelTier)}:predictLongRunning`,
         {
           method:
             "POST",

@@ -155,9 +155,6 @@ function Step({ active, complete, title, text }: { active: boolean; complete: bo
 }
 
 function songLengthText(length: SongStatus["length"]): string {
-  if (length === "clip") return "30-Sekunden-Song";
-  if (length === "full2") return "2-Minuten-Vollsong";
-  if (length === "full3") return "3-Minuten-Vollsong";
-  if (length === "full4") return "4-Minuten-Vollsong";
+  void length;
   return "Vollständiger Song";
 }

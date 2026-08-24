@@ -33,7 +33,7 @@ export default function SongStudio({
   const [description, setDescription] = useState("");
   const [style, setStyle] = useState("Pop");
   const [mood, setMood] = useState("Energiegeladen");
-  const [length, setLength] = useState<SongLength>("full3");
+  const length: SongLength = "full3";
   const [lyricsMode, setLyricsMode] = useState<SongLyricsMode>("ai");
   const [lyrics, setLyrics] = useState("");
   const [language, setLanguage] = useState<SongLanguage>("de");
@@ -56,7 +56,7 @@ export default function SongStudio({
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
 
-  const price = useMemo(() => formatEuroPrice(SONG_PRICE_CENTS[length]), [length]);
+  const price = formatEuroPrice(SONG_PRICE_CENTS.full3);
   const lyricsWordCount = useMemo(() => countLyricsWords(lyrics), [lyrics]);
   const minimumLyricsWords = minimumCustomLyricsWords(length);
   const maximumLyricsWords = maximumCustomLyricsWords(length, style);
@@ -384,15 +384,6 @@ export default function SongStudio({
               </Field>
             )}
 
-            <Field label="Songlänge">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Choice active={length === "clip"} onClick={() => setLength("clip")} title="30 Sekunden" description="Hook, Loop oder Vorschau" badge={formatEuroPrice(SONG_PRICE_CENTS.clip)} />
-                <Choice active={length === "full2"} onClick={() => setLength("full2")} title="2 Minuten" description="Vollsong mit Strophen und Refrain" badge={formatEuroPrice(SONG_PRICE_CENTS.full2)} />
-                <Choice active={length === "full3"} onClick={() => setLength("full3")} title="3 Minuten" description="Vollsong mit Bridge und Outro" badge={formatEuroPrice(SONG_PRICE_CENTS.full3)} recommended />
-                <Choice active={false} onClick={() => undefined} title="4 Minuten" description="Qualitätstest läuft – noch nicht buchbar" badge="Demnächst" disabled />
-              </div>
-            </Field>
-
             <Field label="Lyrics und Gesang">
               <div className="grid gap-3 sm:grid-cols-3">
                 <Choice compact active={lyricsMode === "instrumental"} onClick={() => setLyricsMode("instrumental")} title="Instrumental" description="Ohne Stimme" />
@@ -440,10 +431,11 @@ export default function SongStudio({
               <MusicIcon />
             </div>
             <p className="mt-5 text-xs font-medium uppercase tracking-[0.18em] text-fuchsia-300">Dein KI-Song</p>
-            <h2 className="mt-2 text-2xl font-semibold">{length === "clip" ? "30-Sekunden-Song" : `${length === "full2" ? 2 : length === "full3" ? 3 : 4}-Minuten-Vollsong`}</h2>
+            <h2 className="mt-2 text-2xl font-semibold">Vollständiger KI-Song</h2>
             <p className="mt-2 text-sm leading-6 text-zinc-400">
               {revisionMode ? "Eine neue Originalversion nach der Analyse deines Ausgangssongs und deinen Änderungen." : lyricsMode === "instrumental" ? "Originale Instrumentalmusik ohne Gesang." : lyricsMode === "custom" ? "Komponiert und gesungen mit deinen Lyrics." : "Komposition, Gesang und neue Lyrics aus deiner Idee."}
             </p>
+            <p className="mt-2 text-xs leading-5 text-fuchsia-200/70">Suno bestimmt die natürliche Länge automatisch passend zu Aufbau, Lyrics und Musikstil.</p>
             <div className="my-6 h-px bg-white/10" />
             <ul className="space-y-3 text-sm text-zinc-300">
               <Benefit>Hochwertige Stereo-MP3</Benefit>

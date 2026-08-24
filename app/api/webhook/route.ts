@@ -47,11 +47,16 @@ import {
   normalizeVideoVoiceMode,
 } from "../../../lib/audio-options";
 
+import {
+  isVideoModelId,
+} from "@/types/story";
+
 import type {
   VideoAspectRatio,
   VideoAudioStyle,
   VideoDurationSeconds,
   VideoEditingStyle,
+  VideoModelId,
   VideoSpokenLanguage,
   VideoVoiceMode,
 } from "@/types/story";
@@ -127,6 +132,9 @@ type PaidVideoConfig = {
 
   spokenLanguage:
     VideoSpokenLanguage;
+
+  videoModel:
+    VideoModelId;
 };
 
 function isVideoDurationSeconds(
@@ -293,6 +301,17 @@ function readPaidVideoConfig(
         metadata
           ?.spokenLanguage,
       ),
+
+    videoModel:
+      metadata?.videoModel === undefined
+        ? "seedance-2-fast"
+        : isVideoModelId(metadata.videoModel)
+          ? metadata.videoModel
+          : (() => {
+              throw new Error(
+                `Ungültiges bezahltes Videomodell in Stripe-Metadata: ${metadata.videoModel}`,
+              );
+            })(),
   };
 }
 
@@ -311,28 +330,18 @@ function readPaidVideoConfig(
 function countTotalExtensions(
   chapterTargets:
     VideoDurationSeconds[],
+  videoModel: VideoModelId,
 ): number {
   return chapterTargets.reduce(
     (
       total,
       chapterDuration,
     ) => {
-      if (
-        chapterDuration <=
-        15
-      ) {
-        return total;
-      }
-
       return (
         total +
-        Math.ceil(
-          (
-            chapterDuration -
-            15
-          ) /
-            15,
-        )
+        (videoModel === "google-veo"
+          ? Math.max(0, Math.ceil((chapterDuration - 8) / 7))
+          : Math.max(0, Math.ceil((chapterDuration - 15) / 15)))
       );
     },
     0,
@@ -1224,6 +1233,40 @@ export async function POST(
     });
   }
 
+  if (
+    session.metadata
+      ?.productType ===
+    "video-subscription"
+  ) {
+    const userId =
+      session.metadata
+        ?.userId
+        ?.trim();
+
+    const subscriptionId =
+      typeof session.subscription === "string"
+        ? session.subscription
+        : session.subscription?.id;
+
+    const customerId =
+      typeof session.customer === "string"
+        ? session.customer
+        : session.customer?.id;
+
+    if (
+      userId &&
+      subscriptionId?.startsWith("sub_") &&
+      customerId?.startsWith("cus_")
+    ) {
+      await accountLibrary.setVideoSubscription(
+        userId,
+        { subscriptionId, customerId },
+      );
+    }
+
+    return NextResponse.json({ received: true });
+  }
+
   const jobId =
     session.metadata
       ?.jobId;
@@ -1479,6 +1522,7 @@ export async function POST(
     countTotalExtensions(
       durationPlan
         .chapterTargets,
+      config.videoModel,
     );
 
   const now =
@@ -1539,8 +1583,14 @@ export async function POST(
         config
           .spokenLanguage,
 
+      videoModel:
+        config.videoModel,
+
       provider:
-        "auto",
+        config.videoModel ===
+        "google-veo"
+          ? "veo"
+          : "seedance",
 
       generationStrategy:
         durationPlan

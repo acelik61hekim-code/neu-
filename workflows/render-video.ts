@@ -15,6 +15,7 @@ import {
 import type {
   VideoAspectRatio,
   VideoDurationSeconds,
+  VideoModelId,
 } from "@/types/story";
 
 type DialogueCue = {
@@ -37,6 +38,7 @@ type PreparedRender = {
   jobId: string;
   duration: VideoDurationSeconds;
   aspectRatio: VideoAspectRatio;
+  videoModel: VideoModelId;
   segments: PlannedSegment[];
   completedSegmentUris: string[];
   totalExtensions: number;
@@ -129,6 +131,7 @@ export async function renderVideoWorkflow(
           prepared.finishing
             .musicTrackUri,
         ),
+        prepared.videoModel,
       );
 
     if (!gate.enabled) {
@@ -169,6 +172,76 @@ export async function renderVideoWorkflow(
         completedSegmentCount,
       )
     ) {
+      if (
+        prepared.videoModel ===
+        "google-veo"
+      ) {
+        let currentUri =
+          await completeVeoOpening(
+            jobId,
+            segment.openingPrompt,
+            prepared.aspectRatio,
+            segment.chapterNumber,
+          );
+
+        const extensionCount =
+          veoExtensionCountFor(
+            segment.targetSeconds,
+          );
+
+        for (
+          let index = 0;
+          index < extensionCount;
+          index += 1
+        ) {
+          const promptIndex =
+            segment.continuationPrompts.length > 0
+              ? Math.min(
+                  segment.continuationPrompts.length - 1,
+                  Math.floor(
+                    index *
+                      segment.continuationPrompts.length /
+                      extensionCount,
+                  ),
+                )
+              : -1;
+
+          const continuationPrompt =
+            promptIndex >= 0
+              ? segment.continuationPrompts[promptIndex]
+              : [
+                  segment.openingPrompt,
+                  "Continue the same scene and action naturally without restarting it.",
+                ].join("\n\n");
+
+          currentUri =
+            await completeVeoExtension(
+              jobId,
+              currentUri,
+              continuationPrompt,
+              prepared.aspectRatio,
+              segment.chapterNumber,
+              completedExtensions + 1,
+            );
+
+          completedExtensions += 1;
+        }
+
+        chapterUris.push(
+          currentUri,
+        );
+
+        await recordChapterStep(
+          jobId,
+          segment.chapterNumber,
+          chapterUris,
+          completedExtensions,
+          prepared.totalExtensions,
+        );
+
+        continue;
+      }
+
       let currentUri =
         await completeOpeningWithOperationRecovery(
           jobId,
@@ -925,6 +998,7 @@ async function prepareRecoveryFinalizationStep(
 async function providerRenderEnabledStep(
   duration: number,
   musicVideoMode: boolean,
+  videoModel: VideoModelId,
 ): Promise<{
   enabled: boolean;
   reason?: string;
@@ -935,6 +1009,7 @@ async function providerRenderEnabledStep(
     assertProviderRenderAllowed(
       duration,
       musicVideoMode,
+      videoModel,
     );
 
     return {
@@ -1875,6 +1950,10 @@ async function prepareRenderJobStep(
     );
   }
 
+  const videoModel =
+    job.videoModel ??
+    "seedance-2-fast";
+
   const totalExtensions =
     segments.reduce(
       (
@@ -1882,9 +1961,15 @@ async function prepareRenderJobStep(
         segment,
       ) =>
         sum +
-        segment
-          .continuationPrompts
-          .length,
+        (
+          videoModel === "google-veo"
+            ? veoExtensionCountFor(
+                segment.targetSeconds,
+              )
+            : segment
+                .continuationPrompts
+                .length
+        ),
 
       0,
     );
@@ -1930,6 +2015,8 @@ async function prepareRenderJobStep(
 
     aspectRatio:
       job.aspectRatio,
+
+    videoModel,
 
     segments,
 
@@ -2015,6 +2102,311 @@ async function markRenderDisabledStep(
         undefined,
     },
   );
+}
+
+async function completeVeoOpening(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+): Promise<string> {
+  const operationName =
+    await startVeoOpeningStep(
+      jobId,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+    );
+
+  return await waitForVeoOperation(
+    jobId,
+    operationName,
+  );
+}
+
+async function completeVeoExtension(
+  jobId: string,
+  previousVideoUri: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  extensionNumber: number,
+): Promise<string> {
+  const operationName =
+    await startVeoExtensionStep(
+      jobId,
+      previousVideoUri,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+      extensionNumber,
+    );
+
+  return await waitForVeoOperation(
+    jobId,
+    operationName,
+  );
+}
+
+async function waitForVeoOperation(
+  jobId: string,
+  operationName: string,
+): Promise<string> {
+  for (
+    let attempt = 0;
+    attempt < 150;
+    attempt += 1
+  ) {
+    const status =
+      await checkVeoOperationStep(
+        jobId,
+        operationName,
+      );
+
+    if (
+      status.done &&
+      status.videoUri
+    ) {
+      return status.videoUri;
+    }
+
+    await sleep("10s");
+  }
+
+  throw new Error(
+    "Google Veo hat die Videoerstellung nicht rechtzeitig abgeschlossen.",
+  );
+}
+
+async function startVeoOpeningStep(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+): Promise<string> {
+  "use step";
+
+  const { jobStore } =
+    await import("@/lib/store");
+
+  const { startVideoGeneration } =
+    await import("@/lib/veo");
+
+  const job =
+    await jobStore.get(jobId);
+
+  if (
+    !job ||
+    job.paymentStatus !== "paid" ||
+    job.videoModel !== "google-veo"
+  ) {
+    throw new Error(
+      "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
+    );
+  }
+
+  const operationType =
+    chapterNumber === 1
+      ? "opening"
+      : "chapter-opening";
+
+  if (
+    job.currentOperationName &&
+    job.currentOperationType === operationType &&
+    (
+      operationType !== "chapter-opening" ||
+      job.currentChapter === chapterNumber
+    )
+  ) {
+    return job.currentOperationName;
+  }
+
+  const referenceImage =
+    job.referenceImageUrl
+      ? await (
+          await import(
+            "@/lib/video-backend/images"
+          )
+        ).loadStoredPreview(
+          job.referenceImageUrl,
+          job.referenceImageMimeType,
+        )
+      : undefined;
+
+  const operationName =
+    await startVideoGeneration(
+      prompt,
+      {
+        modelTier: "standard",
+        aspectRatio,
+        referenceImage,
+        maxAttempts: 4,
+      },
+    );
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      provider: "veo",
+      status: "processing",
+      renderStage:
+        chapterNumber > 1
+          ? "generating-chapter"
+          : "generating-opening",
+      currentChapter: chapterNumber,
+      currentOperationName: operationName,
+      currentOperationType: operationType,
+      lastProviderRequestAt: Date.now(),
+      errorMessage: undefined,
+    },
+  );
+
+  return operationName;
+}
+
+async function startVeoExtensionStep(
+  jobId: string,
+  previousVideoUri: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  extensionNumber: number,
+): Promise<string> {
+  "use step";
+
+  const { jobStore } =
+    await import("@/lib/store");
+
+  const { startVideoExtension } =
+    await import("@/lib/veo");
+
+  const job =
+    await jobStore.get(jobId);
+
+  if (
+    !job ||
+    job.paymentStatus !== "paid" ||
+    job.videoModel !== "google-veo"
+  ) {
+    throw new Error(
+      "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
+    );
+  }
+
+  if (
+    job.currentOperationName &&
+    job.currentOperationType === "extension" &&
+    job.currentChapter === chapterNumber &&
+    job.currentExtension === extensionNumber
+  ) {
+    return job.currentOperationName;
+  }
+
+  const operationName =
+    await startVideoExtension(
+      previousVideoUri,
+      prompt,
+      {
+        modelTier: "standard",
+        aspectRatio,
+        extensionNumber,
+        maxAttempts: 4,
+      },
+    );
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      provider: "veo",
+      status: "processing",
+      renderStage: "extending",
+      currentChapter: chapterNumber,
+      currentExtension: extensionNumber,
+      currentOperationName: operationName,
+      currentOperationType: "extension",
+      lastProviderRequestAt: Date.now(),
+      errorMessage: undefined,
+    },
+  );
+
+  return operationName;
+}
+
+async function checkVeoOperationStep(
+  jobId: string,
+  operationName: string,
+): Promise<{
+  done: boolean;
+  videoUri?: string;
+}> {
+  "use step";
+
+  const { jobStore } =
+    await import("@/lib/store");
+
+  const { checkVideoStatus } =
+    await import("@/lib/veo");
+
+  const [job, status] =
+    await Promise.all([
+      jobStore.get(jobId),
+      checkVideoStatus(operationName),
+    ]);
+
+  if (!job) {
+    throw new Error(
+      "Der Google-Veo-Auftrag wurde während der Erstellung nicht gefunden.",
+    );
+  }
+
+  if (
+    status.done &&
+    status.videoUri
+  ) {
+    await jobStore.set(
+      jobId,
+      {
+        ...job,
+        videoUri: status.videoUri,
+        progressPercent: Math.min(
+          88,
+          Math.max(
+            job.progressPercent ?? 0,
+            12 +
+              Math.round(
+                (
+                  (job.currentExtension ?? 0) /
+                  Math.max(
+                    1,
+                    job.totalExtensions ?? 1,
+                  )
+                ) * 76,
+              ),
+          ),
+        ),
+        currentOperationName: undefined,
+        currentOperationType: undefined,
+        lastProviderPollAt: Date.now(),
+      },
+    );
+
+    return {
+      done: true,
+      videoUri: status.videoUri,
+    };
+  }
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      lastProviderPollAt: Date.now(),
+    },
+  );
+
+  return { done: false };
 }
 
 async function startOpeningVideoStep(
@@ -2176,6 +2568,12 @@ async function startOpeningVideoStep(
       await startVideoGeneration(
         prompt,
         {
+          modelTier:
+            job.videoModel ===
+            "seedance-2-original"
+              ? "original"
+              : "fast",
+
           aspectRatio,
 
           referenceImage,
@@ -2477,6 +2875,12 @@ async function startExtensionVideoStep(
         previousVideoUri,
         prompt,
         {
+          modelTier:
+            job.videoModel ===
+            "seedance-2-original"
+              ? "original"
+              : "fast",
+
           aspectRatio,
 
           extensionNumber,
@@ -3330,14 +3734,23 @@ function assertProviderRenderAllowed(
     number |
     undefined,
   musicVideoMode = false,
+  videoModel: VideoModelId =
+    "seedance-2-fast",
 ): void {
-  if (
+  if (videoModel === "google-veo") {
+    if (!process.env.GEMINI_API_KEY) {
+      throw new Error(
+        "Google Veo ist nicht konfiguriert.",
+      );
+    }
+  } else if (
     process.env
       .SEEDANCE_WORKFLOW_RENDER_ENABLED !==
-    "true"
+      "true" ||
+    !process.env.FAL_KEY
   ) {
     throw new Error(
-      "SEEDANCE_WORKFLOW_RENDER_ENABLED ist deaktiviert.",
+      "Seedance-Rendering ist deaktiviert.",
     );
   }
 
@@ -3919,6 +4332,23 @@ function getFixedVoiceName(
   );
 
   return voiceName;
+}
+
+/*
+ * Veo erzeugt zuerst 8 Sekunden und erweitert danach
+ * jeweils um ungefähr 7 Sekunden. Das fertige Ergebnis
+ * wird anschließend exakt auf die bezahlte Länge geschnitten.
+ */
+function veoExtensionCountFor(
+  seconds: number,
+): number {
+  if (seconds <= 8) {
+    return 0;
+  }
+
+  return Math.ceil(
+    (seconds - 8) / 7,
+  );
 }
 
 function buildViralStudioVoiceDirection(

@@ -79,6 +79,11 @@ type VideoStatus = {
     | "de"
     | "en";
 
+  videoModel?:
+    | "seedance-2-fast"
+    | "seedance-2-original"
+    | "google-veo";
+
   nativeCharacterDialogue?: boolean;
 
   musicVideoAudioName?: string;
@@ -227,6 +232,13 @@ function formatAudioStyle(
   }
 }
 
+function formatVideoModel(model?: VideoStatus["videoModel"]): string | null {
+  if (model === "google-veo") return "Google Veo 3.1";
+  if (model === "seedance-2-original") return "Seedance 2 Original";
+  if (model === "seedance-2-fast") return "Seedance 2 Fast";
+  return null;
+}
+
 function isSingleClipRecoveryTarget(
   seconds:
     number |
@@ -288,6 +300,9 @@ function SuccessContent() {
     searchParams.get(
       "session_id",
     );
+
+  const included =
+    searchParams.get("included") === "1";
 
   const [
     videoStatus,
@@ -434,7 +449,7 @@ function SuccessContent() {
     () => {
       if (
         !jobId ||
-        !sessionId
+        (!sessionId && !included)
       ) {
         setVideoStatus({
           status:
@@ -457,10 +472,10 @@ function SuccessContent() {
         undefined;
 
       let checkoutConfirmed =
-        false;
+        included;
 
       let accountClaimed =
-        false;
+        included;
 
       let refreshing =
         false;
@@ -487,7 +502,8 @@ function SuccessContent() {
              * als Zahlungsnachweis.
              */
             if (
-              !checkoutConfirmed
+              !checkoutConfirmed &&
+              sessionId
             ) {
               const confirmResponse =
                 await fetch(
@@ -563,13 +579,16 @@ function SuccessContent() {
             /*
              * Aktuellen Produktionsstatus laden.
              */
+            const statusQuery =
+              sessionId
+                ? `&session_id=${encodeURIComponent(sessionId)}`
+                : "";
+
             const response =
               await fetch(
                 `/api/video-status?jobId=${encodeURIComponent(
                   jobId,
-                )}&session_id=${encodeURIComponent(
-                  sessionId,
-                )}`,
+                )}${statusQuery}`,
                 {
                   cache:
                     "no-store",
@@ -628,6 +647,7 @@ function SuccessContent() {
              * zusammengesetzt werden.
              */
             if (
+              sessionId &&
               data.status ===
                 "processing" &&
 
@@ -716,7 +736,7 @@ function SuccessContent() {
                 0
             ) {
               checkoutConfirmed =
-                false;
+                included;
             }
 
             if (
@@ -777,6 +797,7 @@ function SuccessContent() {
     [
       jobId,
       sessionId,
+      included,
     ],
   );
 
@@ -811,18 +832,15 @@ function SuccessContent() {
         connectionError={
           connectionError
         }
-        onRecover={() =>
-          void recoverPaidVideo(
-            videoStatus.nativeCharacterDialogue ===
-              true,
-          )
-        }
-        onReactionBoost={() =>
-          void recoverPaidVideo(
-            true,
-            true,
-          )
-        }
+        onRecover={sessionId
+          ? () =>
+              void recoverPaidVideo(
+                videoStatus.nativeCharacterDialogue === true,
+              )
+          : undefined}
+        onReactionBoost={sessionId
+          ? () => void recoverPaidVideo(true, true)
+          : undefined}
         recoveryState={
           recoveryState
         }
@@ -934,6 +952,9 @@ function StatusCard({
     formatAudioStyle(
       videoStatus.audioStyle,
     );
+
+  const videoModel =
+    formatVideoModel(videoStatus.videoModel);
 
   const stageLabel =
     videoStatus.renderStage
@@ -1084,6 +1105,10 @@ function StatusCard({
                       videoStatus.aspectRatio
                     }
                   </DetailPill>
+                )}
+
+                {videoModel && (
+                  <DetailPill>{videoModel}</DetailPill>
                 )}
 
                 {editingStyle && (
@@ -1255,6 +1280,15 @@ function StatusCard({
                   href={`${videoStatus.videoUrl}&download=1`}
                 >
                   Video herunterladen
+                </a>
+
+                <a
+                  className="ml-0 mt-3 inline-flex items-center justify-center rounded-xl border border-fuchsia-400/30 bg-fuchsia-400/10 px-5 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-400/20 sm:ml-3 sm:mt-5"
+                  href={`/video-studio?jobId=${encodeURIComponent(
+                    videoStatus.videoUrl.split("/").pop()?.split("?")[0] || "",
+                  )}`}
+                >
+                  Im Video Studio bearbeiten
                 </a>
 
                 {videoStatus.nativeCharacterDialogue &&
