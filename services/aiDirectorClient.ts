@@ -81,6 +81,7 @@ export async function requestAiDirector(
   viralCharacterIds: string[] = [],
   dialogueMode = false,
   musicTrack?: MusicVideoTrackContext,
+  characterMode?: "general" | "viral",
 ): Promise<AiDirectorResponse> {
   const response = await fetch("/api/ai-director", {
     method: "POST",
@@ -92,6 +93,7 @@ export async function requestAiDirector(
       viralCharacterIds,
       dialogueMode,
       musicTrack,
+      characterMode,
     }),
   });
 

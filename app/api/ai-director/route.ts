@@ -30,6 +30,7 @@ type ConversationMessage = {
 type RequestBody = {
   messages?: ConversationMessage[];
   viralCharacterIds?: unknown;
+  characterMode?: unknown;
   dialogueMode?: unknown;
   musicTrack?: unknown;
 };
@@ -243,6 +244,69 @@ function enforceViralStory(
         "Verbindliche Bildregeln: dieselbe tropische Villa in allen Einstellungen; geschlossene Besetzung ohne Menschen, Statisten oder zusätzliche Früchte; niemals menschliche Gesichter statt Fruchtköpfen; keinerlei Untertitel, Titelkarten, Schilder, Namensschilder, Logos, Wasserzeichen oder sonstige lesbare Schrift im Bild.",
         "Der zentrale Beweis ist eine unmittelbar sichtbare Handlung oder eine eindeutig zuordenbare körperliche Situation. Ein Handy, Chat, Foto, Brief oder Beleg darf nur ein zusätzliches Detail bestätigen und niemals allein die Handlung tragen.",
         "Die Dialogfolge ist kausal und konkret: Jede Zeile beantwortet die vorherige, nennt eine neue überprüfbare Information und führt denselben Konflikt weiter. Leere Drama-Platzhalter ohne Bezug zu Beziehung, Beweis oder Konsequenz sind verboten.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    },
+  };
+}
+
+function createGeneralCharacterInstruction(
+  selectedCharacterIds: string[],
+): string {
+  const selectedCharacters = getViralCharacters(selectedCharacterIds).slice(0, 3);
+
+  if (selectedCharacters.length === 0) return "";
+
+  const characterList = selectedCharacters
+    .map(
+      (character, index) =>
+        `${index + 1}. ${character.name}: ${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
+    )
+    .join("\n");
+
+  return `
+VERBINDLICHE ALLGEMEINE CHARAKTERAUSWAHL
+
+Der Nutzer hat die folgenden festen Charaktere aus der Charakter-Bibliothek ausgewählt:
+${characterList}
+
+- Verwende diese Figuren als Hauptcharaktere der vom Nutzer gewünschten Videoidee.
+- Namen, Fruchtart, Gesicht, Kopfform, Augen, Körperproportionen, Farben und Kleidung bleiben in jeder Szene unverändert.
+- Die Auswahl legt ausdrücklich KEIN Genre und KEIN Format fest. Erzeuge nur dann Trash-TV, eine Dating-Villa oder ein TikTok-Microdrama, wenn der Nutzer das selbst verlangt.
+- Die Figuren dürfen genauso in Werbung, Musikvideo, Komödie, Fantasy, Alltag, Kurzfilm, Erklärvideo oder jedem anderen passenden Schauplatz auftreten.
+- Passe Handlung, Stimmung, Kamera und Umgebung an die freie Idee des Nutzers an, nicht an frühere Früchte-TV-Vorlagen.
+- Erfinde keine menschlichen Ersatzgesichter für die ausgewählten Fruchtfiguren.
+`;
+}
+
+function enforceGeneralCharacters(
+  result: AiDirectorResult,
+  selectedCharacterIds: string[],
+): AiDirectorResult {
+  const selectedCharacters = getViralCharacters(selectedCharacterIds).slice(0, 3);
+
+  if (selectedCharacters.length === 0) return result;
+
+  const fixedCharacterSummary = selectedCharacters
+    .map(
+      (character) =>
+        `${character.name}: ${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
+    )
+    .join(" ");
+
+  return {
+    ...result,
+    story: {
+      ...result.story,
+      characters: selectedCharacters.map((character) => ({
+        name: character.name,
+        description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}. Diese feste Identität gilt in jeder Szene; Genre und Schauplatz richten sich ausschließlich nach der freien Videoidee.`,
+      })),
+      summary: [
+        result.story.summary,
+        `Verbindliche allgemeine Charakterreferenzen: ${fixedCharacterSummary}`,
+        "Die ausgewählten Figuren sind normale Hauptcharaktere dieses Videos. Es gelten keine Trash-TV-, Dating-Villa- oder TikTok-Vorgaben, sofern der Nutzer sie nicht ausdrücklich verlangt.",
       ]
         .filter(Boolean)
         .join(" "),
@@ -531,6 +595,7 @@ async function generateWithRetry(
   dialogueMode = false,
   musicTrack?: MusicVideoTrackContext,
   viralStory = false,
+  generalCharacterInstruction = "",
 ) {
   let lastError: unknown;
 
@@ -552,6 +617,7 @@ async function generateWithRetry(
             [
               SYSTEM_INSTRUCTION,
               dialogueMode ? DIALOGUE_SYSTEM_INSTRUCTION : "",
+              generalCharacterInstruction,
               musicTrack
                 ? [
                     "VERBINDLICHER MUSIKVIDEO-MODUS",
@@ -752,6 +818,13 @@ export async function POST(
         )
       : [];
 
+    const characterMode =
+      body.characterMode === "general"
+        ? "general"
+        : body.characterMode === "viral" || viralCharacterIds.length >= 2
+          ? "viral"
+          : undefined;
+
     const response =
       await generateWithRetry(
         ai,
@@ -762,7 +835,10 @@ export async function POST(
         )
           ? body.musicTrack
           : undefined,
-        viralCharacterIds.length >= 2,
+        characterMode === "viral" && viralCharacterIds.length >= 2,
+        characterMode === "general"
+          ? createGeneralCharacterInstruction(viralCharacterIds)
+          : "",
       );
 
     const responseText =
@@ -813,7 +889,10 @@ export async function POST(
       ? enforceStudioAdvertisement(result)
       : result;
 
-    const finalResult = enforceViralStory(brandedResult, viralCharacterIds);
+    const finalResult =
+      characterMode === "general"
+        ? enforceGeneralCharacters(brandedResult, viralCharacterIds)
+        : enforceViralStory(brandedResult, viralCharacterIds);
 
     return NextResponse.json({
       success: true,

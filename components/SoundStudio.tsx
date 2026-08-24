@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import Header from "@/components/Header";
 import { LoadingIcon, LockIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
@@ -12,6 +19,12 @@ type StudioSource = {
   lyrics: string;
   audioUrl: string;
   canRegenerate: boolean;
+  planName: string;
+  editsRemaining: number;
+  sourceKind?: "generated" | "upload";
+};
+
+type UploadAccess = {
   planName: string;
   editsRemaining: number;
 };
@@ -43,8 +56,10 @@ export default function SoundStudio() {
   const [editMessage, setEditMessage] = useState("");
   const [editsRemaining, setEditsRemaining] = useState(0);
   const [audioBuffer, setAudioBuffer] = useState<AudioBuffer | null>(null);
+  const [uploadAccess, setUploadAccess] = useState<UploadAccess | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const createdAudioUrls = useRef<string[]>([]);
 
   const params = useMemo(() => typeof window === "undefined" ? new URLSearchParams() : new URLSearchParams(window.location.search), []);
   const jobId = params.get("jobId") || "";
@@ -54,8 +69,33 @@ export default function SoundStudio() {
 
   useEffect(() => {
     if (!jobId) {
-      setLoading(false);
-      setError("Öffne das Sound Studio bitte über den Button bei deinem fertigen Song.");
+      void fetch("/api/song-studio/access", { cache: "no-store" })
+        .then(async (response) => {
+          const data = await response.json() as UploadAccess & {
+            error?: string;
+            needsSubscription?: boolean;
+          };
+
+          if (!response.ok) {
+            setNeedsSubscription(Boolean(data.needsSubscription));
+            throw new Error(
+              data.error ||
+                "Der Zugang zum Sound Studio konnte nicht geprüft werden.",
+            );
+          }
+
+          setUploadAccess(data);
+          setEditsRemaining(data.editsRemaining);
+          setError("");
+        })
+        .catch((reason) =>
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Der Zugang zum Sound Studio konnte nicht geprüft werden.",
+          ),
+        )
+        .finally(() => setLoading(false));
       return;
     }
     const accessQuery = sessionId ? `session_id=${encodeURIComponent(sessionId)}` : `access_token=${encodeURIComponent(accessToken)}`;
@@ -67,12 +107,22 @@ export default function SoundStudio() {
           throw new Error(data.error || "Der Song konnte nicht geöffnet werden.");
         }
         setSource(data);
+        setUploadAccess({
+          planName: data.planName,
+          editsRemaining: data.editsRemaining,
+        });
         setVersions([{ label: "Original", audioUrl: data.audioUrl }]);
         setEditsRemaining(data.editsRemaining);
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Der Song konnte nicht geöffnet werden."))
       .finally(() => setLoading(false));
   }, [accessToken, jobId, sessionId]);
+
+  useEffect(() => {
+    return () => {
+      createdAudioUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
 
   useEffect(() => {
     if (!currentVersion?.audioUrl) return;
@@ -162,6 +212,96 @@ export default function SoundStudio() {
       void audio.play();
     } else {
       audio.pause();
+    }
+  }
+
+  function handleOwnAudioUpload(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!file) return;
+
+    const supportedExtension = /\.(mp3|wav|m4a|aac|ogg|flac)$/i.test(file.name);
+    if (!file.type.startsWith("audio/") && !supportedExtension) {
+      setError("Bitte wähle eine Audiodatei als MP3, WAV, M4A, AAC, OGG oder FLAC aus.");
+      return;
+    }
+
+    if (file.size > 200 * 1024 * 1024) {
+      setError("Die Audiodatei darf höchstens 200 MB groß sein.");
+      return;
+    }
+
+    const audioUrl = URL.createObjectURL(file);
+    createdAudioUrls.current.push(audioUrl);
+
+    const title = file.name.replace(/\.[^.]+$/, "").trim() || "Eigene Audiodatei";
+    const access = uploadAccess ?? {
+      planName: source?.planName || "Song-Abo",
+      editsRemaining,
+    };
+
+    setSource({
+      title,
+      style: `Eigener Upload · ${file.name.split(".").pop()?.toUpperCase() || "Audio"}`,
+      lyrics: "",
+      audioUrl,
+      canRegenerate: false,
+      planName: access.planName,
+      editsRemaining: access.editsRemaining,
+      sourceKind: "upload",
+    });
+    setVersions([{ label: "Original-Upload", audioUrl }]);
+    setVersionIndex(0);
+    setGainPercent(100);
+    setFadeIn(0);
+    setFadeOut(0);
+    setInstruction("");
+    setReplacementLyrics("");
+    setEditMessage("Eigene Audiodatei geladen. Du kannst jetzt schneiden, stummschalten, Lautstärke und Blenden ändern oder als WAV exportieren.");
+    setError("");
+  }
+
+  function createManualVersion(mode: "remove" | "silence" | "keep") {
+    if (!audioBuffer || selectionEnd <= selectionStart) return;
+
+    try {
+      const edited = editAudioBuffer(
+        audioBuffer,
+        selectionStart,
+        selectionEnd,
+        mode,
+      );
+      const audioUrl = URL.createObjectURL(encodeWav(edited));
+      createdAudioUrls.current.push(audioUrl);
+
+      const label =
+        mode === "remove"
+          ? "Schnitt"
+          : mode === "silence"
+            ? "Stumm"
+            : "Ausschnitt";
+
+      setVersions((current) => {
+        setVersionIndex(current.length);
+        return [
+          ...current,
+          {
+            label: `${label} ${current.length}`,
+            audioUrl,
+          },
+        ];
+      });
+      setEditMessage(
+        mode === "remove"
+          ? "Die Markierung wurde entfernt und als neue Version gespeichert."
+          : mode === "silence"
+            ? "Die Markierung wurde stummgeschaltet und als neue Version gespeichert."
+            : "Nur die Markierung wurde als neue Version übernommen.",
+      );
+      setError("");
+    } catch {
+      setError("Die manuelle Bearbeitung konnte in diesem Browser nicht erstellt werden.");
     }
   }
 
@@ -266,9 +406,26 @@ export default function SoundStudio() {
   if (loading) return <Shell><div className="flex min-h-[60vh] items-center justify-center text-fuchsia-200"><LoadingIcon className="animate-spin" /></div></Shell>;
 
   if (!source) {
+    if (uploadAccess) {
+      return (
+        <Shell>
+          <UploadAudioEntry
+            planName={uploadAccess.planName}
+            onFileChange={handleOwnAudioUpload}
+          />
+        </Shell>
+      );
+    }
+
     return (
       <Shell>
-        <LockedStudioPreview message={needsSubscription ? error : "Hier siehst du das vollständige Sound Studio. Nach dem Abo öffnest du einen fertigen Song und alle Werkzeuge werden freigeschaltet."} />
+        <LockedStudioPreview
+          message={
+            needsSubscription
+              ? error
+              : "Hier siehst du das vollständige Sound Studio. Mit einem Song-Abo kannst du auch eigene Audiodateien hochladen und bearbeiten."
+          }
+        />
         <SongPlans />
       </Shell>
     );
@@ -286,7 +443,18 @@ export default function SoundStudio() {
         <section className="rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/30 sm:p-7">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-3"><div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fuchsia-500/15 text-fuchsia-200"><MusicIcon /></div><div className="min-w-0"><p className="truncate font-semibold">{source.title}</p><p className="mt-1 text-xs text-zinc-500">{source.style}</p></div></div>
-            <select value={versionIndex} onChange={(event) => setVersionIndex(Number(event.target.value))} className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">{versions.map((version, index) => <option key={`${version.label}-${index}`} value={index}>{version.label}</option>)}</select>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/20">
+                Eigene Datei öffnen
+                <input
+                  type="file"
+                  accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,audio/x-flac,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+                  className="sr-only"
+                  onChange={handleOwnAudioUpload}
+                />
+              </label>
+              <select value={versionIndex} onChange={(event) => setVersionIndex(Number(event.target.value))} className="rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-xs text-zinc-200">{versions.map((version, index) => <option key={`${version.label}-${index}`} value={index}>{version.label}</option>)}</select>
+            </div>
           </div>
 
           <audio ref={audioRef} src={currentVersion.audioUrl} onTimeUpdate={onTimeUpdate} controls preload="metadata" className="mt-6 w-full" />
@@ -310,7 +478,13 @@ export default function SoundStudio() {
             <Range label={`Fade-in ${fadeIn.toFixed(1)} s`} value={fadeIn} min={0} max={5} onChange={setFadeIn} time={false} />
             <Range label={`Fade-out ${fadeOut.toFixed(1)} s`} value={fadeOut} min={0} max={5} onChange={setFadeOut} time={false} />
           </div>
-          <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => void exportAudio("selection")} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200">Markierung als WAV</button><button type="button" onClick={() => void exportAudio("full")} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200">Ganzen Song als WAV</button></div>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button type="button" onClick={() => createManualVersion("remove")} disabled={!audioBuffer || selectionEnd - selectionStart >= duration - 0.1} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40">Markierung entfernen</button>
+            <button type="button" onClick={() => createManualVersion("silence")} disabled={!audioBuffer} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40">Markierung stummschalten</button>
+            <button type="button" onClick={() => createManualVersion("keep")} disabled={!audioBuffer} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40">Nur Markierung behalten</button>
+            <button type="button" onClick={() => void exportAudio("selection")} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200">Markierung als WAV</button>
+            <button type="button" onClick={() => void exportAudio("full")} className="rounded-xl border border-white/10 px-4 py-2.5 text-xs font-medium text-zinc-200">Ganzen Song als WAV</button>
+          </div>
         </section>
 
         <aside className="h-fit rounded-3xl border border-fuchsia-400/20 bg-gradient-to-b from-fuchsia-500/[0.11] to-violet-500/[0.04] p-6 xl:sticky xl:top-6">
@@ -321,15 +495,82 @@ export default function SoundStudio() {
           <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={5} maxLength={1000} placeholder="Zum Beispiel: Refrain größer und emotionaler, kräftigere Drums, Stimme klar und ohne Adlibs, weicher Übergang zurück zur Strophe …" className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40" />
           <label className="mt-4 block text-xs font-medium text-zinc-300">Neue Lyrics für diese Stelle <span className="text-zinc-600">optional</span></label>
           <textarea value={replacementLyrics} onChange={(event) => setReplacementLyrics(event.target.value)} rows={4} maxLength={4000} placeholder="Wenn der Text gleich bleiben soll, leer lassen." className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm outline-none placeholder:text-zinc-600 focus:border-fuchsia-400/40" />
+          {!source.canRegenerate && (
+            <p className="mt-4 rounded-xl border border-blue-400/15 bg-blue-400/[0.07] px-3 py-3 text-xs leading-5 text-blue-100">
+              Eigene Uploads kannst du vollständig schneiden, stummschalten, in der Lautstärke ändern, ein- und ausblenden sowie exportieren. Die KI-Neugenerierung einzelner Sekunden ist technisch nur für Songs verfügbar, die direkt mit der Song-KI erstellt wurden.
+            </p>
+          )}
           {error && <p className="mt-4 rounded-xl border border-red-400/20 bg-red-400/10 px-3 py-3 text-xs leading-5 text-red-200">{error}</p>}
           {editMessage && <p className="mt-4 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] px-3 py-3 text-xs leading-5 text-emerald-200">{editMessage}</p>}
-          <button type="button" onClick={() => void regenerateSelection()} disabled={editLoading || !source.canRegenerate || editsRemaining <= 0} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">{editLoading ? <><LoadingIcon className="animate-spin" /> Stelle wird neu erstellt …</> : "Markierte Stelle neu generieren"}</button>
+          <button type="button" onClick={() => void regenerateSelection()} disabled={editLoading || !source.canRegenerate || editsRemaining <= 0} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50">{editLoading ? <><LoadingIcon className="animate-spin" /> Stelle wird neu erstellt …</> : source.canRegenerate ? "Markierte Stelle neu generieren" : "KI-Neugenerierung nur für KI-Songs"}</button>
           <p className="mt-3 text-center text-[11px] text-zinc-500">{editsRemaining} KI-Bearbeitungen in diesem Monat übrig</p>
         </aside>
       </div>
     </Shell>
   );
 }
+
+function UploadAudioEntry({
+  planName,
+  onFileChange,
+}: {
+  planName: string;
+  onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+}) {
+  return (
+    <>
+      <section className="mx-auto max-w-3xl text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-medium text-emerald-200">
+          ✓ {planName} aktiv
+        </div>
+        <h1 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
+          Deinen eigenen Song bearbeiten
+        </h1>
+        <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
+          Lade eine eigene Audiodatei hoch. Danach siehst du sofort die Wellenform,
+          kannst sekundengenau schneiden, Stellen stummschalten, Lautstärke und
+          Blenden einstellen und neue WAV-Versionen exportieren.
+        </p>
+      </section>
+
+      <section className="mx-auto mt-10 max-w-3xl rounded-3xl border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/[0.1] via-violet-500/[0.05] to-blue-500/[0.08] p-6 text-center shadow-2xl shadow-black/30 sm:p-10">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-fuchsia-500/15 text-fuchsia-200">
+          <MusicIcon className="h-8 w-8" />
+        </div>
+        <h2 className="mt-5 text-2xl font-semibold">Audiodatei auswählen</h2>
+        <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-zinc-400">
+          Unterstützt werden MP3, WAV, M4A, AAC, OGG und FLAC bis 200 MB.
+          Deine Originaldatei bleibt unverändert; Bearbeitungen werden als neue
+          Versionen angelegt.
+        </p>
+
+        <label className="mt-7 inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-6 py-3.5 text-sm font-semibold text-white transition hover:brightness-110">
+          Eigene Datei hochladen
+          <input
+            type="file"
+            accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/aac,audio/ogg,audio/flac,audio/x-flac,.mp3,.wav,.m4a,.aac,.ogg,.flac"
+            className="sr-only"
+            onChange={onFileChange}
+          />
+        </label>
+
+        <div className="mt-7 grid gap-3 text-left sm:grid-cols-3">
+          {[
+            ["Sekundengenau", "Start und Ende direkt in der Wellenform markieren."],
+            ["Sicher arbeiten", "Original behalten und beliebig viele manuelle Versionen erstellen."],
+            ["Fertig exportieren", "Ausschnitt oder kompletten Song als WAV herunterladen."],
+          ].map(([title, description]) => (
+            <div key={title} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+              <p className="text-xs font-semibold text-white">{title}</p>
+              <p className="mt-1 text-[11px] leading-5 text-zinc-500">{description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   return <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white"><div className="pointer-events-none absolute inset-0"><div className="absolute left-[-180px] top-[-160px] h-[480px] w-[480px] rounded-full bg-fuchsia-700/20 blur-[140px]" /><div className="absolute right-[-180px] top-[160px] h-[460px] w-[460px] rounded-full bg-violet-700/15 blur-[140px]" /></div><Header active="studio" /><div className="relative z-10 mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8 sm:pt-16">{children}</div></main>;
 }
@@ -371,7 +612,7 @@ function LockedStudioPreview({ message }: { message: string }) {
           <label className="mt-5 block text-xs font-medium text-zinc-300">Was soll sich ändern?</label><textarea disabled rows={5} value="Refrain größer und emotionaler, kräftigere Drums und eine klare Stimme ohne Adlibs." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-500" />
           <label className="mt-4 block text-xs font-medium text-zinc-300">Neue Lyrics <span className="text-zinc-600">optional</span></label><textarea disabled rows={4} value="Neue Zeilen können genau für diese Stelle eingetragen werden." readOnly className="mt-2 w-full rounded-xl border border-white/10 bg-black/25 px-3 py-3 text-sm text-zinc-600" />
           <a href="#song-abos" className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 px-4 py-3 text-sm font-semibold"><LockIcon /> Mit Abo freischalten</a>
-          <p className="mt-3 text-center text-[11px] text-zinc-500">Danach einen fertigen Song auswählen und direkt loslegen</p>
+          <p className="mt-3 text-center text-[11px] text-zinc-500">Danach eine eigene Datei hochladen oder einen fertigen Song auswählen</p>
         </aside>
       </div>
     </>
@@ -394,6 +635,60 @@ function formatTime(seconds: number): string {
 
 function safeFilename(value: string): string {
   return value.normalize("NFKD").replace(/[^a-zA-Z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70) || "song";
+}
+
+function editAudioBuffer(
+  buffer: AudioBuffer,
+  startSeconds: number,
+  endSeconds: number,
+  mode: "remove" | "silence" | "keep",
+): AudioBuffer {
+  const startFrame = Math.max(
+    0,
+    Math.min(buffer.length, Math.floor(startSeconds * buffer.sampleRate)),
+  );
+  const endFrame = Math.max(
+    startFrame + 1,
+    Math.min(buffer.length, Math.ceil(endSeconds * buffer.sampleRate)),
+  );
+  const selectedFrames = endFrame - startFrame;
+  const outputFrames =
+    mode === "keep"
+      ? selectedFrames
+      : mode === "remove"
+        ? Math.max(1, buffer.length - selectedFrames)
+        : buffer.length;
+  const context = new OfflineAudioContext(
+    buffer.numberOfChannels,
+    outputFrames,
+    buffer.sampleRate,
+  );
+  const output = context.createBuffer(
+    buffer.numberOfChannels,
+    outputFrames,
+    buffer.sampleRate,
+  );
+
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const source = buffer.getChannelData(channel);
+    const target = output.getChannelData(channel);
+
+    if (mode === "keep") {
+      target.set(source.subarray(startFrame, endFrame));
+      continue;
+    }
+
+    target.set(source.subarray(0, Math.min(startFrame, target.length)));
+
+    if (mode === "remove") {
+      target.set(source.subarray(endFrame), startFrame);
+      continue;
+    }
+
+    target.set(source.subarray(endFrame), endFrame);
+  }
+
+  return output;
 }
 
 function encodeWav(buffer: AudioBuffer): Blob {

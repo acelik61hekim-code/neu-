@@ -1534,6 +1534,34 @@ export default function StudioHome({
     );
   }
 
+  async function handleGeneralCharacterSelection(
+    characters: ViralCharacter[],
+  ) {
+    if (
+      characters.length < 1 ||
+      characters.length > 3
+    ) {
+      throw new Error(
+        "Wähle einen bis drei Charaktere für dein Video aus.",
+      );
+    }
+
+    setPreviewImage(null);
+    setPreviewApproved(false);
+    setPreviewReferenceUri(null);
+    setPreviewReferenceMimeType(null);
+    setError(null);
+
+    const preparedReferences = await Promise.all(
+      characters.map(async (character) => ({
+        dataUrl: await loadPublicImageAsDataUrl(character.imagePath),
+        name: `${character.shortName} – fester Charakter`,
+      })),
+    );
+
+    setReferenceImages(preparedReferences);
+  }
+
   function handleStoryChange(
     updatedStory:
       string,
@@ -3019,6 +3047,9 @@ export default function StudioHome({
             }
             onViralStoryStart={
               handleViralStoryStart
+            }
+            onGeneralCharactersChange={
+              handleGeneralCharacterSelection
             }
           />
 

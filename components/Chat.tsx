@@ -11,6 +11,7 @@ import {
 
 import { requestStoryArchitect } from "@/services/storyArchitectClient";
 import { requestAutomaticVoiceover } from "@/services/voiceoverClient";
+import CharacterLibrary from "@/components/CharacterLibrary";
 import ViralStoryStarter from "@/components/ViralStoryStarter";
 import {
   createViralStoryPrompt,
@@ -58,6 +59,9 @@ type ChatProps = {
   closingText?: string;
   musicTrack?: MusicVideoTrackContext;
   onViralStoryStart?: (
+    characters: ViralCharacter[],
+  ) => Promise<void> | void;
+  onGeneralCharactersChange?: (
     characters: ViralCharacter[],
   ) => Promise<void> | void;
 };
@@ -130,6 +134,7 @@ export default function Chat({
   closingText = "",
   musicTrack,
   onViralStoryStart,
+  onGeneralCharactersChange,
 }: ChatProps) {
   const [
     messages,
@@ -174,6 +179,12 @@ export default function Chat({
   const [
     activeViralCharacterIds,
     setActiveViralCharacterIds,
+  ] =
+    useState<string[]>([]);
+
+  const [
+    activeGeneralCharacterIds,
+    setActiveGeneralCharacterIds,
   ] =
     useState<string[]>([]);
 
@@ -231,6 +242,7 @@ export default function Chat({
     preparedInput?: string,
     preparedViralCharacterIds?: string[],
     preparedApiContent?: string,
+    preparedCharacterMode?: "general" | "viral",
   ) {
     const cleanedInput =
       (
@@ -244,13 +256,27 @@ export default function Chat({
         cleanedInput
       ).trim();
 
-    const viralCharacterIds =
+    const characterIds =
       preparedViralCharacterIds ??
-      activeViralCharacterIds;
+      (
+        activeViralCharacterIds.length > 0
+          ? activeViralCharacterIds
+          : activeGeneralCharacterIds
+      );
+
+    const characterMode =
+      preparedCharacterMode ??
+      (
+        activeViralCharacterIds.length >= 2
+          ? "viral"
+          : activeGeneralCharacterIds.length > 0
+            ? "general"
+            : undefined
+      );
 
     const isViralStory =
-      viralCharacterIds.length >=
-      2;
+      characterMode === "viral" &&
+      characterIds.length >= 2;
 
     if (
       !cleanedInput
@@ -366,7 +392,7 @@ export default function Chat({
       const directorResult =
         await requestAiDirector(
           conversation,
-          viralCharacterIds,
+          characterIds,
 
           !isViralStory &&
             voiceMode ===
@@ -376,6 +402,8 @@ export default function Chat({
               "music-video"
             ? musicTrack
             : undefined,
+
+          characterMode,
         );
 
       const assistantMessage:
@@ -573,6 +601,10 @@ export default function Chat({
       ids,
     );
 
+    setActiveGeneralCharacterIds(
+      [],
+    );
+
     setLocalError(
       null,
     );
@@ -609,6 +641,8 @@ export default function Chat({
           topic,
           targetDurationSeconds,
         ),
+
+        "viral",
       );
     } catch (
       viralError
@@ -620,6 +654,18 @@ export default function Chat({
           : "Der TikTok-Story-Modus konnte nicht gestartet werden.",
       );
     }
+  }
+
+  async function handleGeneralCharacterSelection(
+    characters: ViralCharacter[],
+  ) {
+    const ids = characters.map((character) => character.id);
+
+    setActiveGeneralCharacterIds(ids);
+    setActiveViralCharacterIds([]);
+    setLocalError(null);
+
+    await onGeneralCharactersChange?.(characters);
   }
 
   function handleKeyDown(
@@ -747,6 +793,18 @@ export default function Chat({
 
       <div className="flex flex-1 flex-col">
         <div className="flex-1 space-y-4 overflow-y-auto p-5 sm:p-6">
+          {!finished ? (
+            <CharacterLibrary
+              disabled={
+                isProcessing ||
+                loading
+              }
+              onApply={
+                handleGeneralCharacterSelection
+              }
+            />
+          ) : null}
+
           {!finished &&
           editingStyle !==
             "music-video" ? (
