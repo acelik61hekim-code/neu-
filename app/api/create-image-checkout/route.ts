@@ -5,6 +5,8 @@ import { checkRateLimit } from "@/lib/rate-limit";
 import { IMAGE_PRICE_CENTS, imageQualityLabel, isImageAspectRatio, isImageQuality, isImageStyle } from "@/lib/image-product";
 import { imageStore } from "@/lib/image-store";
 import { stripe } from "@/lib/stripe";
+import { accountLibrary } from "@/lib/account-library";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,12 +41,15 @@ export async function POST(request: NextRequest) {
 
   const jobId = nanoid();
   const now = Date.now();
+  const user = await getCurrentUser();
   await imageStore.set(jobId, {
+    userId: user?.id,
     status: "pending", paymentStatus: "unpaid", renderStage: "queued", progressPercent: 0,
     prompt, title: title || undefined, style: body.style, aspectRatio: body.aspectRatio, quality: body.quality,
     textInImage: textInImage || undefined, colorMood: colorMood || undefined, negativePrompt: negativePrompt || undefined,
     createdAt: now, updatedAt: now,
   });
+  if (user) await accountLibrary.addMedia(user.id, { kind: "image", jobId, title: title || "KI-Bild", createdAt: now });
 
   try {
     const appUrl = process.env.APP_URL ?? "http://localhost:3000";
@@ -52,7 +57,7 @@ export async function POST(request: NextRequest) {
       mode: "payment",
       allow_promotion_codes: true,
       line_items: [{ price_data: { currency: "eur", product_data: { name: `Professionelles KI-Bild · ${imageQualityLabel(body.quality)}`, description: `Ein individuelles Bild im Format ${body.aspectRatio}` }, unit_amount: IMAGE_PRICE_CENTS[body.quality] }, quantity: 1 }],
-      metadata: { productType: "image", jobId, quality: body.quality, aspectRatio: body.aspectRatio, style: body.style },
+      metadata: { productType: "image", jobId, userId: user?.id || "", quality: body.quality, aspectRatio: body.aspectRatio, style: body.style },
       success_url: `${appUrl}/image-success?jobId=${encodeURIComponent(jobId)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/?studio=image&canceled=1`,
     });

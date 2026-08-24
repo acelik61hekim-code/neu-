@@ -60,6 +60,8 @@ export type VideoJob = {
   status:
     VideoJobStatus;
 
+  userId?: string;
+
   prompt:
     string;
 
@@ -420,7 +422,7 @@ const memoryWorkflowStartClaims =
     >());
 
 const JOB_TTL_SECONDS =
-  60 * 60 * 24;
+  60 * 60 * 24 * 365;
 
 function withUpdatedAt(
   job: VideoJob,
@@ -496,16 +498,28 @@ export const jobStore = {
       );
 
     if (redis) {
-      await redis.set(
-        keyFor(
-          jobId,
-        ),
-        storedJob,
-        {
-          ex:
-            JOB_TTL_SECONDS,
-        },
-      );
+      if (
+        storedJob.paymentStatus ===
+        "paid"
+      ) {
+        await redis.set(
+          keyFor(
+            jobId,
+          ),
+          storedJob,
+        );
+      } else {
+        await redis.set(
+          keyFor(
+            jobId,
+          ),
+          storedJob,
+          {
+            ex:
+              JOB_TTL_SECONDS,
+          },
+        );
+      }
 
       return;
     }

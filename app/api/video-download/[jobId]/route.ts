@@ -4,6 +4,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { jobStore } from "@/lib/store";
 import { resolveLocalVideoPath } from "@/lib/video-backend/media";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,12 +14,15 @@ export async function GET(request: Request, context: { params: { jobId: string }
   const url = new URL(request.url);
   const sessionId = url.searchParams.get("session_id")?.trim();
 
-  if (!jobId || !sessionId) {
-    return Response.json({ error: "jobId und session_id fehlen." }, { status: 400 });
+  if (!jobId) {
+    return Response.json({ error: "Video-ID fehlt." }, { status: 400 });
   }
 
   const job = await jobStore.get(jobId);
-  if (!job || !job.stripeSessionId || job.stripeSessionId !== sessionId) {
+  const user = await getCurrentUser();
+  const validSession = Boolean(sessionId && job?.stripeSessionId === sessionId);
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!validSession && !accountOwner)) {
     return Response.json({ error: "Video nicht gefunden." }, { status: 404 });
   }
   if (

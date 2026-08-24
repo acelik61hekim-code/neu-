@@ -7,7 +7,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: ["/api/", "/success", "/song-success", "/song-pro-success", "/sound-studio", "/image-success"],
+      disallow: ["/api/", "/success", "/song-success", "/song-pro-success", "/sound-studio", "/image-success", "/konto", "/anmelden", "/passwort-aendern", "/auth/"],
     },
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

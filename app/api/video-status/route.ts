@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jobStore } from "@/lib/store";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -7,12 +8,15 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId")?.trim();
   const sessionId = req.nextUrl.searchParams.get("session_id")?.trim();
-  if (!jobId || !sessionId) {
-    return NextResponse.json({ error: "jobId und session_id fehlen." }, { status: 400 });
+  if (!jobId) {
+    return NextResponse.json({ error: "Video-ID fehlt." }, { status: 400 });
   }
 
   const job = await jobStore.get(jobId);
-  if (!job || !job.stripeSessionId || job.stripeSessionId !== sessionId) {
+  const user = await getCurrentUser();
+  const validSession = Boolean(sessionId && job?.stripeSessionId === sessionId);
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!validSession && !accountOwner)) {
     return NextResponse.json({ error: "Job nicht gefunden." }, { status: 404 });
   }
 
@@ -20,7 +24,7 @@ export async function GET(req: NextRequest) {
     job.videoUri?.startsWith("blob:") || job.videoUri?.startsWith("local:"),
   );
   const videoUrl = videoReady
-    ? `/api/video-download/${encodeURIComponent(jobId)}?session_id=${encodeURIComponent(sessionId)}`
+    ? `/api/video-download/${encodeURIComponent(jobId)}${sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ""}`
     : undefined;
 
   return NextResponse.json({

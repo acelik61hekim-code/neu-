@@ -44,6 +44,10 @@ export default function SongPlans({ onStatusChange }: { onStatusChange?: (status
         body: JSON.stringify({ planId }),
       });
       const data = await response.json() as { url?: string; error?: string };
+      if (response.status === 401) {
+        window.location.href = "/anmelden?next=/ki-song-erstellen%23song-abos";
+        return;
+      }
       if (!response.ok || !data.url) throw new Error(data.error || "Das Abo konnte nicht geöffnet werden.");
       window.location.href = data.url;
     } catch (reason) {

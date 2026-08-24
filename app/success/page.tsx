@@ -459,6 +459,9 @@ function SuccessContent() {
       let checkoutConfirmed =
         false;
 
+      let accountClaimed =
+        false;
+
       let refreshing =
         false;
 
@@ -526,6 +529,35 @@ function SuccessContent() {
 
               checkoutConfirmed =
                 true;
+            }
+
+            if (
+              !accountClaimed
+            ) {
+              const claimResponse =
+                await fetch(
+                  "/api/account/claim",
+                  {
+                    method:
+                      "POST",
+                    headers: {
+                      "Content-Type":
+                        "application/json",
+                    },
+                    body:
+                      JSON.stringify({
+                        kind:
+                          "video",
+                        jobId,
+                        sessionId,
+                      }),
+                  },
+                );
+
+              accountClaimed =
+                claimResponse.ok ||
+                claimResponse.status ===
+                  401;
             }
 
             /*

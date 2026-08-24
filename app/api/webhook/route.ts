@@ -34,6 +34,10 @@ import {
 } from "../../../lib/image-store";
 
 import {
+  accountLibrary,
+} from "../../../lib/account-library";
+
+import {
   buildVideoDurationPlan,
 } from "../../../lib/veo";
 
@@ -99,6 +103,10 @@ type CheckoutSessionLike = {
     string,
     string
   > | null;
+
+  customer?: string | { id?: string } | null;
+
+  subscription?: string | { id?: string } | null;
 };
 
 type PaidVideoConfig = {
@@ -1174,6 +1182,42 @@ export async function POST(
       ?.productType ===
     "song-subscription"
   ) {
+    const userId =
+      session.metadata
+        ?.userId
+        ?.trim();
+
+    const subscriptionId =
+      typeof session.subscription ===
+      "string"
+        ? session.subscription
+        : session.subscription
+          ?.id;
+
+    const customerId =
+      typeof session.customer ===
+      "string"
+        ? session.customer
+        : session.customer
+          ?.id;
+
+    if (
+      userId &&
+      subscriptionId
+        ?.startsWith("sub_") &&
+      customerId
+        ?.startsWith("cus_")
+    ) {
+      await accountLibrary
+        .setSubscription(
+          userId,
+          {
+            subscriptionId,
+            customerId,
+          },
+        );
+    }
+
     return NextResponse.json({
       received:
         true,
