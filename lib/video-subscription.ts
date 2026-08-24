@@ -21,7 +21,7 @@ export type ActiveVideoSubscription = {
   periodStart: number;
   periodEnd: number;
   cancelAtPeriodEnd: boolean;
-  usage: { credits: number; studioEdits: number };
+  usage: { videoSeconds: number; studioEdits: number };
 };
 
 function signingSecret(): string {

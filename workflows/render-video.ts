@@ -173,8 +173,8 @@ export async function renderVideoWorkflow(
       )
     ) {
       if (
-        prepared.videoModel ===
-        "google-veo"
+        prepared.videoModel === "google-veo" ||
+        prepared.videoModel === "google-veo-fast"
       ) {
         let currentUri =
           await completeVeoOpening(
@@ -1962,7 +1962,8 @@ async function prepareRenderJobStep(
       ) =>
         sum +
         (
-          videoModel === "google-veo"
+          videoModel === "google-veo" ||
+          videoModel === "google-veo-fast"
             ? veoExtensionCountFor(
                 segment.targetSeconds,
               )
@@ -2198,7 +2199,8 @@ async function startVeoOpeningStep(
   if (
     !job ||
     job.paymentStatus !== "paid" ||
-    job.videoModel !== "google-veo"
+    job.videoModel !== "google-veo" &&
+    job.videoModel !== "google-veo-fast"
   ) {
     throw new Error(
       "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
@@ -2237,7 +2239,10 @@ async function startVeoOpeningStep(
     await startVideoGeneration(
       prompt,
       {
-        modelTier: "standard",
+        modelTier:
+          job.videoModel === "google-veo-fast"
+            ? "fast"
+            : "standard",
         aspectRatio,
         referenceImage,
         maxAttempts: 4,
@@ -2287,7 +2292,8 @@ async function startVeoExtensionStep(
   if (
     !job ||
     job.paymentStatus !== "paid" ||
-    job.videoModel !== "google-veo"
+    job.videoModel !== "google-veo" &&
+    job.videoModel !== "google-veo-fast"
   ) {
     throw new Error(
       "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
@@ -2308,7 +2314,10 @@ async function startVeoExtensionStep(
       previousVideoUri,
       prompt,
       {
-        modelTier: "standard",
+        modelTier:
+          job.videoModel === "google-veo-fast"
+            ? "fast"
+            : "standard",
         aspectRatio,
         extensionNumber,
         maxAttempts: 4,
@@ -3737,7 +3746,10 @@ function assertProviderRenderAllowed(
   videoModel: VideoModelId =
     "seedance-2-fast",
 ): void {
-  if (videoModel === "google-veo") {
+  if (
+    videoModel === "google-veo" ||
+    videoModel === "google-veo-fast"
+  ) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error(
         "Google Veo ist nicht konfiguriert.",

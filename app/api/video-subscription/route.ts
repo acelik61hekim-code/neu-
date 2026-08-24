@@ -13,8 +13,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       active: true,
       plan: subscription.plan,
-      creditsUsed: subscription.usage.credits,
-      creditsRemaining: Math.max(0, subscription.plan.creditsPerMonth - subscription.usage.credits),
+      videoSecondsUsed: subscription.usage.videoSeconds,
+      videoSecondsRemaining: Math.max(0, subscription.plan.videoSecondsPerMonth - subscription.usage.videoSeconds),
       studioEditsUsed: subscription.usage.studioEdits,
       studioEditsRemaining: Math.max(0, subscription.plan.studioEditsPerMonth - subscription.usage.studioEdits),
       renewsAt: subscription.periodEnd * 1000,

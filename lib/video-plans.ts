@@ -11,7 +11,7 @@ export type VideoPlan = {
   id: VideoPlanId;
   name: string;
   priceCents: number;
-  creditsPerMonth: number;
+  videoSecondsPerMonth: number;
   studioEditsPerMonth: number;
   tagline: string;
   featured?: boolean;
@@ -23,7 +23,7 @@ export const VIDEO_PLANS: readonly VideoPlan[] = [
     id: "video-creator",
     name: "Video Creator",
     priceCents: 2_999,
-    creditsPerMonth: 5,
+    videoSecondsPerMonth: 60,
     studioEditsPerMonth: 10,
     tagline: "Für erste Reels und regelmäßige Kurzvideos",
   },
@@ -31,7 +31,7 @@ export const VIDEO_PLANS: readonly VideoPlan[] = [
     id: "video-pro",
     name: "Video Pro",
     priceCents: 7_999,
-    creditsPerMonth: 15,
+    videoSecondsPerMonth: 240,
     studioEditsPerMonth: 35,
     tagline: "Für aktive Creator, Marken und Social Media",
     featured: true,
@@ -40,7 +40,7 @@ export const VIDEO_PLANS: readonly VideoPlan[] = [
     id: "video-studio-max",
     name: "Video Studio Max",
     priceCents: 19_999,
-    creditsPerMonth: 40,
+    videoSecondsPerMonth: 600,
     studioEditsPerMonth: 100,
     tagline: "Für hohe Produktionsmengen und Agenturen",
     nearUnlimited: true,

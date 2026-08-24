@@ -8,8 +8,8 @@ import { VIDEO_PLANS, type VideoPlan, type VideoPlanId } from "@/lib/video-plans
 export type VideoSubscriptionStatus = {
   active: boolean;
   plan?: VideoPlan;
-  creditsUsed?: number;
-  creditsRemaining?: number;
+  videoSecondsUsed?: number;
+  videoSecondsRemaining?: number;
   studioEditsUsed?: number;
   studioEditsRemaining?: number;
   renewsAt?: number;
@@ -82,7 +82,7 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
         <div className="mx-auto mt-7 flex max-w-3xl flex-col gap-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.07] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-300">{status.plan.name} ist aktiv</p>
-            <p className="mt-1 text-sm text-zinc-300"><strong className="text-white">{status.creditsRemaining ?? 0}</strong> Video-Credits · <strong className="text-white">{status.studioEditsRemaining ?? 0}</strong> Studio-Exporte übrig</p>
+            <p className="mt-1 text-sm text-zinc-300"><strong className="text-white">{formatVideoMinutes(status.videoSecondsRemaining ?? 0)}</strong> Monatskontingent · <strong className="text-white">{status.studioEditsRemaining ?? 0}</strong> Studio-Exporte übrig</p>
             {status.renewsAt && <p className="mt-1 text-[11px] text-zinc-500">{status.cancelAtPeriodEnd ? "Endet" : "Neues Kontingent"} am {new Date(status.renewsAt).toLocaleDateString("de-DE")}</p>}
           </div>
           <div className="flex flex-wrap gap-2">
@@ -104,9 +104,10 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
               <div className="mt-5 flex items-end gap-1"><span className="text-3xl font-semibold">{(plan.priceCents / 100).toLocaleString("de-DE", { minimumFractionDigits: 2 })} €</span><span className="pb-1 text-xs text-zinc-500">/ Monat</span></div>
               <div className="my-5 h-px bg-white/10" />
               <ul className="flex-1 space-y-3 text-sm text-zinc-300">
-                <PlanBenefit>{plan.nearUnlimited ? "Sehr großes Kontingent: " : ""}<strong>{plan.creditsPerMonth} Video-Credits</strong></PlanBenefit>
+                <PlanBenefit>{plan.nearUnlimited ? "Sehr großes Kontingent: " : ""}<strong>{formatVideoMinutes(plan.videoSecondsPerMonth)} mit Fast-Modellen</strong></PlanBenefit>
+                <PlanBenefit><strong>{formatVideoMinutes(plan.videoSecondsPerMonth / 2)} mit Original- und Standardmodellen</strong></PlanBenefit>
                 <PlanBenefit><strong>{plan.studioEditsPerMonth} Video-Studio-Exporte</strong></PlanBenefit>
-                <PlanBenefit>Seedance Fast, Original und Google Veo</PlanBenefit>
+                <PlanBenefit>Alle vier Videomodelle inklusive</PlanBenefit>
                 <PlanBenefit>Vollständiges Video Studio</PlanBenefit>
               </ul>
               <button type="button" disabled={Boolean(loadingPlan) || current} onClick={() => status.active ? void openPortal() : void subscribe(plan.id)} className={`mt-6 flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-60 ${plan.featured ? "bg-gradient-to-r from-violet-600 to-blue-600 text-white" : "border border-white/10 bg-white/[0.05] text-zinc-100 hover:bg-white/[0.09]"}`}>
@@ -118,10 +119,10 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
       </div>
 
       <div className="mx-auto mt-5 max-w-4xl rounded-2xl border border-white/10 bg-black/20 p-5 text-xs leading-6 text-zinc-400">
-        <p className="font-semibold text-zinc-200">So funktionieren Video-Credits</p>
-        <p className="mt-1">15 Sekunden Seedance 2 Fast verbrauchen 1 Credit. Seedance 2 Original und Google Veo verbrauchen 2 Credits je 15 Sekunden. Längere Videos werden entsprechend der Länge berechnet – der genaue Verbrauch wird vor der Bestellung angezeigt.</p>
+        <p className="font-semibold text-zinc-200">Deine Videominuten</p>
+        <p className="mt-1">Die große Minutenangabe gilt für Seedance 2 Fast und Google Veo 3.1 Fast. Bei Seedance 2 Original und Google Veo 3.1 Standard ist wegen der höheren Rechenkosten die Hälfte dieser Videolänge enthalten. Vor jeder Erstellung wird die genaue benötigte Minutenmenge angezeigt.</p>
       </div>
-      <p className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-zinc-500"><LockIcon /> Monatlich kündbar · Preise inkl. MwSt. · nicht genutzte Credits werden nicht übertragen</p>
+      <p className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-zinc-500"><LockIcon /> Monatlich kündbar · Preise inkl. MwSt. · nicht genutzte Videominuten werden nicht übertragen</p>
       {error && <p className="mx-auto mt-4 max-w-xl rounded-xl border border-red-400/20 bg-red-400/10 px-4 py-3 text-center text-xs text-red-200">{error}</p>}
     </section>
   );
@@ -129,4 +130,10 @@ export default function VideoPlans({ onStatusChange }: { onStatusChange?: (statu
 
 function PlanBenefit({ children }: { children: React.ReactNode }) {
   return <li className="flex items-start gap-2.5"><span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-400/10 text-[10px] text-emerald-300">✓</span><span>{children}</span></li>;
+}
+
+function formatVideoMinutes(seconds: number): string {
+  const minutes = seconds / 60;
+  const value = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(minutes);
+  return `${value} ${minutes === 1 ? "Video-Minute" : "Video-Minuten"}`;
 }

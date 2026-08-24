@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
     } : null,
     videoSubscription: videoSubscription ? {
       planName: videoSubscription.plan.name,
-      creditsRemaining: Math.max(0, videoSubscription.plan.creditsPerMonth - videoSubscription.usage.credits),
+      videoSecondsRemaining: Math.max(0, videoSubscription.plan.videoSecondsPerMonth - videoSubscription.usage.videoSeconds),
       studioEditsRemaining: Math.max(0, videoSubscription.plan.studioEditsPerMonth - videoSubscription.usage.studioEdits),
       renewsAt: videoSubscription.periodEnd * 1000,
       cancelAtPeriodEnd: videoSubscription.cancelAtPeriodEnd,

@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
           unit_amount: plan.priceCents,
           product_data: {
             name: `KI Video Studio ${plan.name}`,
-            description: `${plan.creditsPerMonth} Video-Credits und ${plan.studioEditsPerMonth} Studio-Exporte pro Monat`,
+            description: `${formatVideoMinutes(plan.videoSecondsPerMonth)} mit Fast-Modellen und ${plan.studioEditsPerMonth} Studio-Exporte pro Monat`,
           },
         },
         quantity: 1,
@@ -58,4 +58,9 @@ export async function POST(request: NextRequest) {
     console.error("Video-Abo-Checkout konnte nicht erstellt werden:", error);
     return NextResponse.json({ error: "Das Video-Abo konnte gerade nicht geöffnet werden." }, { status: 500 });
   }
+}
+
+function formatVideoMinutes(seconds: number): string {
+  const minutes = seconds / 60;
+  return `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(minutes)} Video-Minuten`;
 }

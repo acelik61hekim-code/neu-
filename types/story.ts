@@ -70,6 +70,7 @@ export type VideoProvider =
 export const VIDEO_MODEL_IDS = [
   "seedance-2-fast",
   "seedance-2-original",
+  "google-veo-fast",
   "google-veo",
 ] as const;
 

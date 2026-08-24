@@ -12,7 +12,7 @@ import { stripe } from "../../../lib/stripe";
 import {
   CURRENTLY_RELEASED_MAX_DURATION_SECONDS,
   getVideoModel,
-  getVideoCreditCost,
+  getVideoQuotaSeconds,
   getVideoPriceCents,
   isReleasedVideoDuration,
 } from "../../../lib/pricing";
@@ -329,6 +329,13 @@ function durationLabel(
     : `${minutes} Minuten`;
 }
 
+function formatQuotaMinutes(seconds: number): string {
+  const minutes = seconds / 60;
+  return `${new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 2,
+  }).format(minutes)} Video-Minuten`;
+}
+
 function countPlannedExtensions(
   chapterTargets: VideoDurationSeconds[],
   videoModel: VideoModelId,
@@ -337,7 +344,8 @@ function countPlannedExtensions(
     (total, seconds) =>
       total +
       (
-        videoModel === "google-veo"
+        videoModel === "google-veo" ||
+        videoModel === "google-veo-fast"
           ? Math.max(0, Math.ceil((seconds - 8) / 7))
           : Math.max(0, Math.ceil((seconds - 15) / 15))
       ),
@@ -950,7 +958,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Bitte wähle Seedance 2 Fast, Seedance 2 Original oder Google Veo.",
+          "Bitte wähle Seedance 2 Fast, Seedance 2 Original, Google Veo 3.1 Fast oder Google Veo 3.1 Standard.",
       },
       { status: 400 },
     );
@@ -1413,8 +1421,8 @@ export async function POST(
     );
   }
 
-  const creditsRequired =
-    getVideoCreditCost(targetDurationSeconds, videoModel);
+  const quotaSecondsRequired =
+    getVideoQuotaSeconds(targetDurationSeconds, videoModel);
 
   if (subscription) {
     const reservation =
@@ -1422,16 +1430,16 @@ export async function POST(
         subscriptionId: subscription.subscriptionId,
         periodStart: subscription.periodStart,
         periodEnd: subscription.periodEnd,
-        kind: "credits",
-        amount: creditsRequired,
-        limit: subscription.plan.creditsPerMonth,
+        kind: "video-seconds",
+        amount: quotaSecondsRequired,
+        limit: subscription.plan.videoSecondsPerMonth,
       });
 
     if (!reservation.allowed) {
       return NextResponse.json(
         {
           error:
-            `Für dieses Video werden ${creditsRequired} Credits benötigt. In deinem Monatskontingent sind noch ${reservation.remaining} verfügbar.`,
+            `Für dieses Video reicht dein verbleibendes Monatskontingent nicht aus. Verfügbar sind noch ${formatQuotaMinutes(reservation.remaining)}.`,
         },
         { status: 409 },
       );
@@ -1629,7 +1637,7 @@ export async function POST(
           `/success?jobId=${encodeURIComponent(jobId)}&included=1`,
         jobId,
         included: true,
-        creditsRequired,
+        quotaSecondsRequired,
         targetDurationSeconds,
         aspectRatio,
         editingStyle,
@@ -1643,8 +1651,8 @@ export async function POST(
         await releaseVideoSubscriptionUsage({
           subscriptionId: subscription.subscriptionId,
           periodStart: subscription.periodStart,
-          kind: "credits",
-          amount: creditsRequired,
+          kind: "video-seconds",
+          amount: quotaSecondsRequired,
         }).catch(() => undefined);
       }
 
@@ -1655,7 +1663,7 @@ export async function POST(
         errorMessage:
           workflowStarted
             ? "Das Video wurde gestartet, aber der Status konnte nicht vollständig gespeichert werden. Der Support kann den Auftrag weiter prüfen."
-            : "Das Video konnte nicht gestartet werden. Die reservierten Credits wurden wieder freigegeben.",
+            : "Das Video konnte nicht gestartet werden. Die reservierten Videominuten wurden wieder freigegeben.",
       }));
 
       return NextResponse.json(
@@ -1663,7 +1671,7 @@ export async function POST(
           error:
             workflowStarted
               ? "Das Video wurde gestartet, aber die Bestätigung ist fehlgeschlagen. Bitte prüfe gleich dein Konto."
-              : "Das Video konnte gerade nicht gestartet werden. Deine Credits wurden nicht verbraucht.",
+              : "Das Video konnte gerade nicht gestartet werden. Dein Videokontingent wurde nicht verbraucht.",
         },
         { status: 500 },
       );
