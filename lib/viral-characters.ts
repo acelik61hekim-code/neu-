@@ -447,7 +447,7 @@ export function createViralStoryPrompt(
 
     "Gib jeder Figur eine klare Trash-TV-Rolle, die aus ihrer Persönlichkeit entsteht: betrogene Hauptfigur, Provokateur, Geheimnisträger, Versuchung oder zweifelhafter Verbündeter. Lege vor der Szenenplanung eindeutig fest: bestehende Beziehung, konkrete verbotene Handlung, wer sie direkt sieht, ergänzendes Beweisstück, überprüfbare Ausrede, Gegenenthüllung und persönliche Konsequenz.",
 
-    "In jeder Szene wird sichtbar gestritten. Plane mindestens drei deutlich erkennbare übertriebene Reaktionen pro 15-Sekunden-Abschnitt: anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen, feindselige Seitenblicke oder riesige Doppeltakes. Niemand steht ruhig erklärend herum; der Streit bleibt ohne körperliche Gewalt.",
+    "In jedem Abschnitt geschieht etwas Neues. Nutze passende deutliche Reaktionen wie anklagendes Zeigen, Unterbrechen, Augenrollen, empörtes Wegdrehen, entsetztes Zurückweichen oder feindselige Seitenblicke. Unterbrich den Streit einmal kurz mit einem echten Gefühlsmoment, damit die Figuren nicht wie austauschbare Krawallfiguren wirken. Der Konflikt bleibt ohne körperliche Gewalt.",
 
     "Erzähle wie eine zugespitzte, fortsetzbare TikTok-Microdrama-Serie: Skandal, Vorwürfe, Geheimnisse, starke Reaktionen, Gegenenthüllung und Cliffhanger. Keine Dokumentation, keine Reportage, keine Wissensvermittlung und kein erklärender Moderatorstil.",
 
@@ -471,9 +471,15 @@ export function createViralStoryPrompt(
 
     "DIALOGLOGIK: Lege vor dem Schreiben eindeutig fest, wer wen betrogen hat, welche Beziehung bestand, welches sichtbare Beweisstück den Betrug belegt, wie lange das Geheimnis besteht und was die dritte Figur wusste. Jede Antwort muss direkt auf den vorherigen Satz reagieren und zusätzlich eine konkrete neue Information liefern.",
 
+    "PROFESSIONELLER DIALOGCHECK: Schreibe das Gespräch intern zuerst vollständig in zeitlicher Reihenfolge. Jede Zeile erfüllt genau eine Funktion: Vorwurf, direkte Antwort, überprüfbarer Widerspruch, Teilgeständnis, Entscheidung oder Enthüllung. Streiche Wiederholungen, allgemeine Empörung und Informationen, die ohne Ursache plötzlich auftauchen. Namen, Beziehung, Ort, Zeitpunkt und Beweisstück bleiben vom ersten bis zum letzten Satz identisch.",
+
+    "FIGURENSTIMMEN: Die Wörter und Reaktionen passen zur festgelegten Persönlichkeit. Eine direkte Figur spricht knapp, eine kontrollierte Figur präzise, eine ausweichende Figur liefert eine überprüfbare Ausrede und eine verletzte Figur benennt die persönliche Konsequenz. Wenn zwei Figuren ihre Sätze problemlos tauschen könnten, schreibe die Sätze neu.",
+
+    "BEISPIEL FÜR EINE KLARE KETTE: Ruby sagt: Ich sah euren Kuss am Pool. Melo antwortet: Ora küsste mich, ich wich sofort zurück. Ora widerspricht: Nein, du trägst meinen Ring seit Montag. Jede Zeile beantwortet die vorige und fügt eine konkrete Tatsache hinzu. Kopiere das Beispiel nicht, sondern wende dieselbe Logik auf das gewählte Thema an.",
+
     "Bei einer Fremdgeh-Geschichte müssen Bild und Dialog den Partner, die dritte Person, die tatsächlich beobachtete Handlung und mindestens ein Geständnis oder eine überprüfbare Lüge verständlich benennen. Verwende einfache konkrete Wörter wie Kuss, Umarmung, Zimmer, Ring, gestern oder drei Monate statt nur er, sie, das und alles.",
 
-    "Verbotene leere Platzhaltersätze sind unter anderem: Das ist alles völlig anders; Du verstehst das nicht; Frag ihn lieber nicht; Und das ist erst der Anfang; Das hier ändert alles; Warte ab; Ich kann das erklären. Ein Cliffhanger nennt immer das konkrete neue Geheimnis oder Beweisstück.",
+    "Verbotene leere Platzhaltersätze sind unter anderem: Das ist alles völlig anders; Du verstehst das nicht; Frag ihn lieber nicht; Und das ist erst der Anfang; Das hier ändert alles; Warte ab; Ich kann das erklären; Sag die Wahrheit; Du lügst; Wie konntest du; Was ist hier los. Solche Reaktionen sind nur erlaubt, wenn derselbe kurze Satz den konkreten Kuss, Ring, Ort, Zeitpunkt oder die Konsequenz nennt. Ein Cliffhanger nennt immer das konkrete neue Geheimnis oder Beweisstück.",
 
     "AUSSPRACHE-SICHERES DEUTSCH: Nutze kurze Hauptsätze, häufige Alltagswörter und ausgeschriebene Zahlen. Keine Abkürzungen, englischen Füllwörter, Ziffern, Hashtags, Schrägstriche oder künstlichen Zusammensetzungen wie Hotelkuss. Sage stattdessen Kuss im Hotel und Zimmer zweiundvierzig.",
 
