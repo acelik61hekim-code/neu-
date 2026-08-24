@@ -158,6 +158,23 @@ export type VideoJob = {
     durationSeconds?: number;
   }>;
 
+  studioSceneRenders?: Array<{
+    id: string;
+    versionId: string;
+    sceneNumber: number;
+    startSeconds: number;
+    endSeconds: number;
+    instruction: string;
+    operationName: string;
+    videoModel: VideoModelId;
+    status: "generating" | "finalizing" | "done" | "error";
+    createdAt: number;
+    updatedAt: number;
+    quotaAmount: number;
+    providerVideoUri?: string;
+    errorMessage?: string;
+  }>;
+
   generationStrategy?:
     VideoGenerationStrategy;
 

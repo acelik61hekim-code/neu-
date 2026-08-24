@@ -2,7 +2,7 @@ import { get, put } from "@vercel/blob";
 import { GoogleGenAI } from "@google/genai";
 import { execFile } from "node:child_process";
 import { createReadStream, createWriteStream } from "node:fs";
-import { copyFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
@@ -1571,6 +1571,168 @@ export async function createVideoStudioVersion(
     return {
       pathname: stored.pathname,
       durationSeconds: safeOutputDuration,
+    };
+  });
+}
+
+export async function extractVideoFrameReference(
+  source: string,
+  atSeconds: number,
+): Promise<{ data: string; mimeType: "image/jpeg" }> {
+  const binary = ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "Die Szenen-Bearbeitung ist auf diesem Server nicht verfügbar.",
+    );
+  }
+
+  return withTemp(async (dir) => {
+    const input = join(dir, "scene-source.mp4");
+    const frame = join(dir, "scene-reference.jpg");
+
+    await download(source, input);
+    await exec(
+      binary,
+      [
+        "-y",
+        "-ss",
+        Math.max(0, atSeconds).toFixed(3),
+        "-i",
+        input,
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        frame,
+      ],
+      { maxBuffer: 16 * 1024 * 1024 },
+    );
+
+    return {
+      data: (await readFile(frame)).toString("base64"),
+      mimeType: "image/jpeg" as const,
+    };
+  });
+}
+
+export async function replaceVideoSceneAndStore(
+  source: string,
+  replacement: string,
+  pathname: string,
+  options: {
+    startSeconds: number;
+    endSeconds: number;
+    aspectRatio: "9:16" | "16:9";
+  },
+): Promise<{ pathname: string; durationSeconds: number }> {
+  const binary = ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "Die Szenen-Bearbeitung ist auf diesem Server nicht verfügbar.",
+    );
+  }
+
+  return withTemp(async (dir) => {
+    const input = join(dir, "scene-original.mp4");
+    const generated = join(dir, "scene-generated.mp4");
+    const output = join(dir, "scene-result.mp4");
+
+    await Promise.all([
+      download(source, input),
+      download(replacement, generated),
+    ]);
+
+    const sourceDuration = await inspectContainerDuration(binary, input);
+    if (!sourceDuration) {
+      throw new Error("Die Länge des Originalvideos konnte nicht gelesen werden.");
+    }
+
+    const startSeconds = Math.min(
+      Math.max(0, options.startSeconds),
+      Math.max(0, sourceDuration - 0.25),
+    );
+    const endSeconds = Math.min(
+      sourceDuration,
+      Math.max(startSeconds + 0.25, options.endSeconds),
+    );
+    const sceneDuration = endSeconds - startSeconds;
+    const [width, height] = options.aspectRatio === "16:9"
+      ? [1280, 720]
+      : [720, 1280];
+    const normalize = [
+      `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+      `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+      "setsar=1",
+      "fps=30",
+      "format=yuv420p",
+    ].join(",");
+    const filters: string[] = [];
+    const labels: string[] = [];
+
+    if (startSeconds > 0.01) {
+      filters.push(
+        `[0:v]trim=start=0:end=${startSeconds.toFixed(3)},setpts=PTS-STARTPTS,${normalize}[before]`,
+      );
+      labels.push("[before]");
+    }
+
+    filters.push(
+      `[1:v]tpad=stop_mode=clone:stop_duration=${sceneDuration.toFixed(3)},trim=duration=${sceneDuration.toFixed(3)},setpts=PTS-STARTPTS,${normalize}[newscene]`,
+    );
+    labels.push("[newscene]");
+
+    if (endSeconds < sourceDuration - 0.01) {
+      filters.push(
+        `[0:v]trim=start=${endSeconds.toFixed(3)}:end=${sourceDuration.toFixed(3)},setpts=PTS-STARTPTS,${normalize}[after]`,
+      );
+      labels.push("[after]");
+    }
+
+    filters.push(
+      `${labels.join("")}concat=n=${labels.length}:v=1:a=0[outv]`,
+    );
+
+    await exec(
+      binary,
+      [
+        "-y",
+        "-i",
+        input,
+        "-i",
+        generated,
+        "-filter_complex",
+        filters.join(";"),
+        "-map",
+        "[outv]",
+        "-map",
+        "0:a:0?",
+        "-t",
+        sourceDuration.toFixed(3),
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "18",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-ar",
+        "48000",
+        "-movflags",
+        "+faststart",
+        output,
+      ],
+      { maxBuffer: 32 * 1024 * 1024 },
+    );
+
+    const stored = await upload(pathname, output);
+    return {
+      pathname: stored.pathname,
+      durationSeconds: sourceDuration,
     };
   });
 }

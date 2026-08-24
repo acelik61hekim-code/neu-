@@ -28,6 +28,7 @@ import StudioChooser, {
 
 import {
   formatEuroPrice,
+  getVideoOutputSecondsForQuota,
   getVideoQuotaSeconds,
   getVideoModel,
   getVideoPriceCents,
@@ -2261,12 +2262,6 @@ export default function StudioHome({
                   const selected =
                     videoModel === model.id;
 
-                  const quotaSeconds =
-                    getVideoQuotaSeconds(
-                      targetDurationSeconds,
-                      model.id,
-                    );
-
                   return (
                     <button
                       key={model.id}
@@ -2311,7 +2306,7 @@ export default function StudioHome({
 
                         <span className="text-lg font-semibold text-white">
                           {videoSubscription.active
-                            ? formatVideoQuotaMinutes(quotaSeconds)
+                            ? `${videoDurationLabel(targetDurationSeconds)} aus Abo`
                             : formatEuroPrice(
                                 getVideoPriceCents(
                                   targetDurationSeconds,
@@ -2328,7 +2323,7 @@ export default function StudioHome({
 
             {videoSubscription.active && (
               <p className="mt-3 text-xs text-emerald-300">
-                Dein {videoSubscription.plan?.name ?? "Video-Abo"} ist aktiv · {formatVideoQuotaMinutes(videoSubscription.videoSecondsRemaining ?? 0)} verfügbar
+                Dein {videoSubscription.plan?.name ?? "Video-Abo"} ist aktiv · {formatVideoQuotaMinutes(getVideoOutputSecondsForQuota(videoSubscription.videoSecondsRemaining ?? 0, videoModel))} mit {getVideoModel(videoModel).shortName} verfügbar
               </p>
             )}
           </div>
@@ -3359,7 +3354,7 @@ export default function StudioHome({
                                     targetDurationSeconds,
                                     videoModel,
                                   )
-                              ? `🎬 Mit ${formatVideoQuotaMinutes(getVideoQuotaSeconds(targetDurationSeconds, videoModel))} erstellen`
+                              ? `🎬 ${formatVideoQuotaMinutes(targetDurationSeconds)} Video erstellen`
                               : `🎬 Für ${formatEuroPrice(getVideoPriceCents(targetDurationSeconds, videoModel))} erstellen`}
                         </button>
 
