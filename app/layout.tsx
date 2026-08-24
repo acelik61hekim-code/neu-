@@ -2,6 +2,7 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 import type { Metadata } from "next";
 
+import SiteFooter from "@/components/SiteFooter";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const metadata: Metadata = {
@@ -55,6 +56,7 @@ const websiteJsonLd = {
   name: SITE_NAME,
   url: SITE_URL,
   description: SITE_DESCRIPTION,
+  email: "info@kivideostudio.de",
   inLanguage: "de-DE",
 };
 
@@ -71,6 +73,7 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
         />
         {children}
+        <SiteFooter />
         <Analytics />
       </body>
     </html>

@@ -859,21 +859,6 @@ function PageFrame({
           children
         }
 
-        <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-zinc-600 sm:flex-row">
-          <p>
-            © 2026 KI Video Studio
-          </p>
-
-          <div className="flex items-center gap-5">
-            <span>
-              Datenschutz
-            </span>
-
-            <span>
-              Impressum
-            </span>
-          </div>
-        </footer>
       </div>
     </main>
   );
