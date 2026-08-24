@@ -339,7 +339,7 @@ function countTotalExtensions(
     ) => {
       return (
         total +
-        (videoModel === "google-veo"
+        (videoModel === "google-veo" || videoModel === "google-veo-fast"
           ? Math.max(0, Math.ceil((chapterDuration - 8) / 7))
           : Math.max(0, Math.ceil((chapterDuration - 15) / 15)))
       );
@@ -1587,8 +1587,8 @@ export async function POST(
         config.videoModel,
 
       provider:
-        config.videoModel ===
-        "google-veo"
+        config.videoModel === "google-veo" ||
+        config.videoModel === "google-veo-fast"
           ? "veo"
           : "seedance",
 

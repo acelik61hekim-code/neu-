@@ -7,7 +7,7 @@ const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_RE
     })
   : null;
 
-type UsageKind = "credits" | "studio-edits";
+type UsageKind = "video-seconds" | "studio-edits";
 
 const memoryUsage = new Map<string, { count: number; expiresAt: number }>();
 
@@ -22,7 +22,7 @@ function ttlSeconds(periodEnd: number): number {
 export async function getVideoSubscriptionUsage(
   subscriptionId: string,
   periodStart: number,
-): Promise<{ credits: number; studioEdits: number }> {
+): Promise<{ videoSeconds: number; studioEdits: number }> {
   const read = async (kind: UsageKind): Promise<number> => {
     const key = usageKey(subscriptionId, periodStart, kind);
     if (redis) return Number(await redis.get<number>(key) ?? 0);
@@ -34,11 +34,11 @@ export async function getVideoSubscriptionUsage(
     return value.count;
   };
 
-  const [credits, studioEdits] = await Promise.all([
-    read("credits"),
+  const [videoSeconds, studioEdits] = await Promise.all([
+    read("video-seconds"),
     read("studio-edits"),
   ]);
-  return { credits, studioEdits };
+  return { videoSeconds, studioEdits };
 }
 
 export async function reserveVideoSubscriptionUsage(input: {

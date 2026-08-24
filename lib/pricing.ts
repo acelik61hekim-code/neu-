@@ -34,19 +34,28 @@ export type VideoModelOption = {
   description: string;
   quality: string;
   provider: "seedance" | "veo";
-  creditMultiplier: 1 | 2;
+  quotaMultiplier: 1 | 2;
   featured?: boolean;
 };
 
 export const VIDEO_MODELS: readonly VideoModelOption[] = [
   {
+    id: "google-veo-fast",
+    name: "Google Veo 3.1 Fast",
+    shortName: "Veo Fast",
+    description: "Googles schnelles Videomodell mit natürlichem Ton und starkem Realismus zum besonders günstigen Einstiegspreis.",
+    quality: "Günstig & realistisch",
+    provider: "veo",
+    quotaMultiplier: 1,
+  },
+  {
     id: "seedance-2-fast",
     name: "Seedance 2 Fast",
-    shortName: "Fast",
-    description: "Sehr gute Qualität zum günstigsten Preis – ideal für Reels, Tests und regelmäßige Inhalte.",
-    quality: "Schnell & günstig",
+    shortName: "Seedance Fast",
+    description: "Sehr gute Qualität mit starkem Preis-Leistungs-Verhältnis – ideal für Reels und regelmäßige Inhalte.",
+    quality: "Schnell & vielseitig",
     provider: "seedance",
-    creditMultiplier: 1,
+    quotaMultiplier: 1,
   },
   {
     id: "seedance-2-original",
@@ -55,17 +64,17 @@ export const VIDEO_MODELS: readonly VideoModelOption[] = [
     description: "Das Standardmodell mit maximaler Seedance-Detailqualität und aufwendigerer Berechnung.",
     quality: "Maximale Details",
     provider: "seedance",
-    creditMultiplier: 2,
+    quotaMultiplier: 2,
     featured: true,
   },
   {
     id: "google-veo",
-    name: "Google Veo 3.1",
-    shortName: "Veo",
-    description: "Premium-Modell für besonders realistische Bewegung, filmische Szenen und natürlichen Ton.",
+    name: "Google Veo 3.1 Standard",
+    shortName: "Veo Standard",
+    description: "Googles Premium-Modell für anspruchsvolle filmische Szenen, besonders realistische Bewegung und natürlichen Ton.",
     quality: "Premium-Realismus",
     provider: "veo",
-    creditMultiplier: 2,
+    quotaMultiplier: 2,
   },
 ] as const;
 
@@ -83,6 +92,16 @@ const VIDEO_MODEL_PRICE_CENTS: Record<
     180: 9999,
     240: 13299,
     300: 16499,
+  },
+  "google-veo-fast": {
+    8: 299,
+    15: 499,
+    30: 999,
+    60: 1999,
+    120: 3999,
+    180: 5999,
+    240: 7999,
+    300: 9999,
   },
   "google-veo": {
     8: 699,
@@ -104,19 +123,11 @@ export function getVideoModel(
   )!;
 }
 
-export function getVideoCreditCost(
+export function getVideoQuotaSeconds(
   duration: VideoDurationSeconds,
   modelId: VideoModelId,
 ): number {
-  const baseUnits = Math.max(
-    1,
-    Math.ceil(duration / 15),
-  );
-
-  return (
-    baseUnits *
-    getVideoModel(modelId).creditMultiplier
-  );
+  return duration * getVideoModel(modelId).quotaMultiplier;
 }
 
 /*

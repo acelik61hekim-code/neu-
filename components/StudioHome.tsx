@@ -28,7 +28,7 @@ import StudioChooser, {
 
 import {
   formatEuroPrice,
-  getVideoCreditCost,
+  getVideoQuotaSeconds,
   getVideoModel,
   getVideoPriceCents,
   isReleasedVideoDuration,
@@ -85,6 +85,13 @@ function videoDurationLabel(
     `${durationSeconds / 60} Min.`;
 }
 
+function formatVideoQuotaMinutes(seconds: number): string {
+  const minutes = seconds / 60;
+  return `${new Intl.NumberFormat("de-DE", {
+    maximumFractionDigits: 2,
+  }).format(minutes)} Video-Min.`;
+}
+
 function safeUploadFilename(
   value: string,
 ): string {
@@ -110,12 +117,8 @@ function safeUploadFilename(
  *
  * 8 Sekunden werden nicht mehr angeboten.
  *
- * Neue sichtbare Tarife:
- *
- * 15 s  = 6,99 €
- * 30 s  = 13,99 €
- * 60 s  = 27,99 €
- * 120 s = 54,99 €
+ * Die sichtbaren Preise werden dynamisch
+ * aus Videomodell und Länge berechnet.
  */
 const VIDEO_DURATION_OPTIONS: Array<{
   value: VideoDurationSeconds;
@@ -2086,10 +2089,10 @@ export default function StudioHome({
                 useSubscription:
                   videoSubscription.active &&
                   (
-                    videoSubscription.creditsRemaining ??
+                    videoSubscription.videoSecondsRemaining ??
                     0
                   ) >=
-                    getVideoCreditCost(
+                    getVideoQuotaSeconds(
                       targetDurationSeconds,
                       videoModel,
                     ),
@@ -2252,14 +2255,14 @@ export default function StudioHome({
               </span>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {VIDEO_MODELS.map(
                 (model) => {
                   const selected =
                     videoModel === model.id;
 
-                  const credits =
-                    getVideoCreditCost(
+                  const quotaSeconds =
+                    getVideoQuotaSeconds(
                       targetDurationSeconds,
                       model.id,
                     );
@@ -2308,7 +2311,7 @@ export default function StudioHome({
 
                         <span className="text-lg font-semibold text-white">
                           {videoSubscription.active
-                            ? `${credits} Credit${credits === 1 ? "" : "s"}`
+                            ? formatVideoQuotaMinutes(quotaSeconds)
                             : formatEuroPrice(
                                 getVideoPriceCents(
                                   targetDurationSeconds,
@@ -2325,7 +2328,7 @@ export default function StudioHome({
 
             {videoSubscription.active && (
               <p className="mt-3 text-xs text-emerald-300">
-                Dein {videoSubscription.plan?.name ?? "Video-Abo"} ist aktiv · {videoSubscription.creditsRemaining ?? 0} Credits verfügbar
+                Dein {videoSubscription.plan?.name ?? "Video-Abo"} ist aktiv · {formatVideoQuotaMinutes(videoSubscription.videoSecondsRemaining ?? 0)} verfügbar
               </p>
             )}
           </div>
@@ -3346,24 +3349,24 @@ export default function StudioHome({
                         >
                           {loading
                             ? videoSubscription.active &&
-                                (videoSubscription.creditsRemaining ?? 0) >=
-                                  getVideoCreditCost(targetDurationSeconds, videoModel)
+                                (videoSubscription.videoSecondsRemaining ?? 0) >=
+                                  getVideoQuotaSeconds(targetDurationSeconds, videoModel)
                               ? "Video wird gestartet ..."
                               : "Stripe wird geöffnet ..."
                             : videoSubscription.active &&
-                                (videoSubscription.creditsRemaining ?? 0) >=
-                                  getVideoCreditCost(
+                                (videoSubscription.videoSecondsRemaining ?? 0) >=
+                                  getVideoQuotaSeconds(
                                     targetDurationSeconds,
                                     videoModel,
                                   )
-                              ? `🎬 Mit ${getVideoCreditCost(targetDurationSeconds, videoModel)} Credits erstellen`
+                              ? `🎬 Mit ${formatVideoQuotaMinutes(getVideoQuotaSeconds(targetDurationSeconds, videoModel))} erstellen`
                               : `🎬 Für ${formatEuroPrice(getVideoPriceCents(targetDurationSeconds, videoModel))} erstellen`}
                         </button>
 
                         <p className="mt-3 text-center text-xs leading-5 text-zinc-500">
                           {videoSubscription.active &&
-                          (videoSubscription.creditsRemaining ?? 0) >=
-                            getVideoCreditCost(targetDurationSeconds, videoModel)
+                          (videoSubscription.videoSecondsRemaining ?? 0) >=
+                            getVideoQuotaSeconds(targetDurationSeconds, videoModel)
                             ? "Wird sicher von deinem monatlichen Videokontingent abgezogen."
                             : "Sicher bezahlen mit Karte, PayPal, Klarna, Apple Pay oder Link – je nach Verfügbarkeit."}
                         </p>
