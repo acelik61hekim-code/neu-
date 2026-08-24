@@ -465,10 +465,6 @@ export default function SongStudio({
           </aside>
         </div>
 
-        <footer className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-zinc-600 sm:flex-row">
-          <p>© 2026 KI Video Studio</p>
-          <p>KI-Songs und Videos an einem Ort</p>
-        </footer>
       </div>
     </main>
   );

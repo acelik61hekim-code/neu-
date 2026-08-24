@@ -3235,27 +3235,6 @@ export default function StudioHome({
           </div>
         </section>
 
-        <footer className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-white/5 pt-6 text-xs text-zinc-600 sm:flex-row">
-          <p>
-            © 2026 KI Video Studio
-          </p>
-
-          <div className="flex items-center gap-5">
-            <button
-              type="button"
-              className="transition hover:text-zinc-300"
-            >
-              Datenschutz
-            </button>
-
-            <button
-              type="button"
-              className="transition hover:text-zinc-300"
-            >
-              Impressum
-            </button>
-          </div>
-        </footer>
       </div>
     </main>
   );
