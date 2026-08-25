@@ -1753,6 +1753,14 @@ function hasFocusedInfidelityDialogue(
   );
 }
 
+function hasAmbiguousThirdPersonReference(
+  text: string,
+): boolean {
+  return /\b(?:er|sie|ihn|ihm|ihr|ihnen|dessen|deren)\b/i.test(
+    text,
+  );
+}
+
 function hasMandatoryViralVisualPlan(
   response: ArchitectResponse,
   story: StoryDraft,
@@ -2123,6 +2131,12 @@ function hasMandatoryDialoguePlan(
       ) ||
       dialogue.text.length >
         140 ||
+      (
+        isViralDialogue &&
+        hasAmbiguousThirdPersonReference(
+          dialogue.text,
+        )
+      ) ||
       usedDialogueLines.has(
         normalizedDialogueLine,
       )
@@ -3693,6 +3707,7 @@ VERBINDLICHE AUFGABE
 - factKeys nennt pro Zeile nur die ein oder zwei contract-Fakten, die der hörbare Satz tatsächlich verwendet.
 - Jede Antwort reagiert direkt auf die vorige Zeile und ergänzt eine neue konkrete Information.
 - Verwende konkrete Handlungen, Orte, Zeitpunkte oder sichtbare Beweise statt allgemeiner Dramawörter.
+- Bei drei Figuren sind „er“, „sie“, „ihn“, „ihm“ und „ihr“ als unklare Verweise verboten. Verwende den Namen, „ich“, „du“, „mich“, „dich“, „wir“ oder „euch“ und nenne die konkrete Handlung.
 - Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
 - Schreibe wie tatsächlich gesprochene deutsche Reality-TV-Sprache: kurze Hauptsätze oder Satzfragmente, spontane Reaktionen und klare Unterbrechungen statt höflicher Erklärprosa.
 - Jede Figur besitzt einen eigenen Wortschatz und eine eigene Haltung. Wenn zwei Sprecher ihre Zeilen tauschen könnten, schreibe beide Zeilen neu.
@@ -3743,6 +3758,18 @@ function getTerraDialogueQualityIssues(
   const { contract, turns } = payload;
 
   if (creationMode === "viral-story") {
+    if (
+      turns.some((turn) =>
+        hasAmbiguousThirdPersonReference(
+          turn.text,
+        ),
+      )
+    ) {
+      issues.push(
+        "Der Dialog enthält bei drei Figuren unklare Pronomen. Nenne stattdessen den Namen oder die konkrete Handlung.",
+      );
+    }
+
     if (
       turns[0]?.purpose !== "discovery" &&
       turns[0]?.purpose !== "accusation"
@@ -4316,7 +4343,7 @@ DIALOGSTRUKTUR
 - Nutze kurze deutsche Hauptsätze, Alltagswörter und ausgeschriebene Zahlen. Keine Abkürzungen, Ziffern, Hashtags, Schrägstriche oder künstlichen Wortzusammensetzungen.
 - Jede Zeile hat genau eine Aufgabe: konkreter Vorwurf, direkte Antwort, überprüfbarer Widerspruch, Teilgeständnis, Entscheidung oder neue Enthüllung.
 - Die beschuldigte Figur beantwortet die gestellte Frage tatsächlich. Ein Themenwechsel, eine allgemeine Empörung oder ein plötzliches neues Geheimnis ohne Verbindung ist verboten.
-- Namen, Ort, Zeitpunkt und sichtbares Beweisstück bleiben über alle Abschnitte widerspruchsfrei. Pronomen wie „das“, „es“ oder „alles“ dürfen nie einen ungenannten Sachverhalt ersetzen.
+- Namen, Ort, Zeitpunkt und sichtbares Beweisstück bleiben über alle Abschnitte widerspruchsfrei. Pronomen wie „das“, „es“ oder „alles“ dürfen nie einen ungenannten Sachverhalt ersetzen. Bei drei Figuren sind auch „er“, „sie“, „ihn“, „ihm“ und „ihr“ ohne ausdrücklich genannten Bezug verboten.
 - Figuren sprechen verschieden: Eine direkte Figur benennt den Vorwurf knapp, eine kontrollierte Figur antwortet präzise, eine ausweichende Figur nennt eine falsifizierbare Ausrede. Tausche niemals beliebige Standardsätze zwischen den Figuren aus.
 - SCHLECHT: „Das ändert alles.“ – „Du verstehst das nicht.“ – „Warte ab.“
 - Keine Beispielsätze kopieren. Entwickle den Wortlaut ausschließlich aus der konkreten Story und der festgelegten Faktenkette.
