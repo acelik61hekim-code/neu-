@@ -2358,7 +2358,14 @@ function hasMandatoryDialoguePlan(
   if (
     targetDurationSeconds ===
       15 &&
-    totalWordCount > 24
+    totalWordCount >
+      (
+        !isViralDialogue &&
+        expectedSpeakers.length ===
+          1
+          ? 30
+          : 24
+      )
   ) {
     return false;
   }
@@ -3889,7 +3896,7 @@ VERBINDLICHE AUFGABE
 - Erzeuge zwischen ${minimumTurns} und ${maximumTurns} kurzen Monologzeilen in genauer zeitlicher Reihenfolge.
 - speaker ist in jeder Zeile exakt "${speakerNames[0]}".
 - Eine Zeile hat höchstens ${maximumWordsPerLine} kurze, gut aussprechbare Wörter.
-- Bei fünfzehn Sekunden haben alle Zeilen zusammen höchstens vierundzwanzig Wörter.
+- Bei fünfzehn Sekunden haben alle Zeilen zusammen höchstens dreißig Wörter.
 - Die erste Zeile ist ein glaubwürdiger Hook und verwendet purpose "discovery".
 - Die mittlere Zeile erklärt einen konkreten Nutzen und verwendet purpose "answer".
 - Die letzte Zeile endet natürlich mit Vorteil oder Handlungsaufforderung und verwendet purpose "consequence".
@@ -5317,7 +5324,7 @@ VERBINDLICHER EIN-PERSONEN-SPRECHMODUS – HÖCHSTE PRIORITÄT
 - moviePlan.opening.dialogue.enabled ist true und speaker ist exakt "${story.characters[0].name}".
 - opening.dialogue und opening.dialogueTurns bilden zusammen einen flüssigen, natürlich gesprochenen Monolog.
 - Beginne mit einem kurzen relevanten Hook, nenne danach konkrete Vorteile aus der Story und ende mit einer glaubwürdigen Handlungsaufforderung.
-- Jede Dialogzeile hat höchstens zwölf Wörter; alle Zeilen zusammen haben bei fünfzehn Sekunden höchstens vierundzwanzig Wörter.
+- Jede Dialogzeile hat höchstens zwölf Wörter; alle Zeilen zusammen haben bei fünfzehn Sekunden höchstens dreißig Wörter.
 - Handlung, Mimik, Gestik, Kamera und englischer Video-Prompt folgen exakt dem gesprochenen Inhalt.
 - Erfinde keine zweite Figur, keinen Interviewer, keinen Erzähler und keine Offscreen-Stimme.
 - Keine Untertitel.
