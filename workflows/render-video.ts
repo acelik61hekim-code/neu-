@@ -261,7 +261,9 @@ export async function renderVideoWorkflow(
           segment.chapterNumber,
           completedExtensions,
           prepared.totalExtensions,
-          segment.targetSeconds,
+          seedanceOpeningClipDurationFor(
+            segment.targetSeconds,
+          ),
         );
 
       chapterUris.push(
@@ -3832,6 +3834,20 @@ function extensionCountFor(
       15
     ) /
       15,
+  );
+}
+
+function seedanceOpeningClipDurationFor(
+  targetSeconds: number,
+): number {
+  return Math.min(
+    SEEDANCE_CLIP_DURATION_SECONDS,
+    Math.max(
+      4,
+      Math.round(
+        targetSeconds,
+      ),
+    ),
   );
 }
 

@@ -16,6 +16,10 @@ import {
 } from "@/lib/store";
 
 import {
+  getCurrentUser,
+} from "@/lib/supabase/server";
+
+import {
   checkVideoStatus as checkVeoVideoStatus,
 } from "@/lib/veo";
 
@@ -160,13 +164,12 @@ export async function POST(
       : "";
 
   if (
-    !jobId ||
-    !sessionId
+    !jobId
   ) {
     return NextResponse.json(
       {
         error:
-          "jobId and session_id are required.",
+          "jobId is required.",
       },
       {
         status:
@@ -180,10 +183,29 @@ export async function POST(
       jobId,
     );
 
+  const user =
+    await getCurrentUser();
+
+  const ownsAccountJob =
+    Boolean(
+      user &&
+      job?.userId ===
+        user.id,
+    );
+
+  const ownsCheckoutJob =
+    Boolean(
+      sessionId &&
+      job?.stripeSessionId ===
+        sessionId,
+    );
+
   if (
     !job ||
-    job.stripeSessionId !==
-      sessionId
+    !(
+      ownsAccountJob ||
+      ownsCheckoutJob
+    )
   ) {
     return NextResponse.json(
       {

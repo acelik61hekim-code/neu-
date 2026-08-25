@@ -362,7 +362,10 @@ function SuccessContent() {
     ) => {
       if (
         !jobId ||
-        !sessionId ||
+        (
+          !sessionId &&
+          !included
+        ) ||
         recoveryState ===
           "working"
       ) {
@@ -834,13 +837,13 @@ function SuccessContent() {
         connectionError={
           connectionError
         }
-        onRecover={sessionId
+        onRecover={sessionId || included
           ? () =>
               void recoverPaidVideo(
                 videoStatus.nativeCharacterDialogue === true,
               )
           : undefined}
-        onReactionBoost={sessionId
+        onReactionBoost={sessionId || included
           ? () => void recoverPaidVideo(true, true)
           : undefined}
         recoveryState={
