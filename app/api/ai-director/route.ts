@@ -61,10 +61,19 @@ type ApiErrorLike = {
   message?: string;
 };
 
-const MODEL_NAME = "gemini-3.5-flash-lite";
-const VIRAL_MODEL_NAME = "gemini-3.5-flash";
+const STANDARD_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-3.7-flash",
+  "gemini-3.5-flash",
+] as const;
 
-const MAX_ATTEMPTS = 4;
+const VIRAL_MODELS = [
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
+] as const;
 
 const SYSTEM_INSTRUCTION = `
 Du bist der AI Director einer professionellen KI-Video-Plattform.
@@ -584,6 +593,103 @@ function isRetryableGeminiError(
   );
 }
 
+function isUnavailableGeminiModel(
+  error: unknown,
+): boolean {
+  const status = getErrorStatus(error);
+  const message = getErrorMessage(error).toLowerCase();
+
+  return (
+    status === 404 ||
+    message.includes("model not found") ||
+    message.includes("not found for api version") ||
+    message.includes("is not supported")
+  );
+}
+
+function createResilientDirectorDraft(
+  messages: ConversationMessage[],
+  selectedCharacterIds: string[],
+  characterMode: "general" | "viral" | undefined,
+  dialogueMode: boolean,
+  musicTrack?: MusicVideoTrackContext,
+): AiDirectorResult {
+  const selectedCharacters =
+    getViralCharacters(selectedCharacterIds).slice(0, 3);
+
+  const userIdea = messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .join(" ")
+    .slice(0, AI_DIRECTOR_MESSAGE_MAX_CHARACTERS);
+
+  const isViralStory =
+    characterMode === "viral" && selectedCharacters.length >= 2;
+
+  const characters: StoryCharacter[] = selectedCharacters.length > 0
+    ? selectedCharacters.map((character) => ({
+        name: character.name,
+        description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
+      }))
+    : dialogueMode
+      ? [
+          {
+            name: "Hauptfigur",
+            description:
+              "Eine klar erkennbare Hauptfigur mit eigener Haltung und einem konkreten Ziel.",
+          },
+          {
+            name: "Gegenfigur",
+            description:
+              "Eine deutlich unterscheidbare zweite Figur, die direkt in den zentralen Konflikt verwickelt ist.",
+          },
+        ]
+      : [
+          {
+            name: "Hauptfigur",
+            description:
+              "Die zentrale sichtbare Figur der vom Nutzer beschriebenen Videoidee.",
+          },
+        ];
+
+  return {
+    reply:
+      "Deine Angaben reichen aus. Ich erstelle daraus jetzt automatisch den vollständigen Filmplan.",
+    ready: true,
+    story: {
+      title: isViralStory
+        ? "Auf frischer Tat"
+        : musicTrack
+          ? `Musikvideo zu ${musicTrack.name}`
+          : "Deine Videoidee",
+      genre: isViralStory
+        ? "Virales Trash-TV-Microdrama"
+        : musicTrack
+          ? "Musikvideo"
+          : "Individuelles KI-Video",
+      mood: isViralStory
+        ? "emotional, spannungsgeladen, direkt und filmisch"
+        : "hochwertig, klar, filmisch und passend zur beschriebenen Idee",
+      setting: isViralStory
+        ? "Luxuriöse tropische Dating-Show-Villa mit Poolterrasse und warmem Abendlicht."
+        : "Ein visuell passender, zusammenhängender Schauplatz, der aus der Videoidee entwickelt wird.",
+      characters,
+      summary: [
+        `Verbindliche Videoidee des Nutzers: ${userIdea || "Eine individuelle, professionell inszenierte Videoidee."}`,
+        dialogueMode
+          ? "Die sichtbaren Figuren führen einen kausalen, natürlich klingenden Dialog mit konkretem Konflikt, Reaktionen und Konsequenz."
+          : "Die Handlung wird ohne unnötige Rückfragen visuell klar, zusammenhängend und professionell ausgearbeitet.",
+        musicTrack
+          ? `Der vollständige Originalsong „${musicTrack.name}“ mit ${musicTrack.durationSeconds.toFixed(2)} Sekunden bestimmt Rhythmus und Bildbogen.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    },
+  };
+}
+
 async function generateWithRetry(
   ai: GoogleGenAI,
   conversation: Array<{
@@ -599,18 +705,21 @@ async function generateWithRetry(
 ) {
   let lastError: unknown;
 
-  for (
-    let attempt = 1;
-    attempt <= MAX_ATTEMPTS;
-    attempt += 1
-  ) {
+  const models =
+    viralStory
+      ? VIRAL_MODELS
+      : STANDARD_MODELS;
+
+  for (const [modelIndex, model] of models.entries()) {
+    const attempt = modelIndex + 1;
+
     try {
       console.log(
-        `AI Director: Gemini-Versuch ${attempt}/${MAX_ATTEMPTS}`,
+        `AI Director: ${model}, Versuch ${attempt}/${models.length}`,
       );
 
       return await ai.models.generateContent({
-        model: viralStory ? VIRAL_MODEL_NAME : MODEL_NAME,
+        model,
         contents: conversation,
         config: {
           systemInstruction:
@@ -651,7 +760,7 @@ async function generateWithRetry(
         getErrorStatus(error);
 
       console.error(
-        `Gemini-Versuch ${attempt} fehlgeschlagen:`,
+        `AI Director: ${model} fehlgeschlagen:`,
         {
           status,
           message:
@@ -660,15 +769,18 @@ async function generateWithRetry(
       );
 
       const canRetry =
-        attempt < MAX_ATTEMPTS &&
-        isRetryableGeminiError(error);
+        attempt < models.length &&
+        (
+          isRetryableGeminiError(error) ||
+          isUnavailableGeminiModel(error)
+        );
 
       if (!canRetry) {
         throw error;
       }
 
       const baseDelay =
-        1000 * 2 ** (attempt - 1);
+        500 * 2 ** (attempt - 1);
 
       const randomExtraDelay =
         Math.floor(Math.random() * 500);
@@ -677,7 +789,7 @@ async function generateWithRetry(
         baseDelay + randomExtraDelay;
 
       console.log(
-        `Gemini ist ausgelastet. Neuer Versuch in ${waitTime} ms.`,
+        `AI Director wechselt wegen Auslastung von ${model} zum naechsten Modell. Neuer Versuch in ${waitTime} ms.`,
       );
 
       await sleep(waitTime);
@@ -825,58 +937,94 @@ export async function POST(
           ? "viral"
           : undefined;
 
-    const response =
-      await generateWithRetry(
-        ai,
-        conversation,
-        body.dialogueMode === true,
-        isMusicVideoTrackContext(
-          body.musicTrack,
-        )
-          ? body.musicTrack
-          : undefined,
-        characterMode === "viral" && viralCharacterIds.length >= 2,
-        characterMode === "general"
-          ? createGeneralCharacterInstruction(viralCharacterIds)
-          : "",
-      );
+    const dialogueMode =
+      body.dialogueMode === true;
 
-    const responseText =
-      response.text?.trim();
+    const musicTrack =
+      isMusicVideoTrackContext(body.musicTrack)
+        ? body.musicTrack
+        : undefined;
 
-    if (!responseText) {
-      throw new Error(
-        "Gemini hat keine Antwort zurückgegeben.",
-      );
-    }
+    const isViralStory =
+      characterMode === "viral" && viralCharacterIds.length >= 2;
 
-    let result: unknown;
+    let result: AiDirectorResult;
 
     try {
-      result =
-        parseGeminiJson(responseText);
-    } catch (parseError) {
-      console.error(
-        "Gemini-JSON konnte nicht verarbeitet werden:",
+      const response =
+        await generateWithRetry(
+          ai,
+          conversation,
+          dialogueMode,
+          musicTrack,
+          isViralStory,
+          characterMode === "general"
+            ? createGeneralCharacterInstruction(viralCharacterIds)
+            : "",
+        );
+
+      const responseText =
+        response.text?.trim();
+
+      if (!responseText) {
+        throw new Error(
+          "Gemini hat keine Antwort zurückgegeben.",
+        );
+      }
+
+      let parsedResult: unknown;
+
+      try {
+        parsedResult =
+          parseGeminiJson(responseText);
+      } catch (parseError) {
+        console.error(
+          "Gemini-JSON konnte nicht verarbeitet werden:",
+          {
+            responseText,
+            parseError,
+          },
+        );
+
+        throw new Error(
+          "Gemini hat kein gültiges JSON zurückgegeben.",
+        );
+      }
+
+      if (!isAiDirectorResult(parsedResult)) {
+        console.error(
+          "Unerwartete Antwortstruktur:",
+          parsedResult,
+        );
+
+        throw new Error(
+          "Die Antwort von Gemini besitzt nicht die erwartete Struktur.",
+        );
+      }
+
+      result = parsedResult;
+    } catch (generationError) {
+      if (
+        !isRetryableGeminiError(generationError) &&
+        !isUnavailableGeminiModel(generationError)
+      ) {
+        throw generationError;
+      }
+
+      console.warn(
+        "Alle AI-Director-Modelle waren vorübergehend nicht erreichbar. Der Filmplan wird mit der sicheren lokalen Vorlage fortgesetzt.",
         {
-          responseText,
-          parseError,
+          status: getErrorStatus(generationError),
+          message: getErrorMessage(generationError),
         },
       );
 
-      throw new Error(
-        "Gemini hat kein gültiges JSON zurückgegeben.",
-      );
-    }
-
-    if (!isAiDirectorResult(result)) {
-      console.error(
-        "Unerwartete Antwortstruktur:",
-        result,
-      );
-
-      throw new Error(
-        "Die Antwort von Gemini besitzt nicht die erwartete Struktur.",
+      result = createResilientDirectorDraft(
+        messages,
+        viralCharacterIds,
+        characterMode,
+        dialogueMode,
+        musicTrack,
       );
     }
 
