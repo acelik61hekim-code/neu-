@@ -1963,6 +1963,9 @@ function hasMandatoryDialoguePlan(
 
   story?:
     StoryDraft,
+
+  enforceDialogueSemantics =
+    true,
 ): boolean {
   if (
     response
@@ -2132,6 +2135,7 @@ function hasMandatoryDialoguePlan(
       dialogue.text.length >
         140 ||
       (
+        enforceDialogueSemantics &&
         isViralDialogue &&
         hasAmbiguousThirdPersonReference(
           dialogue.text,
@@ -2203,6 +2207,7 @@ function hasMandatoryDialoguePlan(
   }
 
   if (
+    enforceDialogueSemantics &&
     isViralDialogue &&
     story &&
     isInfidelityStory(
@@ -5217,6 +5222,7 @@ export async function POST(
             targetDurationSeconds,
             creationMode,
             story,
+            false,
           );
 
         const visualPlanValid =
