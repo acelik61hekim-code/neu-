@@ -40,6 +40,11 @@ type StoryCharacter = {
   description: string;
 };
 
+type ProvidedDialogueLine = {
+  speaker: string;
+  text: string;
+};
+
 type StoryDraft = {
   title: string;
   genre: string;
@@ -47,6 +52,7 @@ type StoryDraft = {
   setting: string;
   characters: StoryCharacter[];
   summary: string;
+  providedDialogue?: ProvidedDialogueLine[];
 };
 
 type AiDirectorResult = {
@@ -579,6 +585,180 @@ function isRetryableGeminiError(
   );
 }
 
+function normalizeSpeakerKey(
+  value: string,
+): string {
+  return value
+    .trim()
+    .toLocaleLowerCase("de-DE")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\s+sagt(?:e)?\s*$/i, "")
+    .replace(/[^a-z0-9äöüß]+/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripDialogueQuotes(
+  value: string,
+): string {
+  const trimmed =
+    value.trim();
+
+  const quotePairs: Array<[
+    string,
+    string,
+  ]> = [
+    ["„", "“"],
+    ['"', '"'],
+    ["'", "'"],
+  ];
+
+  for (const [opening, closing] of quotePairs) {
+    if (
+      trimmed.startsWith(opening) &&
+      trimmed.endsWith(closing) &&
+      trimmed.length > 2
+    ) {
+      return trimmed
+        .slice(1, -1)
+        .trim();
+    }
+  }
+
+  return trimmed;
+}
+
+function extractProvidedDialogue(
+  messages: readonly ConversationMessage[],
+  characters: readonly StoryCharacter[],
+): ProvidedDialogueLine[] {
+  const knownSpeakers =
+    characters.map(
+      (character) => ({
+        fullName:
+          character.name.trim(),
+        fullKey:
+          normalizeSpeakerKey(
+            character.name,
+          ),
+        shortKey:
+          normalizeSpeakerKey(
+            character.name
+              .split(",")[0],
+          ),
+      }),
+    );
+
+  if (knownSpeakers.length < 2) {
+    return [];
+  }
+
+  const dialogue:
+    ProvidedDialogueLine[] = [];
+
+  for (const message of messages) {
+    if (message.role !== "user") {
+      continue;
+    }
+
+    const lines =
+      message.content
+        .replace(/\r\n?/g, "\n")
+        .split("\n");
+
+    for (const rawLine of lines) {
+      const line =
+        rawLine.trim();
+
+      if (!line) {
+        continue;
+      }
+
+      const colonMatch =
+        line.match(
+          /^(?:[-*•]\s*)?(?:\d{1,2}[.)]\s*)?(.{1,64}?)\s*:\s*(.+)$/,
+        );
+
+      const spokenMatch =
+        colonMatch ??
+        line.match(
+          /^(?:[-*•]\s*)?(.{1,64}?)\s+sagt(?:e)?\s+[„"'](.+)[“"']$/i,
+        );
+
+      if (!spokenMatch) {
+        continue;
+      }
+
+      const candidateKey =
+        normalizeSpeakerKey(
+          spokenMatch[1],
+        );
+
+      const knownSpeaker =
+        knownSpeakers.find(
+          ({
+            fullKey,
+            shortKey,
+          }) =>
+            candidateKey ===
+              fullKey ||
+            candidateKey ===
+              shortKey,
+        );
+
+      if (!knownSpeaker) {
+        continue;
+      }
+
+      const text =
+        stripDialogueQuotes(
+          spokenMatch[2],
+        );
+
+      if (
+        !text ||
+        text.length > 180
+      ) {
+        continue;
+      }
+
+      const previous =
+        dialogue[
+          dialogue.length - 1
+        ];
+
+      if (
+        previous?.speaker ===
+          knownSpeaker.fullName &&
+        previous.text === text
+      ) {
+        continue;
+      }
+
+      dialogue.push({
+        speaker:
+          knownSpeaker.fullName,
+        text,
+      });
+    }
+  }
+
+  const distinctSpeakers =
+    new Set(
+      dialogue.map(
+        (line) =>
+          line.speaker,
+      ),
+    );
+
+  return (
+    dialogue.length >= 2 &&
+    distinctSpeakers.size >= 2
+  )
+    ? dialogue.slice(0, 48)
+    : [];
+}
+
 function isUnavailableGeminiModel(
   error: unknown,
 ): boolean {
@@ -1028,11 +1208,29 @@ export async function POST(
         ? enforceGeneralCharacters(brandedResult, viralCharacterIds)
         : enforceViralStory(brandedResult, viralCharacterIds);
 
+    const providedDialogue =
+      extractProvidedDialogue(
+        messages,
+        finalResult.story.characters,
+      );
+
+    const finalStory =
+      providedDialogue.length > 0
+        ? {
+            ...finalResult.story,
+            providedDialogue,
+          }
+        : finalResult.story;
+
     return NextResponse.json({
       success: true,
-      reply: finalResult.reply.trim(),
+      reply:
+        providedDialogue.length > 0 &&
+        finalResult.ready
+          ? `${finalResult.reply.trim()} Deine eingegebenen Dialoge werden wortgetreu übernommen.`
+          : finalResult.reply.trim(),
       finished: finalResult.ready,
-      story: finalResult.story,
+      story: finalStory,
     });
   } catch (error) {
     console.error(

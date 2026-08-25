@@ -4,6 +4,11 @@ export type Character = {
   description: string;
 };
 
+export type ProvidedDialogueLine = {
+  speaker: string;
+  text: string;
+};
+
 /*
  * =========================================================
  * ALLGEMEINE VIDEO-ARCHITEKTUR
@@ -640,6 +645,8 @@ export type Story = {
 
   characters: Character[];
 
+  providedDialogue?: ProvidedDialogueLine[];
+
   productionBible: ProductionBible;
 
   productionMemory?: ProductionMemory;
@@ -669,6 +676,8 @@ export type StoryDraft = {
   summary: string;
 
   characters: Character[];
+
+  providedDialogue?: ProvidedDialogueLine[];
 };
 
 /*

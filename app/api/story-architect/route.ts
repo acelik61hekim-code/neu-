@@ -31,6 +31,7 @@ import type {
   MovieOpening,
   MoviePlan,
   ProductionBible,
+  ProvidedDialogueLine,
   Scene,
   SceneDialogue,
   Story,
@@ -1680,6 +1681,101 @@ function isInfidelityStory(
       story.summary,
     ].join(" "),
   );
+}
+
+function normalizeProvidedDialogueLines(
+  story: StoryDraft,
+  expectedSpeakers: readonly string[],
+): ProvidedDialogueLine[] {
+  if (
+    !Array.isArray(
+      story.providedDialogue,
+    ) ||
+    story.providedDialogue.length < 2
+  ) {
+    return [];
+  }
+
+  const normalizeSpeaker =
+    (value: string) =>
+      value
+        .trim()
+        .toLocaleLowerCase("de-DE")
+        .replace(/[^a-z0-9äöüß]+/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+  const canonicalSpeakers =
+    expectedSpeakers.map(
+      (speaker) => ({
+        speaker,
+        fullKey:
+          normalizeSpeaker(
+            speaker,
+          ),
+        shortKey:
+          normalizeSpeaker(
+            speaker.split(",")[0],
+          ),
+      }),
+    );
+
+  const normalized =
+    story.providedDialogue.flatMap(
+      (line) => {
+        if (
+          typeof line !== "object" ||
+          line === null ||
+          typeof line.speaker !== "string" ||
+          typeof line.text !== "string"
+        ) {
+          return [];
+        }
+
+        const speakerKey =
+          normalizeSpeaker(
+            line.speaker,
+          );
+
+        const canonical =
+          canonicalSpeakers.find(
+            ({
+              fullKey,
+              shortKey,
+            }) =>
+              speakerKey === fullKey ||
+              speakerKey === shortKey,
+          );
+
+        const text =
+          line.text.trim();
+
+        if (
+          !canonical ||
+          !text ||
+          text.length > 180
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            speaker:
+              canonical.speaker,
+            text,
+          },
+        ];
+      },
+    );
+
+  return new Set(
+    normalized.map(
+      (line) =>
+        line.speaker,
+    ),
+  ).size >= 2
+    ? normalized
+    : [];
 }
 
 function extractSupportingEvidenceConcepts(
@@ -4076,6 +4172,165 @@ function applyTerraDialogueTurns(
   };
 }
 
+function applyProvidedDialogueLines(
+  response: ArchitectResponse,
+  lines: readonly ProvidedDialogueLine[],
+  spokenLanguage: VideoSpokenLanguage,
+): ArchitectResponse {
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const chunks =
+    Array.from(
+      {
+        length:
+          beatCount,
+      },
+      () => [] as ProvidedDialogueLine[],
+    );
+
+  lines.forEach(
+    (line, index) => {
+      const beatIndex =
+        Math.min(
+          beatCount - 1,
+          Math.floor(
+            index *
+              beatCount /
+              lines.length,
+          ),
+        );
+
+      chunks[beatIndex].push(
+        line,
+      );
+    },
+  );
+
+  const dialogueLanguage =
+    spokenLanguage === "en"
+      ? "English"
+      : "German";
+
+  const toDialogue =
+    (
+      line: ProvidedDialogueLine,
+    ): SceneDialogue => ({
+      enabled: true,
+      speaker:
+        line.speaker,
+      text:
+        line.text,
+      language:
+        dialogueLanguage,
+      voiceDirection:
+        "Natural, character-specific delivery matching the exact supplied words.",
+    });
+
+  const disabledDialogue:
+    SceneDialogue = {
+      enabled: false,
+      speaker: "",
+      text: "",
+      language:
+        dialogueLanguage,
+      voiceDirection: "",
+    };
+
+  const openingLines =
+    chunks[0];
+
+  const opening = {
+    ...response.moviePlan.opening,
+    dialogue:
+      openingLines[0]
+        ? toDialogue(
+            openingLines[0],
+          )
+        : disabledDialogue,
+    dialogueTurns:
+      openingLines
+        .slice(1)
+        .map(
+          toDialogue,
+        ),
+  };
+
+  const continuations =
+    response.moviePlan.continuations.map(
+      (
+        continuation,
+        index,
+      ) => {
+        const beatLines =
+          chunks[index + 1];
+
+        return {
+          ...continuation,
+          dialogue:
+            beatLines[0]
+              ? toDialogue(
+                  beatLines[0],
+                )
+              : disabledDialogue,
+          dialogueTurns:
+            beatLines
+              .slice(1)
+              .map(
+                toDialogue,
+              ),
+        };
+      },
+    );
+
+  return {
+    ...response,
+    moviePlan: {
+      ...response.moviePlan,
+      opening,
+      continuations,
+    },
+  };
+}
+
+function hasExactProvidedDialoguePlan(
+  response: ArchitectResponse,
+  expectedLines: readonly ProvidedDialogueLine[],
+): boolean {
+  const actualLines = [
+    response.moviePlan.opening.dialogue,
+    ...(
+      response.moviePlan.opening.dialogueTurns ??
+      []
+    ),
+    ...response.moviePlan.continuations.flatMap(
+      (continuation) => [
+        continuation.dialogue,
+        ...(
+          continuation.dialogueTurns ??
+          []
+        ),
+      ],
+    ),
+  ].filter(
+    (dialogue) =>
+      dialogue.enabled,
+  );
+
+  return (
+    actualLines.length ===
+      expectedLines.length &&
+    actualLines.every(
+      (line, index) =>
+        line.speaker ===
+          expectedLines[index].speaker &&
+        line.text ===
+          expectedLines[index].text,
+    )
+  );
+}
+
 function buildInfidelityDialogueFallback(
   story: StoryDraft,
   speakerNames: readonly string[],
@@ -4886,6 +5141,28 @@ ${
 `
       : "";
 
+  const suppliedDialogueSection =
+    Array.isArray(
+      story.providedDialogue,
+    ) &&
+    story.providedDialogue.length >= 2
+      ? `
+VOM NUTZER VORGEGEBENER ORIGINALDIALOG – ABSOLUTE PRIORITÄT
+
+${story.providedDialogue
+  .map(
+    (line, index) =>
+      `${index + 1}. ${line.speaker}: „${line.text}“`,
+  )
+  .join("\n")}
+
+- Diese Sprecher, Texte und Reihenfolge stammen direkt vom Nutzer.
+- Ändere, verbessere, kürze oder ergänze kein einziges gesprochenes Wort.
+- Richte Handlung, Mundbewegungen, Reaktionen und Kameragegenaufnahmen exakt an diesen Dialogzeilen aus.
+- Erzeuge keine zusätzlichen Dialogzeilen. Szenen ohne vorgegebenen Satz bleiben ohne Sprache.
+`
+      : "";
+
   return `
 Du bist ein professioneller Viral Creative Director, Story Architect,
 Character Director, Camera Director, Lighting Director, Performance Director,
@@ -4927,6 +5204,8 @@ AUSGEWÄHLTE KI-AUDIO-EINSTELLUNGEN
 ${selectedAudioDirection}
 
 ${mandatoryDialogueSection}
+
+${suppliedDialogueSection}
 
 EXAKTER SPRECHERTEXT
 
@@ -5497,6 +5776,14 @@ export async function POST(
             )
         : [];
 
+    const providedDialogue =
+      voiceMode === "dialogue"
+        ? normalizeProvidedDialogueLines(
+            story,
+            expectedDialogueSpeakers,
+          )
+        : [];
+
     const validateDialogueCandidate =
       (
         candidate: unknown,
@@ -5517,6 +5804,7 @@ export async function POST(
           );
 
         const dialogueValid =
+          providedDialogue.length > 0 ||
           hasMandatoryDialoguePlan(
             normalizedCandidate,
             expectedDialogueSpeakers,
@@ -5623,6 +5911,41 @@ export async function POST(
     if (
       voiceMode ===
         "dialogue" &&
+      providedDialogue.length > 0
+    ) {
+      const dialogueCapacity =
+        (
+          1 +
+          normalized.moviePlan.continuations.length
+        ) * 4;
+
+      if (
+        providedDialogue.length >
+        dialogueCapacity
+      ) {
+        return NextResponse.json(
+          {
+            success:
+              false,
+            error:
+              `Dein Originaldialog enthält ${providedDialogue.length} Zeilen. Für die gewählte Videolänge sind höchstens ${dialogueCapacity} kurze Dialogzeilen möglich. Bitte verlängere das Video oder reduziere die Zeilen.`,
+          },
+          {
+            status:
+              400,
+          },
+        );
+      }
+
+      normalized =
+        applyProvidedDialogueLines(
+          normalized,
+          providedDialogue,
+          spokenLanguage,
+        );
+    } else if (
+      voiceMode ===
+        "dialogue" &&
       openAiApiKey
     ) {
       try {
@@ -5700,13 +6023,19 @@ export async function POST(
     if (
       voiceMode ===
         "dialogue" &&
-
-      !hasMandatoryDialoguePlan(
-        normalized,
-        expectedDialogueSpeakers,
-        targetDurationSeconds,
-        creationMode,
-        story,
+      (
+        providedDialogue.length > 0
+          ? !hasExactProvidedDialoguePlan(
+              normalized,
+              providedDialogue,
+            )
+          : !hasMandatoryDialoguePlan(
+              normalized,
+              expectedDialogueSpeakers,
+              targetDurationSeconds,
+              creationMode,
+              story,
+            )
       )
     ) {
       return NextResponse.json(
@@ -5715,7 +6044,9 @@ export async function POST(
             false,
 
           error:
-            "Der automatische Dialogplan war noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
+            providedDialogue.length > 0
+              ? "Der vorgegebene Originaldialog konnte nicht vollständig und unverändert in den Filmplan übernommen werden."
+              : "Der automatische Dialogplan war noch nicht vollständig. Bitte starte die Story-Erstellung erneut.",
         },
 
         {

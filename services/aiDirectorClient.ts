@@ -26,6 +26,12 @@ type ApiStoryDraft = {
   setting?: unknown;
   summary?: unknown;
   characters?: unknown;
+  providedDialogue?: unknown;
+};
+
+type ApiProvidedDialogueLine = {
+  speaker?: unknown;
+  text?: unknown;
 };
 
 type ApiResponse = {
@@ -40,6 +46,28 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
   const rawCharacters = Array.isArray(story.characters)
     ? (story.characters as ApiStoryCharacter[])
     : [];
+
+  const providedDialogue =
+    Array.isArray(
+      story.providedDialogue,
+    )
+      ? (
+          story.providedDialogue as ApiProvidedDialogueLine[]
+        )
+          .filter(
+            (line) =>
+              typeof line.speaker === "string" &&
+              typeof line.text === "string" &&
+              line.speaker.trim().length > 0 &&
+              line.text.trim().length > 0,
+          )
+          .map((line) => ({
+            speaker:
+              (line.speaker as string).trim(),
+            text:
+              (line.text as string).trim(),
+          }))
+      : [];
 
   return {
     title:
@@ -73,6 +101,10 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
         name: character.name as string,
         description: character.description as string,
       })),
+    providedDialogue:
+      providedDialogue.length > 0
+        ? providedDialogue
+        : undefined,
   };
 }
 
