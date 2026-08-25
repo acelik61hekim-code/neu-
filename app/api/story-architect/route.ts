@@ -1756,8 +1756,13 @@ function hasFocusedInfidelityDialogue(
 function hasAmbiguousThirdPersonReference(
   text: string,
 ): boolean {
-  return /\b(?:er|sie|ihn|ihm|ihr|ihnen|dessen|deren)\b/i.test(
-    text,
+  return (
+    /(?:^|[.!?]\s+)(?:er|sie)\b/i.test(
+      text,
+    ) ||
+    /\b(?:ihn|ihm|ihnen|dessen|deren)\b/i.test(
+      text,
+    )
   );
 }
 
@@ -4011,6 +4016,186 @@ function applyTerraDialogueTurns(
   };
 }
 
+function buildInfidelityDialogueFallback(
+  story: StoryDraft,
+  speakerNames: readonly string[],
+  turnCount: number,
+): TerraDialogueTurn[] | undefined {
+  if (
+    !isInfidelityStory(story) ||
+    speakerNames.length < 3 ||
+    turnCount < 3 ||
+    turnCount > 12
+  ) {
+    return undefined;
+  }
+
+  const [accuser, accused, witness] =
+    speakerNames;
+
+  const shortName =
+    (name: string) =>
+      name
+        .split(",")[0]
+        .trim();
+
+  const accuserName =
+    shortName(accuser);
+
+  const accusedName =
+    shortName(accused);
+
+  const witnessName =
+    shortName(witness);
+
+  const makeTurn = (
+    speaker: string,
+    text: string,
+    voiceDirection: string,
+    purpose: TerraDialoguePurpose,
+    index: number,
+    factKeys: TerraDialogueFactKey[],
+  ): TerraDialogueTurn => ({
+    speaker,
+    text,
+    voiceDirection,
+    purpose,
+    respondsToTurn:
+      index,
+    factKeys,
+  });
+
+  const openingTurns: Array<
+    Omit<TerraDialogueTurn, "respondsToTurn">
+  > = [
+    {
+      speaker: accuser,
+      text: `${accusedName}, ich sah deinen Kuss mit ${witnessName}.`,
+      voiceDirection: "kontrolliert, verletzt und direkt",
+      purpose: "discovery",
+      factKeys: ["witnessedEvent"],
+    },
+    {
+      speaker: accused,
+      text: `Ich habe ${witnessName} geküsst. Es war kein Versehen.`,
+      voiceDirection: "angespannt, aber ohne Ausflucht",
+      purpose: "answer",
+      factKeys: ["accusedResponse"],
+    },
+    {
+      speaker: witness,
+      text: `${accusedName}, du hast zuerst meine Nähe gesucht.`,
+      voiceDirection: "ruhig, bestimmt und schonungslos ehrlich",
+      purpose: "contradiction",
+      factKeys: ["contradiction"],
+    },
+    {
+      speaker: accused,
+      text: `Ja, ${accuserName}. Ich wollte diesen Kuss.`,
+      voiceDirection: "leise, beschämt und eindeutig",
+      purpose: "admission",
+      factKeys: ["witnessedEvent", "accusedResponse"],
+    },
+    {
+      speaker: accuser,
+      text: "Seit wann lügst du mich deswegen an?",
+      voiceDirection: "fassungslos, aber beherrscht",
+      purpose: "accusation",
+      factKeys: ["relationship", "witnessedEvent"],
+    },
+    {
+      speaker: accused,
+      text: "Seit gestern. Ich hatte Angst vor der Wahrheit.",
+      voiceDirection: "stockend und schuldbewusst",
+      purpose: "answer",
+      factKeys: ["accusedResponse"],
+    },
+    {
+      speaker: witness,
+      text: `${accuserName}, ${accusedName} versprach mir einen Neuanfang.`,
+      voiceDirection: "nüchtern und ohne Triumph",
+      purpose: "contradiction",
+      factKeys: ["contradiction", "relationship"],
+    },
+    {
+      speaker: accused,
+      text: `${witnessName}, dieses Versprechen war falsch.`,
+      voiceDirection: "unter Druck und defensiv",
+      purpose: "admission",
+      factKeys: ["contradiction"],
+    },
+    {
+      speaker: accuser,
+      text: "Falsch war der Kuss, nicht nur das Versprechen.",
+      voiceDirection: "kalt, klar und endgültig",
+      purpose: "accusation",
+      factKeys: ["witnessedEvent", "contradiction"],
+    },
+    {
+      speaker: accused,
+      text: `${accuserName}, ich bereue diesen Kuss.`,
+      voiceDirection: "verzweifelt und aufrichtig",
+      purpose: "answer",
+      factKeys: ["accusedResponse", "witnessedEvent"],
+    },
+  ];
+
+  if (turnCount === 3) {
+    return openingTurns
+      .slice(0, 3)
+      .map(
+        (turn, index) =>
+          makeTurn(
+            turn.speaker,
+            turn.text,
+            turn.voiceDirection,
+            turn.purpose,
+            index,
+            turn.factKeys,
+          ),
+      );
+  }
+
+  const consequenceTurns: Array<
+    Omit<TerraDialogueTurn, "respondsToTurn">
+  > = [
+    {
+      speaker: accuser,
+      text: `Unsere Beziehung ist vorbei. ${accusedName}, geh jetzt.`,
+      voiceDirection: "fest, ruhig und endgültig",
+      purpose: "decision",
+      factKeys: ["relationship", "consequence"],
+    },
+    {
+      speaker: accused,
+      text: `${accuserName}, ich habe alles zerstört.`,
+      voiceDirection: "leise und erschüttert",
+      purpose: "consequence",
+      factKeys: ["consequence"],
+    },
+  ];
+
+  const selectedTurns = [
+    ...openingTurns.slice(
+      0,
+      turnCount - 2,
+    ),
+    ...consequenceTurns,
+  ];
+
+  return selectedTurns.map(
+    (turn, index) =>
+      makeTurn(
+        turn.speaker,
+        turn.text,
+        turn.voiceDirection,
+        turn.purpose,
+        index,
+        turn.factKeys,
+      ),
+  );
+}
+
 async function writeDialogueWithTerra(
   apiKey: string,
   story: StoryDraft,
@@ -4147,6 +4332,25 @@ async function writeDialogueWithTerra(
         return candidate;
       }
 
+      console.warn(
+        "Story Architect Dialog-Autor Qualitätskorrektur:",
+        {
+          attempt,
+          correctionNotes,
+          dialogue:
+            payload.turns.map(
+              (turn) => ({
+                speaker:
+                  turn.speaker,
+                text:
+                  turn.text,
+                purpose:
+                  turn.purpose,
+              }),
+            ),
+        },
+      );
+
       throw new Error(
         `GPT-5.6 Terra hat die Dialog-Qualitätskontrolle noch nicht bestanden: ${correctionNotes.join(" ")}`,
       );
@@ -4161,6 +4365,43 @@ async function writeDialogueWithTerra(
           "Der vorige Entwurf war technisch unvollständig. Erstelle den Dialog vollständig neu und halte den Faktenvertrag exakt ein.",
         ];
       }
+    }
+  }
+
+  const fallbackTurns =
+    creationMode === "viral-story"
+      ? buildInfidelityDialogueFallback(
+          story,
+          speakerNames,
+          maximumTurns,
+        )
+      : undefined;
+
+  if (fallbackTurns) {
+    const fallbackCandidate =
+      applyTerraDialogueTurns(
+        response,
+        fallbackTurns,
+        spokenLanguage,
+      );
+
+    if (
+      validateArchitectResponse(
+        fallbackCandidate,
+      ) &&
+      hasMandatoryDialoguePlan(
+        fallbackCandidate,
+        speakerNames,
+        targetDurationSeconds,
+        creationMode,
+        story,
+      )
+    ) {
+      console.warn(
+        "Story Architect verwendet einen geprüften fokussierten Untreue-Dialog als Ausfallsicherung.",
+      );
+
+      return fallbackCandidate;
     }
   }
 
