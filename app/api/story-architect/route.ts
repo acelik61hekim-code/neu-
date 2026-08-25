@@ -52,14 +52,16 @@ export const maxDuration = 300;
 
 const STORY_MODELS = [
   "gemini-3.5-flash-lite",
-  "gemini-3.1-flash-lite",
+  "gemini-3.6-flash",
+  "gemini-3.7-flash",
   "gemini-3.5-flash",
 ] as const;
 
 const VIRAL_STORY_MODELS = [
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
   "gemini-3.5-flash",
   "gemini-3.5-flash-lite",
-  "gemini-3.1-flash-lite",
 ] as const;
 
 const RETRIES_PER_MODEL = 2;
@@ -1680,6 +1682,77 @@ function isInfidelityStory(
   );
 }
 
+function extractSupportingEvidenceConcepts(
+  text: string,
+): Set<string> {
+  const concepts =
+    new Set<string>();
+
+  const evidencePatterns: Array<[
+    string,
+    RegExp,
+  ]> = [
+    ["ring", /\b(?:ring|ringe)\b/i],
+    ["armband", /\b(?:armband|armbänder)\b/i],
+    ["kette", /\b(?:halskette|kette|ketten)\b/i],
+    ["digital", /\b(?:handy|smartphone|chat|nachricht|sprachnachricht|foto|video)\b/i],
+    ["reise", /\b(?:koffer|reiseset|ticket|flugticket|buchung|reservierung)\b/i],
+    ["zugang", /\b(?:schlüssel|zimmerkarte|hotelkarte)\b/i],
+    ["kleidung", /\b(?:hemd|lippenstift|parfüm)\b/i],
+    ["dokument", /\b(?:brief|rechnung|quittung|beleg|vertrag)\b/i],
+    ["schwangerschaft", /\b(?:ultraschall|schwanger|schwangerschaft|baby)\b/i],
+  ];
+
+  for (const [concept, pattern] of evidencePatterns) {
+    if (pattern.test(text)) {
+      concepts.add(concept);
+    }
+  }
+
+  return concepts;
+}
+
+function hasFocusedInfidelityDialogue(
+  dialogueLines: readonly string[],
+): boolean {
+  if (dialogueLines.length < 2) {
+    return false;
+  }
+
+  const namesWitnessedBetrayal =
+    /küss|kuss|umarm|händchen|hand in hand|eng umschlungen|streichel|zimmer.{0,20}(?:verlassen|gekommen)|erwischt|gesehen/i.test(
+      dialogueLines[0],
+    );
+
+  const directlyAnswersBetrayal =
+    /küss|kuss|umarm|berühr|händchen|stolper|rutsch|auffang|fing|wegzieh|fehler|geküsst|gelogen|stimmt|^\s*(?:ja|nein)\b/i.test(
+      dialogueLines[1],
+    );
+
+  const evidenceConcepts =
+    extractSupportingEvidenceConcepts(
+      dialogueLines.join(" "),
+    );
+
+  const closingLines =
+    dialogueLines
+      .slice(-2)
+      .join(" ");
+
+  const hasPersonalConsequence =
+    dialogueLines.length <= 3 ||
+    /vorbei|schluss|trenn|beziehung.{0,18}(?:endet|beendet)|geh(?:e|st)?\b|verlass|auszieh|raus\b|koffer.{0,22}(?:tür|draußen)|verzeih|bleib(?:e|st)?\b|allein\b|chance\b|vertrauen.{0,15}(?:weg|zerstört)|entscheide/i.test(
+      closingLines,
+    );
+
+  return (
+    namesWitnessedBetrayal &&
+    directlyAnswersBetrayal &&
+    evidenceConcepts.size <= 1 &&
+    hasPersonalConsequence
+  );
+}
+
 function hasMandatoryViralVisualPlan(
   response: ArchitectResponse,
   story: StoryDraft,
@@ -1708,6 +1781,18 @@ function hasMandatoryViralVisualPlan(
     ...continuationVisualPlans,
   ].join(" ");
 
+  const narrativeFactPlan = [
+    opening.hook,
+    opening.storyBeat,
+    opening.action,
+    ...response.moviePlan.continuations.flatMap(
+      (continuation) => [
+        continuation.storyBeat,
+        continuation.actionContinuation,
+      ],
+    ),
+  ].join(" ");
+
   const namesVisibleAction =
     /sieht|beobachtet|erwischt|öffnet|betritt|fällt|zeigt|hält|trägt|übergibt|nimmt|vertauscht|küss|umarm|entdeckt|catches|sees|witnesses|opens|enters|falls|reveals|holds|wears|hands over|swaps|kisses|embraces|discovers/i.test(
       openingVisualPlan,
@@ -1732,6 +1817,14 @@ function hasMandatoryViralVisualPlan(
       );
 
     if (!showsBetrayalItself) {
+      return false;
+    }
+
+    if (
+      extractSupportingEvidenceConcepts(
+        narrativeFactPlan,
+      ).size > 1
+    ) {
       return false;
     }
   }
@@ -1828,9 +1921,9 @@ function buildViralDialogueArc(
 VERBINDLICHER EINMINÜTIGER DIALOGBOGEN – VIER 15-SEKUNDEN-BEATS
 
 1. Opening 0–15: Zeige zuerst die verbotene Handlung selbst oder wie sie unmittelbar entdeckt wird. Die betroffene Figur benennt konkret, was sie gerade gesehen hat. Die Antwort nennt ein überprüfbares Detail statt einer leeren Ausrede.
-2. Fortsetzung 15–30: Ein klares Ziel kollidiert mit dem Gegeninteresse. Ort, Zeitpunkt oder Besitz eines Gegenstands machen die Aussage überprüfbar.
-3. Fortsetzung 30–45: Die dritte Figur enthüllt einen Widerspruch oder ein Teilgeständnis. Ein kurzer echter Gefühlsmoment zeigt, warum der Konflikt persönlich wichtig ist.
-4. Fortsetzung 45–60: Eine konkrete Entscheidung hat eine sichtbare Konsequenz. Der letzte Satz benennt ein neues Beweisstück, Ereignis oder Geheimnis als Cliffhanger.
+2. Fortsetzung 15–30: Die beschuldigte Figur beantwortet exakt den Vorwurf. Ort und Zeitpunkt bleiben unverändert; es beginnt kein zweiter Konflikt.
+3. Fortsetzung 30–45: Die dritte Figur widerlegt genau diese Antwort mit einem bereits festgelegten Detail oder Teilgeständnis. Ein kurzer echter Gefühlsmoment zeigt, warum der Konflikt persönlich wichtig ist.
+4. Fortsetzung 45–60: Eine konkrete Entscheidung hat eine sichtbare Konsequenz. Der letzte Satz verschärft dieselbe Entscheidung; er führt kein neues Beweisstück und keine neue Nebenhandlung ein.
 
 Die Dialoge ergeben zusammen EIN verständliches Gespräch. Jede Zeile erfüllt genau eine Funktion: Vorwurf, Antwort, Widerspruch, Geständnis, Entscheidung oder Enthüllung. Keine Zeile darf aus einer anderen Geschichte stammen.`;
   }
@@ -1842,7 +1935,7 @@ VERBINDLICHER DIALOGBOGEN
 - Beginne mit einem konkret benannten Skandal oder Beweis.
 - Lass jede Antwort den unmittelbar vorherigen Vorwurf beantworten und eine neue Information ergänzen.
 - Nutze dialogueTurns innerhalb eines 15-Sekunden-Clips, wenn mehrere Figuren unmittelbar reagieren müssen.
-- Steigere über Geständnis, Widerspruch und Konsequenz zu einem konkret benannten Cliffhanger.
+- Steigere denselben Konflikt über Antwort, Widerspruch und Konsequenz. Ein Cliffhanger muss aus dieser Konsequenz entstehen und darf keinen neuen Gegenstand einführen.
 - Gib jeder Figur eine erkennbare Sprechhaltung: direkt, kontrolliert, ausweichend, trocken oder verletzlich. Vertauschte Zeilen dürfen nicht gleich gut funktionieren.`;
 }
 
@@ -2122,7 +2215,13 @@ function hasMandatoryDialoguePlan(
 
     if (
       !namesConcreteConflict ||
-      !namesConcreteEvidence
+      !namesConcreteEvidence ||
+      !hasFocusedInfidelityDialogue(
+        enabledDialogue.map(
+          (dialogue) =>
+            dialogue.text,
+        ),
+      )
     ) {
       return false;
     }
@@ -3317,13 +3416,69 @@ async function generateStoryWithFallback(
   );
 }
 
+type TerraDialoguePurpose =
+  | "discovery"
+  | "accusation"
+  | "answer"
+  | "contradiction"
+  | "admission"
+  | "decision"
+  | "consequence"
+  | "cliffhanger";
+
+type TerraDialogueFactKey =
+  | "relationship"
+  | "witnessedEvent"
+  | "location"
+  | "accusedResponse"
+  | "contradiction"
+  | "consequence"
+  | "supportingEvidence";
+
+const TERRA_DIALOGUE_PURPOSES =
+  new Set<TerraDialoguePurpose>([
+    "discovery",
+    "accusation",
+    "answer",
+    "contradiction",
+    "admission",
+    "decision",
+    "consequence",
+    "cliffhanger",
+  ]);
+
+const TERRA_DIALOGUE_FACT_KEYS =
+  new Set<TerraDialogueFactKey>([
+    "relationship",
+    "witnessedEvent",
+    "location",
+    "accusedResponse",
+    "contradiction",
+    "consequence",
+    "supportingEvidence",
+  ]);
+
+type TerraDialogueContract = {
+  relationship: string;
+  witnessedEvent: string;
+  location: string;
+  accusedResponse: string;
+  contradiction: string;
+  consequence: string;
+  supportingEvidence: string;
+};
+
 type TerraDialogueTurn = {
   speaker: string;
   text: string;
   voiceDirection: string;
+  purpose: TerraDialoguePurpose;
+  respondsToTurn: number;
+  factKeys: TerraDialogueFactKey[];
 };
 
 type TerraDialoguePayload = {
+  contract: TerraDialogueContract;
   turns: TerraDialogueTurn[];
 };
 
@@ -3348,6 +3503,26 @@ function readTerraDialoguePayload(
     asRecord(
       parsedResult.parsed,
     );
+
+  const contractRecord =
+    asRecord(root.contract);
+
+  const contract: TerraDialogueContract = {
+    relationship:
+      readString(contractRecord.relationship, ""),
+    witnessedEvent:
+      readString(contractRecord.witnessedEvent, ""),
+    location:
+      readString(contractRecord.location, ""),
+    accusedResponse:
+      readString(contractRecord.accusedResponse, ""),
+    contradiction:
+      readString(contractRecord.contradiction, ""),
+    consequence:
+      readString(contractRecord.consequence, ""),
+    supportingEvidence:
+      readString(contractRecord.supportingEvidence, ""),
+  };
 
   const turns =
     Array.isArray(
@@ -3377,6 +3552,26 @@ function readTerraDialoguePayload(
                     value.voiceDirection,
                     "",
                   ).trim(),
+                purpose:
+                  readString(
+                    value.purpose,
+                    "",
+                  ) as TerraDialoguePurpose,
+                respondsToTurn:
+                  typeof value.respondsToTurn === "number" &&
+                  Number.isInteger(value.respondsToTurn)
+                    ? value.respondsToTurn
+                    : -1,
+                factKeys:
+                  Array.isArray(value.factKeys)
+                    ? value.factKeys.filter(
+                        (factKey): factKey is TerraDialogueFactKey =>
+                          typeof factKey === "string" &&
+                          TERRA_DIALOGUE_FACT_KEYS.has(
+                            factKey as TerraDialogueFactKey,
+                          ),
+                      )
+                    : [],
               };
             },
           )
@@ -3387,13 +3582,22 @@ function readTerraDialoguePayload(
       minimumTurns ||
     turns.length >
       maximumTurns ||
+    Object.values(contract).some(
+      (value) => !value,
+    ) ||
     turns.some(
-      (turn) =>
+      (turn, index) =>
         !speakerNames.includes(
           turn.speaker,
         ) ||
         !turn.text ||
-        !turn.voiceDirection,
+        !turn.voiceDirection ||
+        !TERRA_DIALOGUE_PURPOSES.has(
+          turn.purpose,
+        ) ||
+        turn.respondsToTurn !== index ||
+        turn.factKeys.length < 1 ||
+        turn.factKeys.length > 2,
     )
   ) {
     throw new Error(
@@ -3402,6 +3606,7 @@ function readTerraDialoguePayload(
   }
 
   return {
+    contract,
     turns,
   };
 }
@@ -3415,7 +3620,8 @@ function buildTerraDialoguePrompt(
   speakerNames: readonly string[],
   minimumTurns: number,
   maximumTurns: number,
-  correctionAttempt: boolean,
+  correctionNotes: readonly string[] = [],
+  previousDraft?: TerraDialoguePayload,
 ): string {
   const maximumWordsPerLine =
     creationMode ===
@@ -3437,8 +3643,6 @@ function buildTerraDialoguePrompt(
         response.moviePlan.opening.action,
       hook:
         response.moviePlan.opening.hook,
-      existingDialogue:
-        response.moviePlan.opening.dialogue.text,
     },
     ...response.moviePlan.continuations.map(
       (continuation) => ({
@@ -3448,11 +3652,24 @@ function buildTerraDialoguePrompt(
           continuation.actionContinuation,
         hook:
           continuation.storyBeat,
-        existingDialogue:
-          continuation.dialogue.text,
       }),
     ),
   ];
+
+  const correctionSection =
+    correctionNotes.length > 0
+      ? `
+VORHERIGER ENTWURF WURDE ABGELEHNT
+
+Fehler:
+${correctionNotes.map((note) => `- ${note}`).join("\n")}
+
+Ersetze den vorherigen Entwurf vollständig. Übernimm keine problematische Zeile und keinen zusätzlichen Gegenstand daraus.
+
+Abgelehnter Entwurf:
+${JSON.stringify(previousDraft)}
+`
+      : "";
 
   return `
 Schreibe den endgültigen Dialog für ein ${targetDurationSeconds}-Sekunden-Video.
@@ -3469,6 +3686,11 @@ VERBINDLICHE AUFGABE
 - Jede genannte Figur spricht mindestens einmal.
 - Eine Zeile hat höchstens ${maximumWordsPerLine} kurze, gut aussprechbare Wörter.
 - Bei fünfzehn Sekunden dürfen alle Zeilen zusammen höchstens vierundzwanzig Wörter haben.
+- Fülle zuerst contract aus. Er ist die einzige Wahrheit des Gesprächs und bleibt danach unverändert.
+- contract.witnessedEvent enthält genau eine sichtbare auslösende Handlung. contract.supportingEvidence enthält höchstens ein zusätzliches Beweisstück oder ausdrücklich „keines“.
+- Die erste Zeile ist Entdeckung oder Vorwurf und nutzt witnessedEvent. Die zweite Zeile ist eine direkte Antwort auf genau diesen Vorwurf und nutzt accusedResponse.
+- respondsToTurn ist in der ersten Zeile null. Danach verweist es immer auf die unmittelbar vorherige einbasierte Zeilennummer: zweite Zeile eins, dritte Zeile zwei und so weiter.
+- factKeys nennt pro Zeile nur die ein oder zwei contract-Fakten, die der hörbare Satz tatsächlich verwendet.
 - Jede Antwort reagiert direkt auf die vorige Zeile und ergänzt eine neue konkrete Information.
 - Verwende konkrete Handlungen, Orte, Zeitpunkte oder sichtbare Beweise statt allgemeiner Dramawörter.
 - Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
@@ -3477,15 +3699,15 @@ VERBINDLICHE AUFGABE
 - Mindestens eine Zeile muss kurz, eigenständig verständlich und zitierfähig sein, ohne wie ein Werbespruch zu klingen.
 - Keine Begrüßungen, Zusammenfassungen, Moderation, Therapiesprache oder Kundendienstformulierungen.
 - Bei Untreue wird die verbotene Handlung selbst sichtbar entdeckt; ein Handy oder Beleg ist nur eine zusätzliche Bestätigung.
+- Bei Untreue bleibt der Dialog bei diesem einen beobachteten Verrat. Kuss, Armband, Ring, Reiseset und Hemd als Kette verschiedener Enthüllungen sind ausdrücklich verboten.
+- Nach der direkten Antwort folgt höchstens ein Widerspruch oder Teilgeständnis. Die letzten beiden Zeilen führen zu einer persönlichen Entscheidung oder Konsequenz aus demselben Konflikt.
+- Ein Cliffhanger entsteht aus einer bereits genannten Entscheidung oder Lüge. Er führt keinen neuen Gegenstand, keine neue Beziehung und keinen neuen Ort ein.
 - Keine Ziffern, Abkürzungen, Hashtags, Schrägstriche, Untertitel, Erzähler oder Offscreen-Sprache.
 - speaker ist exakt einer der vorgegebenen Namen.
 - voiceDirection beschreibt knapp die konkrete Sprechhaltung und Emotion.
 - Erfinde keine Tatsachen, die der Story oder den sichtbaren Szenen widersprechen.
-${
-  correctionAttempt
-    ? "- Dies ist der Korrekturversuch: Prüfe besonders Sprecherwechsel, Wortgrenzen, direkte Antworten und konkrete Details."
-    : ""
-}
+
+${correctionSection}
 
 STORY
 ${JSON.stringify({
@@ -3505,9 +3727,128 @@ ${JSON.stringify({
     ),
 })}
 
-SICHTBARER FILMPLAN
+SICHTBARER FILMPLAN ALS REINE INSZENIERUNGSHILFE
 ${JSON.stringify(visualBeats)}
+
+Falls der sichtbare Filmplan mehrere widersprüchliche Requisiten oder Nebenhandlungen enthält, ignoriere diese. Die STORY und dein unveränderlicher contract haben für den Dialog Vorrang.
 `;
+}
+
+function getTerraDialogueQualityIssues(
+  payload: TerraDialoguePayload,
+  story: StoryDraft,
+  creationMode: VideoCreationMode,
+): string[] {
+  const issues: string[] = [];
+  const { contract, turns } = payload;
+
+  if (creationMode === "viral-story") {
+    if (
+      turns[0]?.purpose !== "discovery" &&
+      turns[0]?.purpose !== "accusation"
+    ) {
+      issues.push(
+        "Die erste Zeile muss die sichtbare Entdeckung oder den konkreten Vorwurf enthalten.",
+      );
+    }
+
+    if (turns[1]?.purpose !== "answer") {
+      issues.push(
+        "Die zweite Zeile muss den ersten Vorwurf direkt beantworten.",
+      );
+    }
+
+    if (
+      !turns[0]?.factKeys.includes("witnessedEvent")
+    ) {
+      issues.push(
+        "Die erste Zeile muss ausdrücklich auf witnessedEvent beruhen.",
+      );
+    }
+
+    if (
+      !turns[1]?.factKeys.includes("accusedResponse")
+    ) {
+      issues.push(
+        "Die direkte Antwort muss ausdrücklich accusedResponse verwenden.",
+      );
+    }
+
+    const closingTurns =
+      turns.slice(-2);
+
+    if (
+      turns.length > 3 &&
+      !closingTurns.some(
+        (turn) =>
+          turn.purpose === "decision" ||
+          turn.purpose === "consequence" ||
+          turn.factKeys.includes("consequence"),
+      )
+    ) {
+      issues.push(
+        "Die letzten beiden Zeilen benötigen eine persönliche Entscheidung oder Konsequenz.",
+      );
+    }
+
+    for (
+      let index = 1;
+      index < turns.length;
+      index += 1
+    ) {
+      if (
+        turns[index].speaker ===
+        turns[index - 1].speaker
+      ) {
+        issues.push(
+          "Die Sprecher müssen sich ohne zwei direkt aufeinanderfolgende Zeilen derselben Figur abwechseln.",
+        );
+        break;
+      }
+    }
+  }
+
+  if (isInfidelityStory(story)) {
+    const witnessedEventIsConcrete =
+      /küss|kuss|umarm|händchen|hand in hand|eng umschlungen|streichel|zimmer.{0,20}(?:verlassen|gekommen)|erwischt/i.test(
+        contract.witnessedEvent,
+      );
+
+    if (!witnessedEventIsConcrete) {
+      issues.push(
+        "witnessedEvent muss die tatsächlich beobachtete intime Handlung konkret benennen.",
+      );
+    }
+
+    const contractAndDialogue = [
+      ...Object.values(contract),
+      ...turns.map((turn) => turn.text),
+    ].join(" ");
+
+    if (
+      extractSupportingEvidenceConcepts(
+        contractAndDialogue,
+      ).size > 1
+    ) {
+      issues.push(
+        "Der Dialog springt zwischen mehreren Beweisstücken. Erlaubt ist höchstens ein einziges zusätzliches Beweisstück.",
+      );
+    }
+
+    if (
+      !hasFocusedInfidelityDialogue(
+        turns.map((turn) => turn.text),
+      )
+    ) {
+      issues.push(
+        "Die Untreue-Dialogfolge benötigt beobachtete Handlung, direkte Antwort und eine klare persönliche Konsequenz ohne Themenwechsel.",
+      );
+    }
+  }
+
+  return [
+    ...new Set(issues),
+  ];
 }
 
 function applyTerraDialogueTurns(
@@ -3674,6 +4015,12 @@ async function writeDialogueWithTerra(
   let lastError:
     unknown;
 
+  let correctionNotes:
+    string[] = [];
+
+  let previousDraft:
+    TerraDialoguePayload | undefined;
+
   for (
     let attempt = 1;
     attempt <= 2;
@@ -3696,7 +4043,8 @@ async function writeDialogueWithTerra(
             speakerNames,
             minimumTurns,
             maximumTurns,
-            attempt > 1,
+            correctionNotes,
+            previousDraft,
           ),
           {
             speakerNames: [
@@ -3715,6 +4063,9 @@ async function writeDialogueWithTerra(
           maximumTurns,
         );
 
+      previousDraft =
+        payload;
+
       const candidate =
         applyTerraDialogueTurns(
           response,
@@ -3722,27 +4073,61 @@ async function writeDialogueWithTerra(
           spokenLanguage,
         );
 
-      if (
+      const structurallyValid =
         validateArchitectResponse(
           candidate,
-        ) &&
+        );
+
+      const mandatoryDialogueValid =
         hasMandatoryDialoguePlan(
           candidate,
           speakerNames,
           targetDurationSeconds,
           creationMode,
           story,
-        )
+        );
+
+      correctionNotes =
+        getTerraDialogueQualityIssues(
+          payload,
+          story,
+          creationMode,
+        );
+
+      if (!structurallyValid) {
+        correctionNotes.push(
+          "Der Entwurf hat die technische Dialogstruktur nicht eingehalten.",
+        );
+      }
+
+      if (!mandatoryDialogueValid) {
+        correctionNotes.push(
+          "Der Entwurf hat Wortgrenzen, Sprecherabdeckung oder die verbindliche Dialogkontinuität nicht bestanden.",
+        );
+      }
+
+      if (
+        structurallyValid &&
+        mandatoryDialogueValid &&
+        correctionNotes.length === 0
       ) {
         return candidate;
       }
 
       throw new Error(
-        "GPT-5.6 Terra hat die Dialog-Qualitätskontrolle noch nicht bestanden.",
+        `GPT-5.6 Terra hat die Dialog-Qualitätskontrolle noch nicht bestanden: ${correctionNotes.join(" ")}`,
       );
     } catch (error) {
       lastError =
         error;
+
+      if (
+        correctionNotes.length === 0
+      ) {
+        correctionNotes = [
+          "Der vorige Entwurf war technisch unvollständig. Erstelle den Dialog vollständig neu und halte den Faktenvertrag exakt ein.",
+        ];
+      }
     }
   }
 
@@ -3883,6 +4268,9 @@ AUTORENRAUM VOR DER AUSGABE
 - Lege intern zuerst diese sieben Fakten fest und ändere sie danach nicht mehr: bestehende Beziehung, verbotene Handlung, direkter Zeuge, genaue Lüge, widerlegendes Detail, persönliche Konsequenz und konkreter Cliffhanger.
 - Schreibe danach den Dialog einmal vollständig in zeitlicher Reihenfolge. Prüfe, ob jede Antwort ohne zusätzliches Wissen verständlich auf die vorige Zeile reagiert.
 - Streiche jede Zeile, die weder den Konflikt voranbringt noch eine Figur erkennbar macht. Erfinde während des Gesprächs keine neuen Gegenstände, Beziehungen oder Orte, die nicht zur Faktenkette gehören.
+- Erzähle genau EINEN Konflikt. Für den gesamten Film ist höchstens EIN zusätzliches Beweisstück erlaubt. Kuss plus Armband plus Ring plus Koffer plus Hemd ist ausdrücklich verboten.
+- Eine beobachtete Handlung wird zuerst beantwortet. Erst danach darf genau ein bereits festgelegtes Detail die Antwort widerlegen.
+- Der Schluss zeigt eine persönliche Entscheidung oder Konsequenz aus demselben Konflikt. Ein plötzlich auftauchender neuer Gegenstand ist kein Cliffhanger.
 
 - Jeder neue Story-Abschnitt dauert grundsätzlich 15 Sekunden und wird anschließend an das ausgewählte Videomodell übergeben.
 - In jedem 15-Sekunden-Abschnitt geschieht eine neue konkrete Handlung oder Enthüllung; Streit und ein kurzer echter Gefühlsmoment wechseln sich sinnvoll ab.
@@ -3931,7 +4319,7 @@ DIALOGSTRUKTUR
 - Namen, Ort, Zeitpunkt und sichtbares Beweisstück bleiben über alle Abschnitte widerspruchsfrei. Pronomen wie „das“, „es“ oder „alles“ dürfen nie einen ungenannten Sachverhalt ersetzen.
 - Figuren sprechen verschieden: Eine direkte Figur benennt den Vorwurf knapp, eine kontrollierte Figur antwortet präzise, eine ausweichende Figur nennt eine falsifizierbare Ausrede. Tausche niemals beliebige Standardsätze zwischen den Figuren aus.
 - SCHLECHT: „Das ändert alles.“ – „Du verstehst das nicht.“ – „Warte ab.“
-- GUT: „Ich sah euren Kuss am Pool.“ – „Ora küsste mich, ich wich sofort zurück.“ – „Nein, du trägst meinen Ring seit Montag.“
+- Keine Beispielsätze kopieren. Entwickle den Wortlaut ausschließlich aus der konkreten Story und der festgelegten Faktenkette.
 - Kein Erzähler.
 - Kein Voice-over.
 - Keine Offscreen-Sprache.

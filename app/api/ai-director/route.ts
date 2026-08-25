@@ -218,13 +218,6 @@ function enforceViralStory(
 
   if (selectedCharacters.length < 2) return result;
 
-  const fixedCharacterSummary = selectedCharacters
-    .map(
-      (character) =>
-        `${character.name}: ${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
-    )
-    .join(" ");
-
   return {
     ...result,
     ready: true,
@@ -246,16 +239,9 @@ function enforceViralStory(
         name: character.name,
         description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}. Diese Identität und dieses Outfit dürfen in keiner Szene verändert werden.`,
       })),
-      summary: [
-        result.story.summary,
-        `Verbindliche Figurenreferenzen: ${fixedCharacterSummary}`,
-        "Die Handlung beginnt sofort mit der verbotenen Handlung oder ihrer sichtbaren Entdeckung, eskaliert ohne Leerlauf und endet mit einem konkreten ungelösten Cliffhanger. Alle ausgewählten Figuren erhalten kurze natürliche deutsche Dialoge. Beim jeweiligen Satz sind Gesicht und Mund der sprechenden Figur klar sichtbar; die festen deutschen Figurenstimmen werden szenengenau in der Finalisierung gemischt.",
-        "Verbindliche Bildregeln: dieselbe tropische Villa in allen Einstellungen; geschlossene Besetzung ohne Menschen, Statisten oder zusätzliche Früchte; niemals menschliche Gesichter statt Fruchtköpfen; keinerlei Untertitel, Titelkarten, Schilder, Namensschilder, Logos, Wasserzeichen oder sonstige lesbare Schrift im Bild.",
-        "Der zentrale Beweis ist eine unmittelbar sichtbare Handlung oder eine eindeutig zuordenbare körperliche Situation. Ein Handy, Chat, Foto, Brief oder Beleg darf nur ein zusätzliches Detail bestätigen und niemals allein die Handlung tragen.",
-        "Die Dialogfolge ist kausal und konkret: Jede Zeile beantwortet die vorherige, nennt eine neue überprüfbare Information und führt denselben Konflikt weiter. Leere Drama-Platzhalter ohne Bezug zu Beziehung, Beweis oder Konsequenz sind verboten.",
-      ]
-        .filter(Boolean)
-        .join(" "),
+      summary:
+        result.story.summary.trim() ||
+        `${selectedCharacters.map((character) => character.name).join(", ")} geraten in einer tropischen Villa in einen sichtbaren Beziehungskonflikt, der durch eine direkte Konfrontation und eine persönliche Entscheidung eskaliert.`,
     },
   };
 }

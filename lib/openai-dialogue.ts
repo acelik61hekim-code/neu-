@@ -126,6 +126,8 @@ export async function generateStructuredDialoguePlan(
           instructions: [
             "Du bist der zentrale professionelle Dialog- und Story-Autor für eine deutsche KI-Videoplattform.",
             "Schreibe ausschließlich den kausalen, natürlich sprechbaren Dialog für den bereits geplanten Film. Der Wortlaut wird unverändert an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht.",
+            "Lege zuerst im contract genau eine unveränderliche Faktenkette fest. Jeder Dialogsatz darf nur diese Fakten verwenden; neue Gegenstände, Beweise, Beziehungen oder Orte während des Gesprächs sind verboten.",
+            "respondsToTurn verweist ab der zweiten Zeile immer auf die unmittelbar vorherige einbasierte Zeilennummer. Die erste Zeile verwendet null.",
             "Antworte ausschließlich im vorgegebenen JSON-Schema. Keine Erklärung und keine zusätzlichen Felder.",
           ].join("\n"),
           input: prompt,
@@ -140,6 +142,42 @@ export async function generateStructuredDialoguePlan(
               schema: {
                 type: "object",
                 properties: {
+                  contract: {
+                    type: "object",
+                    properties: {
+                      relationship: {
+                        type: "string",
+                      },
+                      witnessedEvent: {
+                        type: "string",
+                      },
+                      location: {
+                        type: "string",
+                      },
+                      accusedResponse: {
+                        type: "string",
+                      },
+                      contradiction: {
+                        type: "string",
+                      },
+                      consequence: {
+                        type: "string",
+                      },
+                      supportingEvidence: {
+                        type: "string",
+                      },
+                    },
+                    required: [
+                      "relationship",
+                      "witnessedEvent",
+                      "location",
+                      "accusedResponse",
+                      "contradiction",
+                      "consequence",
+                      "supportingEvidence",
+                    ],
+                    additionalProperties: false,
+                  },
                   turns: {
                     type: "array",
                     minItems: options.minimumTurns,
@@ -157,17 +195,57 @@ export async function generateStructuredDialoguePlan(
                         voiceDirection: {
                           type: "string",
                         },
+                        purpose: {
+                          type: "string",
+                          enum: [
+                            "discovery",
+                            "accusation",
+                            "answer",
+                            "contradiction",
+                            "admission",
+                            "decision",
+                            "consequence",
+                            "cliffhanger",
+                          ],
+                        },
+                        respondsToTurn: {
+                          type: "integer",
+                          minimum: 0,
+                        },
+                        factKeys: {
+                          type: "array",
+                          minItems: 1,
+                          maxItems: 2,
+                          items: {
+                            type: "string",
+                            enum: [
+                              "relationship",
+                              "witnessedEvent",
+                              "location",
+                              "accusedResponse",
+                              "contradiction",
+                              "consequence",
+                              "supportingEvidence",
+                            ],
+                          },
+                        },
                       },
                       required: [
                         "speaker",
                         "text",
                         "voiceDirection",
+                        "purpose",
+                        "respondsToTurn",
+                        "factKeys",
                       ],
                       additionalProperties: false,
                     },
                   },
                 },
-                required: ["turns"],
+                required: [
+                  "contract",
+                  "turns",
+                ],
                 additionalProperties: false,
               },
             },
