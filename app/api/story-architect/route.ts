@@ -52,16 +52,16 @@ export const maxDuration = 300;
 
 const STORY_MODELS = [
   "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
   "gemini-3.6-flash",
   "gemini-3.7-flash",
-  "gemini-3.5-flash",
 ] as const;
 
 const VIRAL_STORY_MODELS = [
-  "gemini-3.7-flash",
-  "gemini-3.6-flash",
   "gemini-3.5-flash",
+  "gemini-3.6-flash",
   "gemini-3.5-flash-lite",
+  "gemini-3.7-flash",
 ] as const;
 
 const RETRIES_PER_MODEL = 2;
