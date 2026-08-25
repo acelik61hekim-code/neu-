@@ -1673,7 +1673,7 @@ function normalizeArchitectResponse(
 function isInfidelityStory(
   story: StoryDraft,
 ): boolean {
-  return /fremdgeh|fremdgeher|affäre|seitensprung|untreu|betrüg|betrogen|geliebte|heimliche[rn]?\s+(?:flirt|beziehung)|cheat|infidel/i.test(
+  return /fremdgeh|fremdgeher|affäre|seitensprung|untreu|betrug|betrüg|betrogen|geliebte|heimliche[rn]?\s+(?:flirt|beziehung)|cheat|infidel/i.test(
     [
       story.title,
       story.genre,
@@ -3703,6 +3703,7 @@ VERBINDLICHE AUFGABE
 - Fülle zuerst contract aus. Er ist die einzige Wahrheit des Gesprächs und bleibt danach unverändert.
 - contract.witnessedEvent enthält genau eine sichtbare auslösende Handlung. contract.supportingEvidence enthält höchstens ein zusätzliches Beweisstück oder ausdrücklich „keines“.
 - Die erste Zeile ist Entdeckung oder Vorwurf und nutzt witnessedEvent. Die zweite Zeile ist eine direkte Antwort auf genau diesen Vorwurf und nutzt accusedResponse.
+- Die zweite Zeile wiederholt die zentrale Handlung ausdrücklich als Nomen oder Verb. „Das war nur ein Moment“, „Es war anders“ oder ähnliche Ausweichsätze gelten nicht als Antwort.
 - respondsToTurn ist in der ersten Zeile null. Danach verweist es immer auf die unmittelbar vorherige einbasierte Zeilennummer: zweite Zeile eins, dritte Zeile zwei und so weiter.
 - factKeys nennt pro Zeile nur die ein oder zwei contract-Fakten, die der hörbare Satz tatsächlich verwendet.
 - Jede Antwort reagiert direkt auf die vorige Zeile und ergänzt eine neue konkrete Information.
