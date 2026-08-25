@@ -294,8 +294,6 @@ export default function SongStudio({
           </a>
         </section>
 
-        <SongPlans onStatusChange={handleSubscriptionStatus} />
-
         <div className="mt-12 grid gap-6 lg:grid-cols-[1fr_360px]">
           <section className="space-y-6 rounded-3xl border border-white/10 bg-white/[0.035] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl sm:p-7">
             {revisionMode && (
@@ -456,6 +454,8 @@ export default function SongStudio({
             <p className="mt-4 flex items-center justify-center gap-2 text-center text-[11px] text-zinc-500"><LockIcon /> {subscription.active && (subscription.songsRemaining ?? 0) > 0 ? "Wird sicher von deinem Monatskontingent abgezogen" : "Einzelkauf ohne Abo möglich"}</p>
           </aside>
         </div>
+
+        <SongPlans onStatusChange={handleSubscriptionStatus} />
 
       </div>
     </main>
