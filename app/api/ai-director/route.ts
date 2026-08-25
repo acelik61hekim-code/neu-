@@ -645,6 +645,55 @@ function stripDialogueQuotes(
   return trimmed;
 }
 
+const PROVIDED_DIALOGUE_WORDS_PER_LINE = 10;
+const PROVIDED_DIALOGUE_MAX_CHARACTERS = 4_000;
+
+function splitProvidedDialogueText(
+  value: string,
+): string[] {
+  const text =
+    stripDialogueQuotes(
+      value,
+    )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (
+    !text ||
+    text.length >
+      PROVIDED_DIALOGUE_MAX_CHARACTERS
+  ) {
+    return [];
+  }
+
+  const words =
+    text
+      .split(/\s+/)
+      .filter(Boolean);
+
+  const chunks:
+    string[] = [];
+
+  for (
+    let index = 0;
+    index < words.length;
+    index +=
+      PROVIDED_DIALOGUE_WORDS_PER_LINE
+  ) {
+    chunks.push(
+      words
+        .slice(
+          index,
+          index +
+            PROVIDED_DIALOGUE_WORDS_PER_LINE,
+        )
+        .join(" "),
+    );
+  }
+
+  return chunks;
+}
+
 function extractProvidedDialogue(
   messages: readonly ConversationMessage[],
   characters: readonly StoryCharacter[],
@@ -681,9 +730,85 @@ function extractProvidedDialogue(
   const dialogue:
     ProvidedDialogueLine[] = [];
 
+  const addDialogue = (
+    speakerLabel: string,
+    rawText: string,
+  ) => {
+    const candidateKey =
+      normalizeSpeakerKey(
+        speakerLabel,
+      );
+
+    const knownSpeaker =
+      knownSpeakers.find(
+        ({
+          fullKey,
+          shortKey,
+        }) =>
+          candidateKey ===
+            fullKey ||
+          candidateKey ===
+            shortKey,
+      );
+
+    if (!knownSpeaker) {
+      return;
+    }
+
+    for (
+      const text
+      of splitProvidedDialogueText(
+        rawText,
+      )
+    ) {
+      const previous =
+        dialogue[
+          dialogue.length - 1
+        ];
+
+      if (
+        previous?.speaker ===
+          knownSpeaker.fullName &&
+        previous.text === text
+      ) {
+        continue;
+      }
+
+      dialogue.push({
+        speaker:
+          knownSpeaker.fullName,
+        text,
+      });
+    }
+  };
+
   for (const message of messages) {
     if (message.role !== "user") {
       continue;
+    }
+
+    /*
+     * Ready-to-use prompts commonly format an exact monologue as:
+     *
+     * Ruby sagt wörtlich:
+     *
+     * „Der vollständige Text …“
+     *
+     * Capture that block before processing ordinary one-line dialogue.
+     */
+    const quotedSpeechPattern =
+      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,64}?)\s+(?:sagt|spricht)(?:\s+wörtlich)?\s*:\s*[\r\n\t ]*[„"']([\s\S]{1,4000}?)[“"']/gimu;
+
+    for (
+      const match
+      of message.content.matchAll(
+        quotedSpeechPattern,
+      )
+    ) {
+      addDialogue(
+        match[1],
+        match[2],
+      );
     }
 
     const lines =
@@ -714,57 +839,10 @@ function extractProvidedDialogue(
         continue;
       }
 
-      const candidateKey =
-        normalizeSpeakerKey(
-          spokenMatch[1],
-        );
-
-      const knownSpeaker =
-        knownSpeakers.find(
-          ({
-            fullKey,
-            shortKey,
-          }) =>
-            candidateKey ===
-              fullKey ||
-            candidateKey ===
-              shortKey,
-        );
-
-      if (!knownSpeaker) {
-        continue;
-      }
-
-      const text =
-        stripDialogueQuotes(
-          spokenMatch[2],
-        );
-
-      if (
-        !text ||
-        text.length > 180
-      ) {
-        continue;
-      }
-
-      const previous =
-        dialogue[
-          dialogue.length - 1
-        ];
-
-      if (
-        previous?.speaker ===
-          knownSpeaker.fullName &&
-        previous.text === text
-      ) {
-        continue;
-      }
-
-      dialogue.push({
-        speaker:
-          knownSpeaker.fullName,
-        text,
-      });
+      addDialogue(
+        spokenMatch[1],
+        spokenMatch[2],
+      );
     }
   }
 

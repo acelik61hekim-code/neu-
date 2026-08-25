@@ -6066,19 +6066,70 @@ export async function POST(
           geminiApiKey,
       });
 
-    let generationResult =
-      await generateStoryWithFallback(
-        ai,
-        prompt,
-        voiceMode ===
-          "dialogue"
-          ? validateDialogueCandidate
-          : undefined,
-        creationMode ===
-          "viral-story"
-          ? VIRAL_STORY_MODELS
-          : STORY_MODELS,
-      );
+    let generationResult:
+      GeneratedStory;
+
+    if (
+      creationMode ===
+        "standard" &&
+      providedDialogue.length > 0
+    ) {
+      /*
+       * The user has already supplied the most important creative content:
+       * the exact spoken words. The normalizer can build the complete visual
+       * production plan around the existing story draft, so a second remote
+       * planning call would only add latency and another possible timeout.
+       */
+      generationResult = {
+        rawText:
+          "{}",
+        model:
+          "prepared-original-dialogue-plan",
+      };
+    } else {
+      try {
+        generationResult =
+          await generateStoryWithFallback(
+            ai,
+            prompt,
+            voiceMode ===
+              "dialogue"
+              ? validateDialogueCandidate
+              : undefined,
+            creationMode ===
+              "viral-story"
+              ? VIRAL_STORY_MODELS
+              : STORY_MODELS,
+          );
+      } catch (
+        planningError:
+          unknown
+      ) {
+        if (
+          creationMode ===
+            "viral-story" ||
+          !isRetryableGeminiError(
+            planningError,
+          )
+        ) {
+          throw planningError;
+        }
+
+        console.warn(
+          "Story Architect verwendet nach einem vorübergehenden Modellfehler den vollständigen sicheren Standard-Filmplan.",
+          getErrorDetails(
+            planningError,
+          ),
+        );
+
+        generationResult = {
+          rawText:
+            "{}",
+          model:
+            "resilient-standard-film-plan",
+        };
+      }
+    }
 
     const cleanedText =
       cleanJsonText(
