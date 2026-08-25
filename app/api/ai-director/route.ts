@@ -32,6 +32,7 @@ type RequestBody = {
   viralCharacterIds?: unknown;
   characterMode?: unknown;
   dialogueMode?: unknown;
+  singleSpeakerMode?: unknown;
   musicTrack?: unknown;
 };
 
@@ -174,6 +175,17 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Wenn die übrigen Story-Angaben ausreichen, darf ready erst dann true sein, wenn mindestens zwei Gesprächsfiguren im Story-Objekt stehen.
 `;
 
+const SINGLE_SPEAKER_SYSTEM_INSTRUCTION = `
+ZUSÄTZLICHER VERBINDLICHER EIN-PERSONEN-SPRECHMODUS
+
+- Die vom Nutzer gewünschte sichtbare Hauptfigur spricht selbst vor der Kamera.
+- Plane einen natürlichen Presenter-, Influencer- oder Figurenmonolog. Erfinde keine zweite Gesprächsfigur, keinen Interviewer, keinen Erzähler und keine Offscreen-Stimme.
+- Die Zusammenfassung legt konkret fest, was die Figur sagt und warum. Bei Werbung: relevanter Hook, belegbarer Produktnutzen und glaubwürdiger Abschluss statt leerer Werbefloskeln.
+- Wenn der Nutzer bereits einen oder mehrere Sätze für die Figur vorgibt, bleiben Sprecher und Wortlaut unverändert erhalten.
+- Beschreibe die sichtbare Sprechperformance mit natürlicher Mimik, Mundbewegung, Gestik und Blickkontakt zur Kamera.
+- Wenn die übrigen Angaben ausreichen, darf ready mit genau einer sichtbaren Sprecherfigur true sein.
+`;
+
 function enforceStudioAdvertisement(
   result: AiDirectorResult,
 ): AiDirectorResult {
@@ -278,6 +290,11 @@ ${characterList}
 - Die Figuren dürfen genauso in Werbung, Musikvideo, Komödie, Fantasy, Alltag, Kurzfilm, Erklärvideo oder jedem anderen passenden Schauplatz auftreten.
 - Passe Handlung, Stimmung, Kamera und Umgebung an die freie Idee des Nutzers an, nicht an frühere Früchte-TV-Vorlagen.
 - Erfinde keine menschlichen Ersatzgesichter für die ausgewählten Fruchtfiguren.
+${
+  selectedCharacters.length === 1
+    ? "- Wenn diese eine ausgewählte Figur laut Nutzer vor der Kamera sprechen soll, bleibt sie die einzige Sprecherfigur; erfinde keinen Gesprächspartner."
+    : ""
+}
 `;
 }
 
@@ -631,6 +648,7 @@ function stripDialogueQuotes(
 function extractProvidedDialogue(
   messages: readonly ConversationMessage[],
   characters: readonly StoryCharacter[],
+  allowSingleSpeaker = false,
 ): ProvidedDialogueLine[] {
   const knownSpeakers =
     characters.map(
@@ -649,7 +667,14 @@ function extractProvidedDialogue(
       }),
     );
 
-  if (knownSpeakers.length < 2) {
+  if (
+    knownSpeakers.length <
+      (
+        allowSingleSpeaker
+          ? 1
+          : 2
+      )
+  ) {
     return [];
   }
 
@@ -752,8 +777,17 @@ function extractProvidedDialogue(
     );
 
   return (
-    dialogue.length >= 2 &&
-    distinctSpeakers.size >= 2
+    dialogue.length >=
+      (
+        allowSingleSpeaker
+          ? 1
+          : 2
+      ) &&
+    (
+      allowSingleSpeaker ||
+      distinctSpeakers.size >=
+        2
+    )
   )
     ? dialogue.slice(0, 48)
     : [];
@@ -778,6 +812,7 @@ function createResilientDirectorDraft(
   selectedCharacterIds: string[],
   characterMode: "general" | "viral" | undefined,
   dialogueMode: boolean,
+  singleSpeakerMode: boolean,
   musicTrack?: MusicVideoTrackContext,
 ): AiDirectorResult {
   const selectedCharacters =
@@ -798,7 +833,8 @@ function createResilientDirectorDraft(
         name: character.name,
         description: `${character.fixedAppearance} Persönlichkeit: ${character.personality}.`,
       }))
-    : dialogueMode
+    : dialogueMode &&
+        !singleSpeakerMode
       ? [
           {
             name: "Hauptfigur",
@@ -844,7 +880,9 @@ function createResilientDirectorDraft(
       summary: [
         `Verbindliche Videoidee des Nutzers: ${userIdea || "Eine individuelle, professionell inszenierte Videoidee."}`,
         dialogueMode
-          ? "Die sichtbaren Figuren führen einen kausalen, natürlich klingenden Dialog mit konkretem Konflikt, Reaktionen und Konsequenz."
+          ? singleSpeakerMode
+            ? "Die sichtbare Hauptfigur spricht natürlich und direkt vor der Kamera. Es wird keine zweite Gesprächsfigur erfunden."
+            : "Die sichtbaren Figuren führen einen kausalen, natürlich klingenden Dialog mit konkretem Konflikt, Reaktionen und Konsequenz."
           : "Die Handlung wird ohne unnötige Rückfragen visuell klar, zusammenhängend und professionell ausgearbeitet.",
         musicTrack
           ? `Der vollständige Originalsong „${musicTrack.name}“ mit ${musicTrack.durationSeconds.toFixed(2)} Sekunden bestimmt Rhythmus und Bildbogen.`
@@ -865,6 +903,7 @@ async function generateWithRetry(
     }>;
   }>,
   dialogueMode = false,
+  singleSpeakerMode = false,
   musicTrack?: MusicVideoTrackContext,
   viralStory = false,
   generalCharacterInstruction = "",
@@ -891,7 +930,11 @@ async function generateWithRetry(
           systemInstruction:
             [
               SYSTEM_INSTRUCTION,
-              dialogueMode ? DIALOGUE_SYSTEM_INSTRUCTION : "",
+              dialogueMode
+                ? singleSpeakerMode
+                  ? SINGLE_SPEAKER_SYSTEM_INSTRUCTION
+                  : DIALOGUE_SYSTEM_INSTRUCTION
+                : "",
               generalCharacterInstruction,
               musicTrack
                 ? [
@@ -1106,6 +1149,11 @@ export async function POST(
     const dialogueMode =
       body.dialogueMode === true;
 
+    const singleSpeakerMode =
+      dialogueMode &&
+      body.singleSpeakerMode ===
+        true;
+
     const musicTrack =
       isMusicVideoTrackContext(body.musicTrack)
         ? body.musicTrack
@@ -1122,6 +1170,7 @@ export async function POST(
           ai,
           conversation,
           dialogueMode,
+          singleSpeakerMode,
           musicTrack,
           isViralStory,
           characterMode === "general"
@@ -1190,6 +1239,7 @@ export async function POST(
         viralCharacterIds,
         characterMode,
         dialogueMode,
+        singleSpeakerMode,
         musicTrack,
       );
     }
@@ -1212,6 +1262,7 @@ export async function POST(
       extractProvidedDialogue(
         messages,
         finalResult.story.characters,
+        singleSpeakerMode,
       );
 
     const finalStory =

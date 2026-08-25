@@ -2819,9 +2819,10 @@ export default function StudioHome({
                 {voiceMode ===
                 "dialogue" ? (
                   <p className="mt-2 text-[11px] leading-5 text-emerald-300">
-                    Mindestens zwei sichtbare Figuren sprechen abwechselnd.
-                    Jede Figur erhält eine feste Stimme; der Filmplan wird vor
-                    der Zahlung automatisch geprüft.
+                    Eine einzelne Figur kann direkt zur Kamera sprechen;
+                    mehrere Figuren sprechen abwechselnd. Jede Figur erhält
+                    eine feste Stimme und der Filmplan wird vor der Zahlung
+                    automatisch geprüft.
                   </p>
                 ) : (
                   <p className="mt-2 text-[11px] leading-5 text-zinc-600">
@@ -3017,6 +3018,9 @@ export default function StudioHome({
             }
             onVoiceoverTextChange={
               setVoiceoverText
+            }
+            onVoiceModeChange={
+              setVoiceMode
             }
             targetDurationSeconds={
               targetDurationSeconds

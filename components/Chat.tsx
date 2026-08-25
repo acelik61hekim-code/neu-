@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
+import { inferPromptSpeechIntent } from "@/lib/audio-options";
 
 import {
   requestAiDirector,
@@ -41,6 +42,7 @@ type ChatProps = {
   error: string | null;
   onStoryChange: (story: string) => void;
   onVoiceoverTextChange?: (text: string) => void;
+  onVoiceModeChange?: (mode: VideoVoiceMode) => void;
 
   /*
    * Optional, damit app/page.tsx während der Umstellung
@@ -124,6 +126,7 @@ export default function Chat({
   error,
   onStoryChange,
   onVoiceoverTextChange,
+  onVoiceModeChange,
   targetDurationSeconds = 60,
   aspectRatio = "9:16",
   editingStyle = "social",
@@ -389,14 +392,67 @@ export default function Chat({
           }),
         );
 
+      const speechIntent =
+        inferPromptSpeechIntent(
+          conversation
+            .filter(
+              (message) =>
+                message.role ===
+                "user",
+            )
+            .map(
+              (message) =>
+                message.content,
+            )
+            .join("\n"),
+        );
+
+      const inferredDialogueMode =
+        !isViralStory &&
+        editingStyle !==
+          "music-video" &&
+        voiceMode ===
+          "auto" &&
+        speechIntent !==
+          null;
+
+      const effectiveVoiceMode:
+        VideoVoiceMode =
+        isViralStory ||
+        inferredDialogueMode
+          ? "dialogue"
+          : voiceMode;
+
+      const singleSpeakerMode =
+        !isViralStory &&
+        effectiveVoiceMode ===
+          "dialogue" &&
+        (
+          speechIntent ===
+            "single-speaker" ||
+          (
+            speechIntent ===
+              null &&
+            characterIds.length ===
+              1
+          )
+        );
+
+      if (
+        inferredDialogueMode
+      ) {
+        onVoiceModeChange?.(
+          "dialogue",
+        );
+      }
+
       const directorResult =
         await requestAiDirector(
           conversation,
           characterIds,
 
-          !isViralStory &&
-            voiceMode ===
-              "dialogue",
+          effectiveVoiceMode ===
+            "dialogue",
 
           editingStyle ===
               "music-video"
@@ -404,6 +460,8 @@ export default function Chat({
             : undefined,
 
           characterMode,
+
+          singleSpeakerMode,
         );
 
       const assistantMessage:
@@ -474,7 +532,7 @@ export default function Chat({
 
           isViralStory
             ? "dialogue"
-            : voiceMode,
+            : effectiveVoiceMode,
 
           spokenLanguage,
 

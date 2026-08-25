@@ -1698,7 +1698,7 @@ function normalizeProvidedDialogueLines(
     !Array.isArray(
       story.providedDialogue,
     ) ||
-    story.providedDialogue.length < 2
+    story.providedDialogue.length < 1
   ) {
     return [];
   }
@@ -1780,7 +1780,13 @@ function normalizeProvidedDialogueLines(
       (line) =>
         line.speaker,
     ),
-  ).size >= 2
+  ).size >=
+      (
+        expectedSpeakers.length ===
+          1
+          ? 1
+          : 2
+      )
     ? normalized
     : [];
 }
@@ -5361,7 +5367,7 @@ ${
     Array.isArray(
       story.providedDialogue,
     ) &&
-    story.providedDialogue.length >= 2
+    story.providedDialogue.length >= 1
       ? `
 VOM NUTZER VORGEGEBENER ORIGINALDIALOG – ABSOLUTE PRIORITÄT
 

@@ -26,6 +26,68 @@ export const SUPPORTED_SPOKEN_LANGUAGES = [
   "en",
 ] as const satisfies readonly VideoSpokenLanguage[];
 
+export type PromptSpeechIntent =
+  | "single-speaker"
+  | "conversation";
+
+export function inferPromptSpeechIntent(
+  value: string,
+): PromptSpeechIntent | null {
+  const text =
+    value
+      .toLocaleLowerCase(
+        "de-DE",
+      )
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (!text) {
+    return null;
+  }
+
+  const explicitlySilent =
+    /\b(?:ohne\s+(?:sprache|dialog|stimme)|stumm|lautlos|(?:soll|darf|wird|möchte)\s+(?:die\s+person\s+)?(?:nicht|niemals)\s+(?:sprechen|reden|sagen))\b/i.test(
+      text,
+    );
+
+  if (explicitlySilent) {
+    return null;
+  }
+
+  const speakerLabelCount =
+    (
+      value.match(
+        /(?:^|\n)\s*(?:[-*•]\s*)?[^:\n]{1,48}:\s*[^\n]+/g,
+      ) ??
+      []
+    ).length;
+
+  const requestsSpeech =
+    /\b(?:spricht|sprechen|redet|reden|sagt|sagen|dialog|gespräch|monolog|ansprache|moderiert|präsentiert)\b/i.test(
+      text,
+    ) ||
+    /\b(?:soll|muss|wird|möchte)\b.{0,60}\b(?:erklären|erzählen|präsentieren|vorstellen|bewerben)\b/i.test(
+      text,
+    ) ||
+    speakerLabelCount >
+      0;
+
+  if (!requestsSpeech) {
+    return null;
+  }
+
+  const requestsConversation =
+    speakerLabelCount >=
+      2 ||
+    /\b(?:miteinander|abwechselnd|unterhalten\s+sich|gespräch\s+zwischen|dialog\s+zwischen|beide\s+(?:sprechen|reden)|zwei\s+(?:personen|figuren|menschen).{0,40}(?:sprechen|reden))\b/i.test(
+      text,
+    );
+
+  return requestsConversation
+    ? "conversation"
+    : "single-speaker";
+}
+
 export function isVideoAudioStyle(
   value: unknown,
 ): value is VideoAudioStyle {
@@ -137,7 +199,7 @@ export function buildSelectedAudioDirection(
         : "Use speech only when it improves the story. Keep any dialogue or narration concise, natural and clearly mixed.",
 
     dialogue:
-      "POST-PRODUCED DIALOGUE MODE (highest priority): Stage a real on-screen conversation between at least two visible, named characters. The active speaker's face and mouth remain clearly visible and perform the exact planned line with natural sentence-paced mouth, jaw and facial movement. Generate only quiet non-vocal ambience, Foley and restrained music inside the video footage: no audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. Each character receives a distinct fixed studio voice that is added scene-synchronously during final finishing.",
+      "POST-PRODUCED VISIBLE SPEECH MODE (highest priority): Stage the exact planned on-screen speech. A single selected character may deliver a direct-to-camera presenter monologue; with multiple selected speakers, stage a real alternating conversation. The active speaker's face and mouth remain clearly visible and perform the exact planned line with natural sentence-paced mouth, jaw and facial movement. Generate only quiet non-vocal ambience, Foley and restrained music inside the video footage: no audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. Each character receives a distinct fixed studio voice that is added scene-synchronously during final finishing.",
 
     voiceover:
       "Do not generate dialogue, narration or any spoken words inside the video footage. A separate studio-quality voice-over will be added in post-production, either from the customer's exact text or from the automatically written narration; preserve clean music, ambience and sound effects beneath it.",
