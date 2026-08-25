@@ -3721,6 +3721,9 @@ VERBINDLICHE AUFGABE
 - Bei drei Figuren sind „er“, „sie“, „ihn“, „ihm“ und „ihr“ als unklare Verweise verboten. Verwende den Namen, „ich“, „du“, „mich“, „dich“, „wir“ oder „euch“ und nenne die konkrete Handlung.
 - Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
 - Schreibe wie tatsächlich gesprochene deutsche Reality-TV-Sprache: kurze Hauptsätze oder Satzfragmente, spontane Reaktionen und klare Unterbrechungen statt höflicher Erklärprosa.
+- Nutze im gesprochenen Deutsch Präsens oder Perfekt. Literarisches Präteritum wie „du küsstest“, „ich küsste“ oder „Ora küsste mich“ ist verboten.
+- Nach der klaren Benennung darf „Kuss“ oder „küssen“ nicht in fast jeder Zeile wiederholt werden. Sprich danach natürlich über Absicht, Lüge, Vertrauen und die persönliche Entscheidung.
+- Formulierungen wie „Der Kuss beendet uns“, „wegen des Kusses?“ oder „Ich gehe wegen des Kusses“ klingen künstlich und sind verboten. Die Schlussreaktion muss wie ein echter Satz über Vertrauen, Trennung oder eine letzte Chance klingen.
 - Jede Figur besitzt einen eigenen Wortschatz und eine eigene Haltung. Wenn zwei Sprecher ihre Zeilen tauschen könnten, schreibe beide Zeilen neu.
 - Mindestens eine Zeile muss kurz, eigenständig verständlich und zitierfähig sein, ohne wie ein Werbespruch zu klingen.
 - Keine Begrüßungen, Zusammenfassungen, Moderation, Therapiesprache oder Kundendienstformulierungen.
@@ -3880,6 +3883,63 @@ function getTerraDialogueQualityIssues(
     ) {
       issues.push(
         "Die Untreue-Dialogfolge benötigt beobachtete Handlung, direkte Antwort und eine klare persönliche Konsequenz ohne Themenwechsel.",
+      );
+    }
+
+    const dialogueLines =
+      turns.map(
+        (turn) =>
+          turn.text,
+      );
+
+    const unnaturalSpokenGerman =
+      dialogueLines.some(
+        (line) =>
+          /\b(?:ich|du|er|sie|wir|ihr)\s+küsste(?:st|n|t)?\b|\b(?:der|dieser)\s+kuss\s+beendet\s+(?:uns|euch|die beziehung)\b|\bwegen des kusses\??\s*$|\bich gehe wegen des kusses\b/i.test(
+            line,
+          ),
+      );
+
+    if (unnaturalSpokenGerman) {
+      issues.push(
+        "Der Dialog enthält steifes oder künstliches Deutsch. Nutze natürliches Präsens oder Perfekt und formuliere die Beziehungskonsequenz wie ein echtes Gespräch.",
+      );
+    }
+
+    const betrayalRepetitionCount =
+      dialogueLines.filter(
+        (line) =>
+          /küss|kuss/i.test(
+            line,
+          ),
+      ).length;
+
+    if (
+      dialogueLines.length >= 5 &&
+      betrayalRepetitionCount >
+        Math.ceil(
+          dialogueLines.length *
+            0.67,
+        )
+    ) {
+      issues.push(
+        "Kuss oder küssen wird zu oft mechanisch wiederholt. Wechsle nach der direkten Antwort zu Absicht, Lüge, Vertrauen und Konsequenz.",
+      );
+    }
+
+    const naturalClosing =
+      dialogueLines
+        .slice(-2)
+        .join(" ");
+
+    if (
+      dialogueLines.length > 3 &&
+      !/beziehung|vertrau|lüg|belog|schluss|vorbei|trenn|verlass|chance/i.test(
+        naturalClosing,
+      )
+    ) {
+      issues.push(
+        "Die letzten beiden Zeilen brauchen eine natürlich ausgesprochene Reaktion über Vertrauen, Trennung oder eine letzte Chance.",
       );
     }
   }
@@ -4070,31 +4130,31 @@ function buildInfidelityDialogueFallback(
   > = [
     {
       speaker: accuser,
-      text: `${accusedName}, ich sah deinen Kuss mit ${witnessName}.`,
+      text: `${accusedName}, ich hab gesehen, wie du ${witnessName} geküsst hast.`,
       voiceDirection: "kontrolliert, verletzt und direkt",
       purpose: "discovery",
       factKeys: ["witnessedEvent"],
     },
     {
       speaker: accused,
-      text: `Ich habe ${witnessName} geküsst. Es war kein Versehen.`,
+      text: `Ich hab ${witnessName} geküsst. Es war mein Fehler.`,
       voiceDirection: "angespannt, aber ohne Ausflucht",
       purpose: "answer",
       factKeys: ["accusedResponse"],
     },
     {
       speaker: witness,
-      text: `${accusedName}, du hast zuerst meine Nähe gesucht.`,
+      text: `Nein, ${accusedName}. Du wolltest den Kuss.`,
       voiceDirection: "ruhig, bestimmt und schonungslos ehrlich",
       purpose: "contradiction",
       factKeys: ["contradiction"],
     },
     {
       speaker: accused,
-      text: `Ja, ${accuserName}. Ich wollte diesen Kuss.`,
+      text: `Ja, ${accuserName}. Ich hab dich danach belogen.`,
       voiceDirection: "leise, beschämt und eindeutig",
       purpose: "admission",
-      factKeys: ["witnessedEvent", "accusedResponse"],
+      factKeys: ["relationship", "accusedResponse"],
     },
     {
       speaker: accuser,
@@ -4161,14 +4221,14 @@ function buildInfidelityDialogueFallback(
   > = [
     {
       speaker: accuser,
-      text: `Unsere Beziehung ist vorbei. ${accusedName}, geh jetzt.`,
+      text: "Ich kann dir nicht mehr vertrauen. Es ist vorbei.",
       voiceDirection: "fest, ruhig und endgültig",
       purpose: "decision",
       factKeys: ["relationship", "consequence"],
     },
     {
       speaker: accused,
-      text: `${accuserName}, ich habe alles zerstört.`,
+      text: `${accuserName}, bitte. Gib mir noch eine Chance.`,
       voiceDirection: "leise und erschüttert",
       purpose: "consequence",
       factKeys: ["consequence"],
