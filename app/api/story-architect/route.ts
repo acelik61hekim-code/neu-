@@ -52,21 +52,18 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 const STORY_MODELS = [
-  "gemini-3.5-flash-lite",
   "gemini-3.5-flash",
-  "gemini-3.6-flash",
-  "gemini-3.7-flash",
+  "gemini-3.5-flash-lite",
 ] as const;
 
 const VIRAL_STORY_MODELS = [
   "gemini-3.5-flash",
-  "gemini-3.6-flash",
   "gemini-3.5-flash-lite",
-  "gemini-3.7-flash",
 ] as const;
 
-const RETRIES_PER_MODEL = 2;
+const RETRIES_PER_MODEL = 1;
 const INITIAL_RETRY_DELAY_MS = 1500;
+const STORY_MODEL_TIMEOUT_MS = 20_000;
 
 const SEEDANCE_CLIP_DURATION_SECONDS = 15;
 
@@ -478,8 +475,17 @@ function normalizeProductionBible(
 
   const requiredCharacterCount =
     voiceMode === "dialogue"
-      ? 2
+      ? story.characters.length ===
+          1
+        ? 1
+        : 2
       : 1;
+
+  const maximumCharacterCount =
+    story.characters.length >
+      0
+      ? story.characters.length
+      : 8;
 
   const characterCount =
     Math.max(
@@ -487,6 +493,7 @@ function normalizeProductionBible(
       Math.min(
         rawCharacterBible.length,
         8,
+        maximumCharacterCount,
       ),
       requiredCharacterCount,
     );
@@ -2068,11 +2075,40 @@ function hasMandatoryDialoguePlan(
   enforceDialogueSemantics =
     true,
 ): boolean {
+  const isViralDialogue =
+    creationMode ===
+    "viral-story";
+
+  /*
+   * Ein normaler Werbe- oder Presenter-Clip darf bewusst nur eine
+   * sichtbare Sprecherfigur haben. Im Viral-Story-Modus bleibt ein
+   * echtes Gespräch mit mindestens zwei Figuren verpflichtend.
+   */
+  const minimumSpeakerCount =
+    isViralDialogue
+      ? Math.min(
+          3,
+          Math.max(
+            2,
+            expectedSpeakers
+              .length,
+          ),
+        )
+      : Math.min(
+          3,
+          Math.max(
+            1,
+            expectedSpeakers
+              .length,
+          ),
+        );
+
   if (
     response
       .productionBible
       .characterBible
-      .length < 2 ||
+      .length <
+        minimumSpeakerCount ||
     (
       targetDurationSeconds >
         15 &&
@@ -2125,21 +2161,6 @@ function hasMandatoryDialoguePlan(
           dialogue.enabled,
       );
 
-  const minimumSpeakerCount =
-    Math.min(
-      3,
-
-      Math.max(
-        2,
-        expectedSpeakers
-          .length,
-      ),
-    );
-
-  const isViralDialogue =
-    creationMode ===
-    "viral-story";
-
   const minimumDialogueCount =
     isViralDialogue
       ? Math.min(
@@ -2157,7 +2178,25 @@ function hasMandatoryDialoguePlan(
                 ),
               ),
         )
-      : minimumSpeakerCount;
+      : expectedSpeakers.length ===
+          1
+        ? Math.min(
+            (
+              1 +
+              response
+                .moviePlan
+                .continuations
+                .length
+            ) * 4,
+            Math.max(
+              3,
+              Math.ceil(
+                targetDurationSeconds /
+                  15,
+              ) * 2,
+            ),
+          )
+        : minimumSpeakerCount;
 
   if (
     !plannedDialogue[
@@ -2174,6 +2213,18 @@ function hasMandatoryDialoguePlan(
 
   const speakers =
     new Set<string>();
+
+  const expectedSpeakerNames =
+    new Set(
+      expectedSpeakers.map(
+        (speaker) =>
+          speaker
+            .trim()
+            .toLocaleLowerCase(
+              "de-DE",
+            ),
+      ),
+    );
 
   let totalWordCount =
     0;
@@ -2224,6 +2275,13 @@ function hasMandatoryDialoguePlan(
 
     if (
       !speaker ||
+      (
+        expectedSpeakerNames.size >
+          0 &&
+        !expectedSpeakerNames.has(
+          normalizedSpeaker,
+        )
+      ) ||
       forbiddenSpeaker.test(
         speaker,
       ) ||
@@ -3254,6 +3312,12 @@ function isRetryableGeminiError(
     ) ||
     message.includes(
       "deadline exceeded",
+    ) ||
+    message.includes(
+      "timeout",
+    ) ||
+    message.includes(
+      "timed out",
     )
   );
 }
@@ -3347,6 +3411,11 @@ async function generateStoryWithFallback(
                 prompt,
 
               config: {
+                httpOptions: {
+                  timeout:
+                    STORY_MODEL_TIMEOUT_MS,
+                },
+
                 responseMimeType:
                   "application/json",
 
@@ -3790,6 +3859,67 @@ Abgelehnter Entwurf:
 ${JSON.stringify(previousDraft)}
 `
       : "";
+
+  const isSingleSpeakerSpokesperson =
+    creationMode ===
+      "standard" &&
+    speakerNames.length ===
+      1;
+
+  if (
+    isSingleSpeakerSpokesperson
+  ) {
+    return `
+Schreibe den endgültigen Monolog für ein ${targetDurationSeconds}-Sekunden-Video mit genau einer sichtbaren Sprecherfigur.
+
+SPRECHERFIGUR
+${speakerNames[0]}
+
+SPRACHE
+${language}
+
+VERBINDLICHE AUFGABE
+
+- Erzeuge zwischen ${minimumTurns} und ${maximumTurns} kurzen Monologzeilen in genauer zeitlicher Reihenfolge.
+- speaker ist in jeder Zeile exakt "${speakerNames[0]}".
+- Eine Zeile hat höchstens ${maximumWordsPerLine} kurze, gut aussprechbare Wörter.
+- Bei fünfzehn Sekunden haben alle Zeilen zusammen höchstens vierundzwanzig Wörter.
+- Die erste Zeile ist ein glaubwürdiger Hook und verwendet purpose "discovery".
+- Die mittlere Zeile erklärt einen konkreten Nutzen und verwendet purpose "answer".
+- Die letzte Zeile endet natürlich mit Vorteil oder Handlungsaufforderung und verwendet purpose "consequence".
+- Schreibe wie eine echte deutsche Influencerin oder ein echter Presenter vor der Kamera: direkt, lebendig, konkret und ohne Werbeagentur-Floskeln.
+- Keine zweite Figur, kein Streit, kein Interview, keine Frage an eine unsichtbare Person, kein Erzähler und keine Offscreen-Stimme.
+- Keine Begrüßung, keine Hashtags, keine Ziffern, keine Schrägstriche und keine Untertitel.
+- Verwende ausschließlich belegbare Funktionen aus der STORY und dem sichtbaren Filmplan. Erfinde keine Funktionen, Preise oder Versprechen.
+- respondsToTurn ist in der ersten Zeile null. Danach entspricht der Wert der unmittelbar vorherigen einbasierten Zeilennummer.
+- voiceDirection beschreibt jeweils kurz Mimik, Energie und natürliche Sprechhaltung.
+- Fülle alle contract-Felder. Verwende sie dafür so: relationship = Beziehung zur Zielgruppe; witnessedEvent = Problem oder Hook; location = sichtbarer Drehort; accusedResponse = Produktlösung; contradiction = zu vermeidendes Missverständnis oder "keines"; consequence = konkreter Nutzen oder Handlungsaufforderung; supportingEvidence = sichtbare Funktion oder "keines".
+- factKeys enthält pro Zeile eine oder zwei tatsächlich verwendete contract-Fakten.
+
+${correctionSection}
+
+STORY
+${JSON.stringify({
+  title: story.title,
+  genre: story.genre,
+  mood: story.mood,
+  setting: story.setting,
+  summary: story.summary,
+  characters:
+    story.characters.map(
+      (character) => ({
+        name:
+          character.name,
+        description:
+          character.description,
+      }),
+    ),
+})}
+
+SICHTBARER FILMPLAN ALS INSZENIERUNGSHILFE
+${JSON.stringify(visualBeats)}
+`;
+  }
 
   return `
 Schreibe den endgültigen Dialog für ein ${targetDurationSeconds}-Sekunden-Video.
@@ -4294,6 +4424,34 @@ function applyProvidedDialogueLines(
   };
 }
 
+function applyStudioSpokespersonFallback(
+  response: ArchitectResponse,
+  speaker: string,
+  spokenLanguage: VideoSpokenLanguage,
+): ArchitectResponse {
+  return applyProvidedDialogueLines(
+    response,
+    [
+      {
+        speaker,
+        text:
+          "Videos, Songs und Bilder – alles an einem Ort.",
+      },
+      {
+        speaker,
+        text:
+          "Mit Ki Video Studio wird deine Idee zum fertigen Projekt.",
+      },
+      {
+        speaker,
+        text:
+          "Probier es jetzt selbst aus.",
+      },
+    ],
+    spokenLanguage,
+  );
+}
+
 function hasExactProvidedDialoguePlan(
   response: ArchitectResponse,
   expectedLines: readonly ProvidedDialogueLine[],
@@ -4533,9 +4691,16 @@ async function writeDialogueWithTerra(
       ),
     );
 
+  const isSingleSpeakerSpokesperson =
+    creationMode ===
+      "standard" &&
+    speakerNames.length ===
+      1;
+
   const minimumTurns =
     creationMode ===
-      "viral-story"
+        "viral-story" ||
+      isSingleSpeakerSpokesperson
       ? maximumTurns
       : Math.min(
           maximumTurns,
@@ -4554,13 +4719,19 @@ async function writeDialogueWithTerra(
   let previousDraft:
     TerraDialoguePayload | undefined;
 
+  const maximumAttempts =
+    isSingleSpeakerSpokesperson
+      ? 1
+      : 2;
+
   for (
     let attempt = 1;
-    attempt <= 2;
+    attempt <=
+      maximumAttempts;
     attempt += 1
   ) {
     console.log(
-      `Story Architect Dialog-Autor: ${DIALOGUE_WRITER_MODEL}, Versuch ${attempt}/2`,
+      `Story Architect Dialog-Autor: ${DIALOGUE_WRITER_MODEL}, Versuch ${attempt}/${maximumAttempts}`,
     );
 
     try {
@@ -4585,6 +4756,13 @@ async function writeDialogueWithTerra(
             ],
             minimumTurns,
             maximumTurns,
+            style:
+              creationMode ===
+                  "standard" &&
+                speakerNames.length ===
+                  1
+                ? "spokesperson"
+                : "conversation",
           },
         );
 
@@ -4819,6 +4997,14 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
   const finalOutputSeconds =
     activeMusicTrack?.durationSeconds ??
     targetDurationSeconds;
+
+  const isSingleSpeakerDialogue =
+    voiceMode ===
+      "dialogue" &&
+    creationMode ===
+      "standard" &&
+    story.characters.length ===
+      1;
 
   const musicTrackSection =
     activeMusicTrack
@@ -5101,7 +5287,9 @@ SCHNITTSTIL: SOCIAL / REELS
         ? "ORIGINAL UPLOADED SONG: Generate visuals with no audible dialogue, singing, narration or extra music. The complete customer song is added as the only final soundtrack during finishing. Plan visible performance and edit rhythm from the supplied musical analysis."
       : voiceMode ===
           "dialogue"
-        ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE: Plan exact short lines and visible sentence-paced speaking performances, but keep generated footage free of audible speech. Fixed voices are mixed later."
+        ? isSingleSpeakerDialogue
+          ? "POST-PRODUCED ON-CAMERA SPOKESPERSON: Plan exact short direct-to-camera lines for the single selected character, with natural sentence-paced mouth, face, hand and body performance. Keep generated footage free of audible speech; the fixed voice is mixed later."
+          : "POST-PRODUCED MULTI-SPEAKER DIALOGUE: Plan exact short lines and visible sentence-paced speaking performances, but keep generated footage free of audible speech. Fixed voices are mixed later."
         : buildSelectedAudioDirection(
             audioStyle,
             voiceMode,
@@ -5113,7 +5301,22 @@ SCHNITTSTIL: SOCIAL / REELS
   const mandatoryDialogueSection =
     voiceMode ===
     "dialogue"
-      ? `
+      ? isSingleSpeakerDialogue
+        ? `
+VERBINDLICHER EIN-PERSONEN-SPRECHMODUS – HÖCHSTE PRIORITÄT
+
+- Das Video zeigt ausschließlich ${story.characters[0].name} als sichtbare Sprecherfigur vor der Kamera.
+- Es ist ein professioneller Presenter- beziehungsweise Influencer-Auftritt und ausdrücklich kein Gespräch mit einer erfundenen zweiten Person.
+- productionBible.characterBible enthält exakt die ausgewählte Figur.
+- moviePlan.opening.dialogue.enabled ist true und speaker ist exakt "${story.characters[0].name}".
+- opening.dialogue und opening.dialogueTurns bilden zusammen einen flüssigen, natürlich gesprochenen Monolog.
+- Beginne mit einem kurzen relevanten Hook, nenne danach konkrete Vorteile aus der Story und ende mit einer glaubwürdigen Handlungsaufforderung.
+- Jede Dialogzeile hat höchstens zwölf Wörter; alle Zeilen zusammen haben bei fünfzehn Sekunden höchstens vierundzwanzig Wörter.
+- Handlung, Mimik, Gestik, Kamera und englischer Video-Prompt folgen exakt dem gesprochenen Inhalt.
+- Erfinde keine zweite Figur, keinen Interviewer, keinen Erzähler und keine Offscreen-Stimme.
+- Keine Untertitel.
+`
+        : `
 VERBINDLICHER DIALOGMODUS – HÖCHSTE PRIORITÄT
 
 - Das Video MUSS ein sichtbares Gespräch zwischen mindestens zwei benannten Personen sein.
@@ -5776,6 +5979,14 @@ export async function POST(
             )
         : [];
 
+    const isSingleSpeakerDialogue =
+      voiceMode ===
+        "dialogue" &&
+      creationMode ===
+        "standard" &&
+      expectedDialogueSpeakers.length ===
+        1;
+
     const providedDialogue =
       voiceMode === "dialogue"
         ? normalizeProvidedDialogueLines(
@@ -5805,6 +6016,7 @@ export async function POST(
 
         const dialogueValid =
           providedDialogue.length > 0 ||
+          isSingleSpeakerDialogue ||
           hasMandatoryDialoguePlan(
             normalizedCandidate,
             expectedDialogueSpeakers,
@@ -5987,6 +6199,33 @@ export async function POST(
     }
 
     if (
+      isSingleSpeakerDialogue &&
+      isStudioWebsiteAdvertisement(
+        [
+          story.title,
+          story.genre,
+          story.mood,
+          story.setting,
+          story.summary,
+        ].join("\n"),
+      ) &&
+      !hasMandatoryDialoguePlan(
+        normalized,
+        expectedDialogueSpeakers,
+        targetDurationSeconds,
+        creationMode,
+        story,
+      )
+    ) {
+      normalized =
+        applyStudioSpokespersonFallback(
+          normalized,
+          expectedDialogueSpeakers[0],
+          spokenLanguage,
+        );
+    }
+
+    if (
       !validateArchitectResponse(
         normalized,
       )
@@ -6136,7 +6375,7 @@ export async function POST(
             false,
 
           error:
-            "Die Gemini-Modelle sind momentan stark ausgelastet. Mehrere Modelle und automatische Wiederholungen wurden bereits versucht. Bitte probiere es in wenigen Augenblicken erneut.",
+            "Der Story-Planer hat innerhalb des sicheren Zeitlimits keine vollständige Antwort erhalten. Es wurde noch kein Video gestartet. Bitte probiere es in wenigen Augenblicken erneut.",
         },
 
         {

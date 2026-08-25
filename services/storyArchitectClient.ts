@@ -1645,6 +1645,15 @@ export async function requestStoryArchitect(
       await response
         .json() as StoryArchitectApiResponse;
   } catch {
+    if (
+      response.status ===
+      504
+    ) {
+      throw new Error(
+        "Die Filmplanung hat das Zeitlimit erreicht. Es wurde noch kein Video gestartet und keine Videominute verbraucht. Bitte sende die Idee erneut.",
+      );
+    }
+
     throw new Error(
       `Der Story Architect hat keine gültige JSON-Antwort geliefert. HTTP ${response.status}`,
     );

@@ -6,6 +6,9 @@ export type DialogueWriterOptions = {
   speakerNames: string[];
   minimumTurns: number;
   maximumTurns: number;
+  style?:
+    | "conversation"
+    | "spokesperson";
 };
 
 type OpenAIResponseContent = {
@@ -109,8 +112,12 @@ export async function generateStructuredDialoguePlan(
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    110_000,
+    20_000,
   );
+
+  const isSpokesperson =
+    options.style ===
+    "spokesperson";
 
   try {
     const response = await fetch(
@@ -125,14 +132,20 @@ export async function generateStructuredDialoguePlan(
           model: DIALOGUE_WRITER_MODEL,
           instructions: [
             "Du bist der zentrale professionelle Dialog- und Story-Autor für eine deutsche KI-Videoplattform.",
-            "Schreibe ausschließlich den kausalen, natürlich sprechbaren Dialog für den bereits geplanten Film. Der Wortlaut wird unverändert an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht.",
-            "Lege zuerst im contract genau eine unveränderliche Faktenkette fest. Jeder Dialogsatz darf nur diese Fakten verwenden; neue Gegenstände, Beweise, Beziehungen oder Orte während des Gesprächs sind verboten.",
-            "respondsToTurn verweist ab der zweiten Zeile immer auf die unmittelbar vorherige einbasierte Zeilennummer. Die erste Zeile verwendet null.",
+            isSpokesperson
+              ? "Schreibe einen kurzen, natürlichen Presenter- oder Influencer-Monolog für die einzige sichtbare Sprecherfigur. Der Wortlaut wird unverändert an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht."
+              : "Schreibe ausschließlich den kausalen, natürlich sprechbaren Dialog für den bereits geplanten Film. Der Wortlaut wird unverändert an Google Veo 3.1 Standard, Google Veo 3.1 Fast, Seedance 2 Fast und Seedance 2 Original weitergereicht.",
+            isSpokesperson
+              ? "Der contract hält Produkt, Zielgruppe, Nutzen, sichtbare Umgebung, Beleg und Handlungsaufforderung unveränderlich fest. Erfinde keine zweite Figur, keinen Streit und kein Interview."
+              : "Lege zuerst im contract genau eine unveränderliche Faktenkette fest. Jeder Dialogsatz darf nur diese Fakten verwenden; neue Gegenstände, Beweise, Beziehungen oder Orte während des Gesprächs sind verboten.",
+            isSpokesperson
+              ? "respondsToTurn entspricht für jede Monologzeile ihrer vorherigen Position: erste Zeile null, zweite Zeile eins, dritte Zeile zwei."
+              : "respondsToTurn verweist ab der zweiten Zeile immer auf die unmittelbar vorherige einbasierte Zeilennummer. Die erste Zeile verwendet null.",
             "Antworte ausschließlich im vorgegebenen JSON-Schema. Keine Erklärung und keine zusätzlichen Felder.",
           ].join("\n"),
           input: prompt,
           reasoning: {
-            effort: "medium",
+            effort: "low",
           },
           text: {
             format: {
@@ -251,7 +264,7 @@ export async function generateStructuredDialoguePlan(
             },
             verbosity: "medium",
           },
-          max_output_tokens: 8_000,
+          max_output_tokens: 4_000,
           store: false,
         }),
         signal: controller.signal,
