@@ -654,6 +654,20 @@ async function completeOpeningWithOperationRecovery(
           completedExtensions,
           totalExtensions,
         );
+
+      if (
+        result.completed === false &&
+        !result.restartAllowed
+      ) {
+        result =
+          await waitForExistingSeedanceOperation(
+            jobId,
+            started.operationName,
+            chapterNumber,
+            completedExtensions,
+            totalExtensions,
+          );
+      }
     }
 
     if (
@@ -764,6 +778,20 @@ async function completeExtensionWithOperationRecovery(
           extensionNumber,
           totalExtensions,
         );
+
+      if (
+        result.completed === false &&
+        !result.restartAllowed
+      ) {
+        result =
+          await waitForExistingSeedanceOperation(
+            jobId,
+            started.operationName,
+            chapterNumber,
+            extensionNumber,
+            totalExtensions,
+          );
+      }
     }
 
     if (
@@ -3849,7 +3877,14 @@ function assertProviderRenderAllowed(
     process.env
       .SEEDANCE_WORKFLOW_RENDER_ENABLED !==
       "true" ||
-    !process.env.FAL_KEY
+    (
+      process.env.SEEDANCE_PROVIDER === "byteplus"
+        ? !(
+            process.env.BYTEPLUS_LAS_API_KEY ||
+            process.env.LAS_API_KEY
+          )
+        : !process.env.FAL_KEY
+    )
   ) {
     throw new Error(
       "Seedance-Rendering ist deaktiviert.",

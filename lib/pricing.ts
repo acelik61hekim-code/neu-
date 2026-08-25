@@ -38,6 +38,9 @@ export type VideoModelOption = {
   featured?: boolean;
 };
 
+const usesDirectBytePlusSeedance =
+  process.env.NEXT_PUBLIC_SEEDANCE_PROVIDER === "byteplus";
+
 export const VIDEO_MODELS: readonly VideoModelOption[] = [
   {
     id: "google-veo-fast",
@@ -50,18 +53,28 @@ export const VIDEO_MODELS: readonly VideoModelOption[] = [
   },
   {
     id: "seedance-2-fast",
-    name: "Seedance 2 Fast",
+    name: usesDirectBytePlusSeedance
+      ? "Seedance 2.0 Fast"
+      : "Seedance 2 Fast",
     shortName: "Seedance Fast",
-    description: "Sehr gute Qualität mit starkem Preis-Leistungs-Verhältnis – ideal für Reels und regelmäßige Inhalte.",
+    description: usesDirectBytePlusSeedance
+      ? "Das offizielle schnelle ByteDance-Modell mit starkem Preis-Leistungs-Verhältnis – ideal für Reels und regelmäßige Inhalte."
+      : "Sehr gute Qualität mit starkem Preis-Leistungs-Verhältnis – ideal für Reels und regelmäßige Inhalte.",
     quality: "Schnell & vielseitig",
     provider: "seedance",
     quotaMultiplier: 2.4,
   },
   {
     id: "seedance-2-original",
-    name: "Seedance 2 Original",
-    shortName: "Original",
-    description: "Das Standardmodell mit maximaler Seedance-Detailqualität und aufwendigerer Berechnung.",
+    name: usesDirectBytePlusSeedance
+      ? "Seedance 2.5"
+      : "Seedance 2 Original",
+    shortName: usesDirectBytePlusSeedance
+      ? "Seedance 2.5"
+      : "Original",
+    description: usesDirectBytePlusSeedance
+      ? "Das offizielle Seedance-2.5-Modell von ByteDance für maximale Detailqualität, Audio und anspruchsvolle Szenen."
+      : "Das Standardmodell mit maximaler Seedance-Detailqualität und aufwendigerer Berechnung.",
     quality: "Maximale Details",
     provider: "seedance",
     quotaMultiplier: 3,

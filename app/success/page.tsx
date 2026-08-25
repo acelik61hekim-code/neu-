@@ -11,6 +11,7 @@ import {
 } from "next/navigation";
 
 import Header from "@/components/Header";
+import { getVideoModel } from "@/lib/pricing";
 
 import {
   FilmIcon,
@@ -234,11 +235,9 @@ function formatAudioStyle(
 }
 
 function formatVideoModel(model?: VideoStatus["videoModel"]): string | null {
-  if (model === "google-veo-fast") return "Google Veo 3.1 Fast";
-  if (model === "google-veo") return "Google Veo 3.1 Standard";
-  if (model === "seedance-2-original") return "Seedance 2 Original";
-  if (model === "seedance-2-fast") return "Seedance 2 Fast";
-  return null;
+  return model
+    ? getVideoModel(model).name
+    : null;
 }
 
 function isSingleClipRecoveryTarget(

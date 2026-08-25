@@ -13,12 +13,38 @@ function seedanceModelId(
     | "image-to-video"
     | "reference-to-video",
 ): string {
+  if (getConfiguredSeedanceProvider() === "byteplus") {
+    return tier === "fast"
+      ? "dreamina-seedance-2-0-fast-260128"
+      : "dreamina-seedance-2-5-260628";
+  }
+
   return tier === "fast"
     ? `bytedance/seedance-2.0/fast/${endpoint}`
     : `bytedance/seedance-2.0/${endpoint}`;
 }
 
-const OPERATION_PREFIX = "fal-seedance";
+const BYTEPLUS_OPERATION_PREFIX = "byteplus-seedance";
+const LEGACY_FAL_OPERATION_PREFIX = "fal-seedance";
+const BYTEPLUS_BASE_URL =
+  "https://operator.las.ap-southeast-1.bytepluses.com";
+
+type SeedanceProvider = "byteplus" | "fal";
+
+export function getConfiguredSeedanceProvider(): SeedanceProvider {
+  return process.env.SEEDANCE_PROVIDER === "byteplus"
+    ? "byteplus"
+    : "fal";
+}
+
+export function hasConfiguredSeedanceCredentials(): boolean {
+  return getConfiguredSeedanceProvider() === "byteplus"
+    ? Boolean(
+        process.env.BYTEPLUS_LAS_API_KEY ||
+          process.env.LAS_API_KEY,
+      )
+    : Boolean(process.env.FAL_KEY);
+}
 
 /*
  * Neue Standardlänge:
@@ -91,6 +117,7 @@ export type SeedanceVideoStatus = {
 };
 
 export type SeedanceOperationDetails = {
+  provider: SeedanceProvider;
   modelId: string;
   requestId: string;
 };
@@ -114,8 +141,17 @@ export type SeedanceWebhookPayload = {
   error?: unknown;
 };
 
+type BytePlusSeedanceTask = {
+  id?: string;
+  status?: string;
+  content?: {
+    video_url?: string;
+  };
+  error?: unknown;
+};
+
 export class SeedanceProviderStartError extends Error {
-  readonly provider = "fal-seedance";
+  readonly provider = "seedance";
   readonly phase = "start";
 
   readonly httpStatus: number;
@@ -149,7 +185,7 @@ export class SeedanceProviderStartError extends Error {
 }
 
 export class SeedanceProviderOperationError extends Error {
-  readonly provider = "fal-seedance";
+  readonly provider = "seedance";
   readonly phase = "operation";
   readonly safeToRestart: boolean;
 
@@ -184,7 +220,7 @@ export function getRetryableSeedanceStartError(
     error as Partial<SeedanceProviderStartError>;
 
   if (
-    candidate.provider !== "fal-seedance" ||
+    candidate.provider !== "seedance" ||
     candidate.phase !== "start" ||
     candidate.safeToRetry !== true ||
     typeof candidate.httpStatus !== "number"
@@ -223,7 +259,7 @@ export function getRestartableSeedanceOperationError(
     error as Partial<SeedanceProviderOperationError>;
 
   if (
-    candidate.provider !== "fal-seedance" ||
+    candidate.provider !== "seedance" ||
     candidate.phase !== "operation" ||
     candidate.safeToRestart !== true
   ) {
@@ -250,6 +286,20 @@ function configureFal(): void {
   fal.config({
     credentials: key,
   });
+}
+
+function getBytePlusApiKey(): string {
+  const key =
+    process.env.BYTEPLUS_LAS_API_KEY ||
+    process.env.LAS_API_KEY;
+
+  if (!key) {
+    throw new Error(
+      "BYTEPLUS_LAS_API_KEY fehlt in den Umgebungsvariablen.",
+    );
+  }
+
+  return key;
 }
 
 function toDataUri(
@@ -377,11 +427,14 @@ function normalizeWebhookUrl(
 }
 
 function encodeOperation(
+  provider: SeedanceProvider,
   modelId: string,
   requestId: string,
 ): string {
   return [
-    OPERATION_PREFIX,
+    provider === "byteplus"
+      ? BYTEPLUS_OPERATION_PREFIX
+      : LEGACY_FAL_OPERATION_PREFIX,
     modelId,
     requestId,
   ].join("|");
@@ -395,7 +448,10 @@ function decodeOperation(
 
   if (
     parts.length !== 3 ||
-    parts[0] !== OPERATION_PREFIX ||
+    (
+      parts[0] !== BYTEPLUS_OPERATION_PREFIX &&
+      parts[0] !== LEGACY_FAL_OPERATION_PREFIX
+    ) ||
     !parts[1] ||
     !parts[2]
   ) {
@@ -405,6 +461,10 @@ function decodeOperation(
   }
 
   return {
+    provider:
+      parts[0] === BYTEPLUS_OPERATION_PREFIX
+        ? "byteplus"
+        : "fal",
     modelId: parts[1],
     requestId: parts[2],
   };
@@ -419,8 +479,13 @@ export function getSeedanceOperationDetails(
 export function isSeedanceOperationName(
   operationName: string,
 ): boolean {
-  return operationName.startsWith(
-    `${OPERATION_PREFIX}|`,
+  return (
+    operationName.startsWith(
+      `${BYTEPLUS_OPERATION_PREFIX}|`,
+    ) ||
+    operationName.startsWith(
+      `${LEGACY_FAL_OPERATION_PREFIX}|`,
+    )
   );
 }
 
@@ -429,10 +494,149 @@ async function submitSeedance(
   input: Record<string, unknown>,
   webhookUrl?: string,
 ): Promise<string> {
-  configureFal();
-
   const normalizedWebhookUrl =
     normalizeWebhookUrl(webhookUrl);
+
+  if (getConfiguredSeedanceProvider() === "byteplus") {
+    const content: Array<Record<string, unknown>> = [];
+    const prompt =
+      typeof input.prompt === "string"
+        ? input.prompt
+        : "";
+
+    content.push({
+      type: "text",
+      text: prompt,
+    });
+
+    const imageUrls = Array.isArray(input.image_urls)
+      ? input.image_urls
+      : typeof input.image_url === "string"
+        ? [input.image_url]
+        : [];
+
+    for (const imageUrl of imageUrls) {
+      if (typeof imageUrl !== "string") continue;
+
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: imageUrl,
+        },
+        role: "reference_image",
+      });
+    }
+
+    const videoUrls = Array.isArray(input.video_urls)
+      ? input.video_urls
+      : [];
+
+    for (const videoUrl of videoUrls) {
+      if (typeof videoUrl !== "string") continue;
+
+      content.push({
+        type: "video_url",
+        video_url: {
+          url: videoUrl,
+        },
+        role: "reference_video",
+      });
+    }
+
+    try {
+      const response = await fetch(
+        `${BYTEPLUS_BASE_URL}/api/v1/contents/generations/tasks`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${getBytePlusApiKey()}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: modelId,
+            content,
+            generate_audio: input.generate_audio !== false,
+            resolution:
+              typeof input.resolution === "string"
+                ? input.resolution
+                : "720p",
+            ratio:
+              typeof input.aspect_ratio === "string"
+                ? input.aspect_ratio
+                : "9:16",
+            duration: Number(input.duration) || 15,
+            watermark: false,
+            ...(normalizedWebhookUrl
+              ? { callback_url: normalizedWebhookUrl }
+              : {}),
+          }),
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+
+      const responseText = await response.text();
+      let result: {
+        id?: string;
+        error?: unknown;
+      } = {};
+
+      if (responseText) {
+        try {
+          result = JSON.parse(responseText) as typeof result;
+        } catch {
+          result = {};
+        }
+      }
+
+      if (!response.ok) {
+        const providerMessage =
+          typeof result.error === "string"
+            ? result.error
+            : result.error &&
+                typeof result.error === "object" &&
+                "message" in result.error &&
+                typeof result.error.message === "string"
+              ? result.error.message
+              : responseText ||
+                `BytePlus HTTP ${response.status}`;
+
+        throw new SeedanceProviderStartError(
+          providerMessage,
+          {
+            httpStatus: response.status,
+          },
+        );
+      }
+
+      if (!result.id) {
+        throw new SeedanceProviderStartError(
+          "BytePlus hat keine Task-ID zurückgegeben.",
+          {
+            httpStatus: response.status,
+          },
+        );
+      }
+
+      return encodeOperation(
+        "byteplus",
+        modelId,
+        result.id,
+      );
+    } catch (error) {
+      if (error instanceof SeedanceProviderStartError) {
+        throw error;
+      }
+
+      throw new SeedanceProviderStartError(
+        readErrorMessage(error),
+        {
+          httpStatus: readHttpStatus(error),
+        },
+      );
+    }
+  }
+
+  configureFal();
 
   try {
     const result =
@@ -464,6 +668,7 @@ async function submitSeedance(
     }
 
     return encodeOperation(
+      "fal",
       modelId,
       requestId,
     );
@@ -703,6 +908,82 @@ export function readSeedanceWebhookResult(
   const operation =
     decodeOperation(operationName);
 
+  if (operation.provider === "byteplus") {
+    const bytePlusBody = value as BytePlusSeedanceTask;
+    const callbackId =
+      typeof bytePlusBody.id === "string"
+        ? bytePlusBody.id
+        : "";
+
+    if (
+      callbackId &&
+      callbackId !== operation.requestId
+    ) {
+      throw new SeedanceProviderOperationError(
+        "Der BytePlus-Callback gehört nicht zur erwarteten Seedance-Operation.",
+      );
+    }
+
+    const bytePlusStatus =
+      typeof bytePlusBody.status === "string"
+        ? bytePlusBody.status.toLowerCase()
+        : "";
+
+    if (
+      bytePlusStatus === "queued" ||
+      bytePlusStatus === "running"
+    ) {
+      return { done: false };
+    }
+
+    if (
+      bytePlusStatus === "failed" ||
+      bytePlusStatus === "cancelled" ||
+      bytePlusStatus === "expired"
+    ) {
+      let message =
+        "BytePlus konnte die Seedance-Generierung nicht abschließen.";
+
+      if (
+        typeof bytePlusBody.error === "string" &&
+        bytePlusBody.error.trim()
+      ) {
+        message = bytePlusBody.error.trim();
+      } else if (
+        bytePlusBody.error &&
+        typeof bytePlusBody.error === "object" &&
+        "message" in bytePlusBody.error &&
+        typeof bytePlusBody.error.message === "string"
+      ) {
+        message = bytePlusBody.error.message;
+      }
+
+      throw new SeedanceProviderOperationError(message);
+    }
+
+    if (bytePlusStatus !== "succeeded") {
+      throw new SeedanceProviderOperationError(
+        `BytePlus hat einen unerwarteten Seedance-Status geliefert: ${bytePlusStatus || "leer"}`,
+      );
+    }
+
+    const videoUrl =
+      bytePlusBody.content?.video_url?.trim();
+
+    if (!videoUrl) {
+      throw new SeedanceProviderOperationError(
+        "BytePlus meldet Seedance als fertig, hat aber keine Video-URL geliefert.",
+      );
+    }
+
+    return {
+      done: true,
+      videoUrl,
+      videoUri: videoUrl,
+      mimeType: "video/mp4",
+    };
+  }
+
   const callbackRequestId =
     typeof body.request_id === "string"
       ? body.request_id
@@ -791,13 +1072,60 @@ export function readSeedanceWebhookResult(
 export async function checkVideoStatus(
   operationName: string,
 ): Promise<SeedanceVideoStatus> {
-  configureFal();
-
   const {
+    provider,
     modelId,
     requestId,
   } =
     decodeOperation(operationName);
+
+  if (provider === "byteplus") {
+    try {
+      const response = await fetch(
+        `${BYTEPLUS_BASE_URL}/api/v1/contents/generations/tasks/${encodeURIComponent(requestId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${getBytePlusApiKey()}`,
+            "Content-Type": "application/json",
+          },
+          signal: AbortSignal.timeout(30_000),
+        },
+      );
+
+      const responseText = await response.text();
+      let task: BytePlusSeedanceTask = {};
+
+      if (responseText) {
+        try {
+          task = JSON.parse(responseText) as BytePlusSeedanceTask;
+        } catch {
+          task = {};
+        }
+      }
+
+      if (!response.ok) {
+        throw new SeedanceProviderOperationError(
+          responseText || `BytePlus HTTP ${response.status}`,
+        );
+      }
+
+      return readSeedanceWebhookResult(
+        operationName,
+        task,
+      );
+    } catch (error) {
+      if (error instanceof SeedanceProviderOperationError) {
+        throw error;
+      }
+
+      throw new SeedanceProviderOperationError(
+        readErrorMessage(error),
+      );
+    }
+  }
+
+  configureFal();
 
   try {
     const status =

@@ -192,11 +192,17 @@ function missingProductionServices():
   }
 
   if (
-    !process.env
-      .FAL_KEY
+    process.env.SEEDANCE_PROVIDER === "byteplus"
+      ? !(
+          process.env.BYTEPLUS_LAS_API_KEY ||
+          process.env.LAS_API_KEY
+        )
+      : !process.env.FAL_KEY
   ) {
     missing.push(
-      "fal.ai / Seedance",
+      process.env.SEEDANCE_PROVIDER === "byteplus"
+        ? "BytePlus / Seedance"
+        : "fal.ai / Seedance",
     );
   }
 
