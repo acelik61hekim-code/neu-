@@ -2288,8 +2288,14 @@ function hasMandatoryDialoguePlan(
       wordCount < 1 ||
       wordCount >
         maximumWordsPerLine ||
-      /\d|[#@/\\]|[A-ZÄÖÜ]{2,}/.test(
+      /\d|[#@/\\]/.test(
         dialogue.text,
+      ) ||
+      (
+        isViralDialogue &&
+        /[A-ZÄÖÜ]{2,}/.test(
+          dialogue.text,
+        )
       ) ||
       dialogue.text.length >
         140 ||
