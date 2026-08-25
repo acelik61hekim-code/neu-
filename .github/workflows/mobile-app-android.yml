@@ -13,8 +13,8 @@ permissions:
   contents: read
 
 jobs:
-  build-android-test-app:
-    name: Android-Test-App erstellen
+  build-android-release-app:
+    name: Android-Release-App erstellen
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -48,14 +48,14 @@ jobs:
       - name: Android-Projekt erzeugen
         run: npx expo prebuild --platform android --clean --no-install
 
-      - name: Installierbare APK erstellen
-        run: ./gradlew assembleDebug
+      - name: Eigenständig startende Release-APK erstellen
+        run: ./gradlew assembleRelease
         working-directory: mobile-app/android
 
       - name: APK bereitstellen
         uses: actions/upload-artifact@v4
         with:
-          name: ki-video-studio-android-test-app
-          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          name: ki-video-studio-android-release-app
+          path: mobile-app/android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
