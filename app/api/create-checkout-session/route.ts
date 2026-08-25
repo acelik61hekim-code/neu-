@@ -609,12 +609,19 @@ function hasValidDialoguePlan(
         3,
       );
 
+    const requiresConversation =
+      requireViralStory ||
+      story.creationMode ===
+        "viral-story";
+
     const requiredSpeakerCount =
       Math.min(
         3,
 
         Math.max(
-          2,
+          requiresConversation
+            ? 2
+            : 1,
           expectedSpeakers.length,
         ),
       );
@@ -687,7 +694,12 @@ function hasValidDialoguePlan(
         targetDurationSeconds ===
           15 &&
         totalWordCount >
-          28
+          (
+            requiredSpeakerCount ===
+              1
+              ? 30
+              : 28
+          )
       )
     ) {
       return false;
@@ -1202,7 +1214,7 @@ export async function POST(
     return NextResponse.json(
       {
         error:
-          "Der Dialogplan enthält noch kein vollständiges Gespräch mit mindestens zwei sichtbaren Figuren. Bitte lass den Filmplan neu erstellen. Es wurde nichts berechnet.",
+          "Der Dialogplan enthält noch keine vollständig ausführbare sichtbare Sprache. Bitte lass den Filmplan neu erstellen. Es wurde nichts berechnet.",
       },
       {
         status:

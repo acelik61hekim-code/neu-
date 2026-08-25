@@ -1193,6 +1193,67 @@ async function prepareRenderJobStep(
     job.voiceMode ===
     "dialogue";
 
+  const productionBible =
+    asRecord(
+      story.productionBible,
+    );
+
+  const bibleCharacterNames =
+    Array.isArray(
+      productionBible.characterBible,
+    )
+      ? productionBible
+          .characterBible
+          .map(
+            asRecord,
+          )
+          .map(
+            (character) =>
+              typeof character.name ===
+                "string"
+                ? character.name.trim()
+                : "",
+          )
+          .filter(Boolean)
+      : [];
+
+  const storyCharacterNames =
+    Array.isArray(
+      story.characters,
+    )
+      ? story.characters
+          .map(
+            asRecord,
+          )
+          .map(
+            (character) =>
+              typeof character.name ===
+                "string"
+                ? character.name.trim()
+                : "",
+          )
+          .filter(Boolean)
+      : [];
+
+  const standardDialogueSpeakers =
+    (
+      bibleCharacterNames.length > 0
+        ? bibleCharacterNames
+        : storyCharacterNames
+    ).slice(
+      0,
+      3,
+    );
+
+  const requiredStandardSpeakerCount =
+    Math.min(
+      3,
+      Math.max(
+        1,
+        standardDialogueSpeakers.length,
+      ),
+    );
+
   const musicVideoMode =
     job.editingStyle ===
       "music-video" &&
@@ -1219,7 +1280,10 @@ async function prepareRenderJobStep(
           : viralStoryMode
             ? "POST-PRODUCED CHARACTER DIALOGUE: Generate clean music, ambience and sound effects only. Do not synthesize audible speech in the provider clip. The visible active character performs the planned sentence with natural facial and mouth movement; a fixed studio voice is mixed in during finishing."
             : postProducedDialogue
-              ? "POST-PRODUCED MULTI-SPEAKER DIALOGUE (highest priority): Generate quiet non-vocal ambience, Foley and restrained music only. Do not synthesize audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. The visible active character performs the exact planned line with natural sentence-paced mouth, jaw, facial and body movement. A distinct fixed studio voice for each character is mixed scene-synchronously during final finishing."
+              ? requiredStandardSpeakerCount ===
+                  1
+                ? "POST-PRODUCED ON-CAMERA SPOKESPERSON (highest priority): Generate quiet non-vocal ambience, Foley and restrained music only. Do not synthesize audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. The single visible presenter performs every exact planned line directly to camera with natural sentence-paced mouth, jaw, facial and body movement. One fixed studio voice is mixed scene-synchronously during final finishing. Never invent a second speaker."
+                : "POST-PRODUCED MULTI-SPEAKER DIALOGUE (highest priority): Generate quiet non-vocal ambience, Foley and restrained music only. Do not synthesize audible dialogue, narration, voice-over, off-screen speech, singing or vocalizations. The visible active character performs the exact planned line with natural sentence-paced mouth, jaw, facial and body movement. A distinct fixed studio voice for each character is mixed scene-synchronously during final finishing."
               : buildSelectedAudioDirection(
                   job.audioStyle ??
                     "cinematic",
@@ -1755,14 +1819,48 @@ async function prepareRenderJobStep(
           ),
         );
 
+      const hasEveryExpectedSpeaker =
+        standardDialogueSpeakers.every(
+          (name) => {
+            const fullName =
+              name.toLocaleLowerCase(
+                "de-DE",
+              );
+
+            const shortName =
+              fullName
+                .split(",")[0]
+                .trim();
+
+            return (
+              dialogueSpeakers.has(
+                fullName,
+              ) ||
+              dialogueSpeakers.has(
+                shortName,
+              )
+            );
+          },
+        );
+
+      const requiredDialogueCueCount =
+        requiredStandardSpeakerCount ===
+          1
+          ? job.targetDurationSeconds >
+              15
+            ? 2
+            : 1
+          : requiredStandardSpeakerCount;
+
       if (
         dialogueCues.length <
-          2 ||
+          requiredDialogueCueCount ||
         dialogueSpeakers.size <
-          2
+          requiredStandardSpeakerCount ||
+        !hasEveryExpectedSpeaker
       ) {
         throw new Error(
-          "Der Dialogmodus enthält kein vollständiges Gespräch zwischen mindestens zwei Figuren.",
+          "Der Dialogmodus enthält keine vollständig ausführbare sichtbare Sprache.",
         );
       }
     }
