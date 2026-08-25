@@ -4,6 +4,11 @@ import type { NextRequest } from "next/server";
 import { accountLibrary } from "@/lib/account-library";
 import { getVideoPlan, isVideoPlanId, type VideoPlan } from "@/lib/video-plans";
 import { getVideoSubscriptionUsage } from "@/lib/video-subscription-usage";
+import {
+  getInternalTestIds,
+  getInternalTestPeriod,
+  hasInternalTestAccess,
+} from "@/lib/internal-test-access";
 import { stripe } from "@/lib/stripe";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -57,6 +62,43 @@ function readVideoSubscriptionCookie(raw: string | undefined): SubscriptionCooki
 
 export async function getActiveVideoSubscription(request: NextRequest): Promise<ActiveVideoSubscription | null> {
   const user = await getCurrentUser();
+
+  if (
+    user &&
+    hasInternalTestAccess(user)
+  ) {
+    const {
+      subscriptionId,
+      customerId,
+    } = getInternalTestIds(
+      user.id,
+      "video",
+    );
+
+    const {
+      periodStart,
+      periodEnd,
+    } = getInternalTestPeriod();
+
+    return {
+      subscriptionId,
+      customerId,
+      plan:
+        getVideoPlan(
+          "video-studio-max",
+        ),
+      periodStart,
+      periodEnd,
+      cancelAtPeriodEnd:
+        false,
+      usage:
+        await getVideoSubscriptionUsage(
+          subscriptionId,
+          periodStart,
+        ),
+    };
+  }
+
   const accountLink = user ? await accountLibrary.getVideoSubscription(user.id) : undefined;
   const cookie = readVideoSubscriptionCookie(request.cookies.get(VIDEO_SUBSCRIPTION_COOKIE)?.value);
   const link = accountLink ?? cookie;

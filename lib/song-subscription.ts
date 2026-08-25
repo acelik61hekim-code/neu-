@@ -4,6 +4,11 @@ import type { NextRequest } from "next/server";
 import { getSongPlan, isSongPlanId, type SongPlan } from "@/lib/song-plans";
 import { accountLibrary } from "@/lib/account-library";
 import { getSubscriptionUsage } from "@/lib/song-subscription-usage";
+import {
+  getInternalTestIds,
+  getInternalTestPeriod,
+  hasInternalTestAccess,
+} from "@/lib/internal-test-access";
 import { stripe } from "@/lib/stripe";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -57,6 +62,43 @@ function readSongSubscriptionCookie(raw: string | undefined): SubscriptionCookie
 
 export async function getActiveSongSubscription(request: NextRequest): Promise<ActiveSongSubscription | null> {
   const user = await getCurrentUser();
+
+  if (
+    user &&
+    hasInternalTestAccess(user)
+  ) {
+    const {
+      subscriptionId,
+      customerId,
+    } = getInternalTestIds(
+      user.id,
+      "song",
+    );
+
+    const {
+      periodStart,
+      periodEnd,
+    } = getInternalTestPeriod();
+
+    return {
+      subscriptionId,
+      customerId,
+      plan:
+        getSongPlan(
+          "studio-max",
+        ),
+      periodStart,
+      periodEnd,
+      cancelAtPeriodEnd:
+        false,
+      usage:
+        await getSubscriptionUsage(
+          subscriptionId,
+          periodStart,
+        ),
+    };
+  }
+
   const accountLink = user ? await accountLibrary.getSubscription(user.id) : undefined;
   const cookie = readSongSubscriptionCookie(request.cookies.get(SONG_SUBSCRIPTION_COOKIE)?.value);
   const link = accountLink ?? cookie;

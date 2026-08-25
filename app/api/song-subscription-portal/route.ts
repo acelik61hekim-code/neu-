@@ -9,6 +9,12 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const subscription = await getActiveSongSubscription(request).catch(() => null);
   if (!subscription) return NextResponse.json({ error: "Kein aktives Song-Abo gefunden." }, { status: 401 });
+  if (subscription.subscriptionId.startsWith("sub_internal_")) {
+    return NextResponse.json(
+      { error: "Der interne Testzugang wird ohne Stripe verwaltet." },
+      { status: 400 },
+    );
+  }
   const appUrl = process.env.APP_URL?.trim() || request.nextUrl.origin;
   const session = await stripe.billingPortal.sessions.create({
     customer: subscription.customerId,
