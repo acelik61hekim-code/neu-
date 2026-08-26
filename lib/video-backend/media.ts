@@ -1071,13 +1071,17 @@ async function finishVideo(
     generatedDialogue.length >
       0
   ) {
-    const mixInputs = [
-      "[background]",
-    ];
-
-    filters.push(
-      `[0:a]volume=0.16,apad=pad_dur=${MAX_FINISHING_GRACE_SECONDS},atrim=duration=${outputSeconds}[background]`,
-    );
+    /*
+     * Provider-Modelle erzeugen gelegentlich trotz ausdrücklichem Verbot
+     * eine eigene Sprecher- oder Erzählerstimme. Diese Stimme lässt sich
+     * nachträglich nicht zuverlässig von Musik und Ambience trennen.
+     *
+     * Sobald eine kontrollierte Studio-Stimme vorhanden ist, wird die
+     * komplette Provider-Tonspur deshalb bewusst verworfen. So können
+     * niemals zwei Stimmen übereinanderliegen. Projekte ohne Studio-
+     * Voice-over oder Studio-Dialog behalten weiterhin ihren Originalton.
+     */
+    const mixInputs: string[] = [];
 
     if (
       narration &&
@@ -1155,8 +1159,13 @@ async function finishVideo(
       },
     );
 
+    const studioAudioInput =
+      mixInputs.length === 1
+        ? mixInputs[0]
+        : `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=2,`;
+
     filters.push(
-      `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=2,atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
+      `${studioAudioInput}apad=pad_dur=${outputSeconds},atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
     );
 
     audioMap =
