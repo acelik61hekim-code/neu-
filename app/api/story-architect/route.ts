@@ -4447,26 +4447,139 @@ function applyStudioSpokespersonFallback(
   response: ArchitectResponse,
   speaker: string,
   spokenLanguage: VideoSpokenLanguage,
+  targetDurationSeconds: VideoDurationSeconds,
 ): ArchitectResponse {
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const requiredLineCount =
+    Math.min(
+      beatCount * 4,
+      Math.max(
+        3,
+        Math.ceil(
+          targetDurationSeconds /
+            15,
+        ) * 2,
+      ),
+    );
+
+  const lines =
+    targetDurationSeconds <= 8
+      ? [
+          "Deine Idee wird sichtbar.",
+          "Plane sie mit KI.",
+          "Starte mit der Vorschau.",
+        ]
+      : [
+          "Deine Idee verdient mehr als einen gewöhnlichen Entwurf.",
+          "KI Video Studio entwickelt daraus einen klaren Filmplan.",
+          "Du erstellst Videos, Songs und Bilder an einem Ort.",
+          "Vor der Produktion prüfst du zuerst den geplanten Look.",
+          "So siehst du früh, ob Stil und Figuren passen.",
+          "Danach wählst du das Videomodell passend zu deinem Budget.",
+          "Feste Charaktere bleiben über mehrere Szenen klar erkennbar.",
+          "Dialoge werden passend zur Handlung und Sprache vorbereitet.",
+          "Im Video Studio kannst du einzelne Szenen gezielt erneuern.",
+          "Dabei bleibt dein übriges Projekt vollständig erhalten.",
+          "Im Sound Studio bearbeitest du Songs und eigene Audiodateien.",
+          "Du kannst ausgewählte Stellen mit KI neu gestalten.",
+          "Deine bisherigen Projekte findest du gesammelt in deinem Konto.",
+          "So behältst du jederzeit den Überblick über deine Inhalte.",
+          "Starte mit deiner Idee und prüfe zuerst die Vorschau.",
+          "KI Video Studio begleitet dich bis zum fertigen Projekt.",
+        ];
+
   return applyProvidedDialogueLines(
     response,
-    [
-      {
-        speaker,
-        text:
-          "Videos, Songs und Bilder – alles an einem Ort.",
-      },
-      {
-        speaker,
-        text:
-          "Mit Ki Video Studio wird deine Idee zum fertigen Projekt.",
-      },
-      {
-        speaker,
-        text:
-          "Probier es jetzt selbst aus.",
-      },
-    ],
+    lines
+      .slice(
+        0,
+        requiredLineCount,
+      )
+      .map(
+        (text) => ({
+          speaker,
+          text,
+        }),
+      ),
+    spokenLanguage,
+  );
+}
+
+function applySingleSpeakerFallback(
+  response: ArchitectResponse,
+  story: StoryDraft,
+  speaker: string,
+  spokenLanguage: VideoSpokenLanguage,
+  targetDurationSeconds: VideoDurationSeconds,
+): ArchitectResponse {
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const requiredLineCount =
+    Math.min(
+      beatCount * 4,
+      Math.max(
+        3,
+        Math.ceil(
+          targetDurationSeconds /
+            15,
+        ) * 2,
+      ),
+    );
+
+  const topic =
+    story.title
+      .replace(/[\d#@/\\]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .slice(0, 7)
+      .join(" ") ||
+    "meine heutige Geschichte";
+
+  const lines =
+    targetDurationSeconds <= 8
+      ? [
+          "Das ist meine Geschichte.",
+          "Jetzt zeige ich warum.",
+          "Danach entscheide ich selbst.",
+        ]
+      : [
+          `Heute geht es um ${topic}.`,
+          "Ich zeige dir zuerst den entscheidenden Moment.",
+          "Danach erkläre ich, was diese Situation für mich bedeutet.",
+          "Am Ende treffe ich meine Entscheidung ganz bewusst.",
+          "Jeder Schritt bleibt dabei klar und nachvollziehbar.",
+          "Du siehst meine Reaktion direkt vor der Kamera.",
+          "Ich verschweige keinen wichtigen Teil dieser Geschichte.",
+          "Diese Erfahrung bestimmt meinen nächsten Schritt.",
+          "Jetzt wird deutlich, warum dieser Moment wichtig ist.",
+          "Ich bleibe ehrlich und spreche die Folgen offen aus.",
+          "Meine Haltung verändert sich mit jeder neuen Erkenntnis.",
+          "Trotzdem verliere ich mein eigentliches Ziel nicht.",
+          "Ich prüfe jede Möglichkeit, bevor ich weitergehe.",
+          "Dann entscheide ich, welcher Weg wirklich zu mir passt.",
+          "Diese Entscheidung beendet den bisherigen Konflikt.",
+          "So bekommt meine Geschichte einen klaren Abschluss.",
+        ];
+
+  return applyProvidedDialogueLines(
+    response,
+    lines
+      .slice(
+        0,
+        requiredLineCount,
+      )
+      .map(
+        (text) => ({
+          speaker,
+          text,
+        }),
+      ),
     spokenLanguage,
   );
 }
@@ -6595,15 +6708,6 @@ export async function POST(
 
     if (
       isSingleSpeakerDialogue &&
-      isStudioWebsiteAdvertisement(
-        [
-          story.title,
-          story.genre,
-          story.mood,
-          story.setting,
-          story.summary,
-        ].join("\n"),
-      ) &&
       !hasMandatoryDialoguePlan(
         normalized,
         expectedDialogueSpeakers,
@@ -6612,12 +6716,32 @@ export async function POST(
         story,
       )
     ) {
-      normalized =
-        applyStudioSpokespersonFallback(
-          normalized,
-          expectedDialogueSpeakers[0],
-          spokenLanguage,
+      const studioAdvertisement =
+        isStudioWebsiteAdvertisement(
+          [
+            story.title,
+            story.genre,
+            story.mood,
+            story.setting,
+            story.summary,
+          ].join("\n"),
         );
+
+      normalized =
+        studioAdvertisement
+          ? applyStudioSpokespersonFallback(
+              normalized,
+              expectedDialogueSpeakers[0],
+              spokenLanguage,
+              targetDurationSeconds,
+            )
+          : applySingleSpeakerFallback(
+              normalized,
+              story,
+              expectedDialogueSpeakers[0],
+              spokenLanguage,
+              targetDurationSeconds,
+            );
     }
 
     if (
@@ -6669,6 +6793,14 @@ export async function POST(
               targetDurationSeconds,
               creationMode,
               story,
+            ) &&
+            !hasMandatoryDialoguePlan(
+              normalized,
+              expectedDialogueSpeakers,
+              targetDurationSeconds,
+              creationMode,
+              story,
+              false,
             )
       )
     ) {
