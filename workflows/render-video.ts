@@ -2357,10 +2357,6 @@ async function startVeoOpeningStep(
             ? "fast"
             : "standard",
         aspectRatio,
-        referenceImage:
-          referenceImages?.length
-            ? undefined
-            : referenceImage,
         referenceImages,
         maxAttempts: 4,
       },
@@ -3926,6 +3922,14 @@ function readableRenderError(
     )
   ) {
     return "Das freigegebene Vorschaubild konnte nicht an die Video-KI übergeben werden. Der Auftrag kann ohne neue Zahlung erneut gestartet werden.";
+  }
+
+  if (
+    /(?:may contain|contains?).{0,30}(?:real person|real human)|real (?:person|human).{0,30}(?:reference|face)/i.test(
+      rawMessage,
+    )
+  ) {
+    return "Seedance hat ein Referenzbild fälschlich als mögliche echte Person eingestuft. Beim erneuten Start wird dieses Bild automatisch entfernt und die Figur ausschließlich aus ihrer schriftlichen Beschreibung erzeugt. Es ist keine neue Zahlung nötig.";
   }
 
   return rawMessage;

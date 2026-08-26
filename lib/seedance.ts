@@ -329,6 +329,55 @@ function readErrorMessage(
   return "Unbekannter Seedance-Fehler.";
 }
 
+/*
+ * BytePlus can mistake stylised fictional characters for real people.
+ * content[0] is the text prompt, so content[1] maps to the first image.
+ * Rejected tasks are not billed; remove only the rejected reference and
+ * keep the paid project running with the remaining character references.
+ */
+function readRejectedBytePlusReferenceIndex(
+  error: unknown,
+): number | null {
+  if (
+    getConfiguredSeedanceProvider() !==
+    "byteplus"
+  ) {
+    return null;
+  }
+
+  const message =
+    readErrorMessage(error);
+
+  if (
+    !/(?:may contain|contains?).{0,30}(?:real person|real human)|real (?:person|human).{0,30}(?:reference|face)/i.test(
+      message,
+    )
+  ) {
+    return null;
+  }
+
+  const match =
+    message.match(
+      /content\s*\[\s*(\d+)\s*\]/i,
+    );
+
+  return match
+    ? Number(match[1]) - 1
+    : -1;
+}
+
+function buildReferenceModerationFallbackPrompt(
+  prompt: string,
+): string {
+  return [
+    "PROVIDER-SAFE FALLBACK: No image reference is attached. Ignore any later sentence claiming that reference images are supplied.",
+    "Create only clearly fictional, stylized anthropomorphic fruit characters from the written descriptions. Do not depict, imitate or identify any real person.",
+    "Keep every fruit species, outfit color, role and relationship consistent throughout the clip.",
+    "",
+    prompt,
+  ].join("\n");
+}
+
 function readHttpStatus(
   error: unknown,
 ): number {
@@ -742,36 +791,85 @@ export async function startVideoGeneration(
       );
     }
 
-    const identityInstructions =
-      options.referenceImages
-        .map(
-          (reference, index) => {
-            const label =
-              reference.label?.trim() ||
-              `character ${index + 1}`;
+    const acceptedReferences =
+      [...options.referenceImages];
 
-            return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact fruit species, head geometry, face, body proportions, outfit, colors, shoes and accessories throughout the shot.`;
+    while (
+      acceptedReferences.length > 0
+    ) {
+      const identityInstructions =
+        acceptedReferences
+          .map(
+            (reference, index) => {
+              const label =
+                reference.label?.trim() ||
+                `character ${index + 1}`;
+
+              return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact fruit species, head geometry, face, body proportions, outfit, colors, shoes and accessories throughout the shot.`;
+            },
+          )
+          .join("\n");
+
+      try {
+        return await submitSeedance(
+          seedanceModelId(
+            modelTier,
+            "reference-to-video",
+          ),
+          {
+            ...commonInput,
+
+            prompt: [
+              identityInstructions,
+              "",
+              cleanedPrompt,
+            ].join("\n"),
+
+            image_urls:
+              acceptedReferences.map(
+                toDataUri,
+              ),
           },
-        )
-        .join("\n");
+          options.webhookUrl,
+        );
+      } catch (error) {
+        const rejectedIndex =
+          readRejectedBytePlusReferenceIndex(
+            error,
+          );
+
+        if (rejectedIndex === null) {
+          throw error;
+        }
+
+        if (
+          rejectedIndex < 0 ||
+          rejectedIndex >=
+            acceptedReferences.length
+        ) {
+          acceptedReferences.splice(
+            0,
+            acceptedReferences.length,
+          );
+        } else {
+          acceptedReferences.splice(
+            rejectedIndex,
+            1,
+          );
+        }
+      }
+    }
 
     return submitSeedance(
       seedanceModelId(
         modelTier,
-        "reference-to-video",
+        "text-to-video",
       ),
       {
         ...commonInput,
-
-        prompt: [
-          identityInstructions,
-          "",
-          cleanedPrompt,
-        ].join("\n"),
-
-        image_urls:
-          options.referenceImages.map(
-            toDataUri,
+        prompt:
+          buildReferenceModerationFallbackPrompt(
+            cleanedPrompt,
           ),
       },
       options.webhookUrl,
@@ -779,21 +877,46 @@ export async function startVideoGeneration(
   }
 
   if (options.referenceImage) {
-    return submitSeedance(
-      seedanceModelId(
-        modelTier,
-        "image-to-video",
-      ),
-      {
-        ...commonInput,
-        prompt: cleanedPrompt,
-
-        image_url: toDataUri(
-          options.referenceImage,
+    try {
+      return await submitSeedance(
+        seedanceModelId(
+          modelTier,
+          "image-to-video",
         ),
-      },
-      options.webhookUrl,
-    );
+        {
+          ...commonInput,
+          prompt: cleanedPrompt,
+
+          image_url: toDataUri(
+            options.referenceImage,
+          ),
+        },
+        options.webhookUrl,
+      );
+    } catch (error) {
+      if (
+        readRejectedBytePlusReferenceIndex(
+          error,
+        ) === null
+      ) {
+        throw error;
+      }
+
+      return submitSeedance(
+        seedanceModelId(
+          modelTier,
+          "text-to-video",
+        ),
+        {
+          ...commonInput,
+          prompt:
+            buildReferenceModerationFallbackPrompt(
+              cleanedPrompt,
+            ),
+        },
+        options.webhookUrl,
+      );
+    }
   }
 
   return submitSeedance(

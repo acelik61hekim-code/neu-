@@ -5,6 +5,21 @@ import { getCurrentUser } from "@/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function publicVideoError(
+  message: string | undefined,
+): string | undefined {
+  if (
+    message &&
+    /(?:may contain|contains?).{0,30}(?:real person|real human)|real (?:person|human).{0,30}(?:reference|face)/i.test(
+      message,
+    )
+  ) {
+    return "Seedance hat ein Referenzbild fälschlich als mögliche echte Person eingestuft. Starte den gespeicherten Auftrag unten ohne neue Zahlung erneut. Das abgelehnte Bild wird automatisch entfernt; die Figur wird weiterhin aus ihrer Beschreibung erzeugt.";
+  }
+
+  return message;
+}
+
 export async function GET(req: NextRequest) {
   const jobId = req.nextUrl.searchParams.get("jobId")?.trim();
   const sessionId = req.nextUrl.searchParams.get("session_id")?.trim();
@@ -56,7 +71,10 @@ export async function GET(req: NextRequest) {
     nextAttemptAt: job.nextAttemptAt,
     videoReady,
     videoUrl,
-    errorMessage: job.errorMessage,
+    errorMessage:
+      publicVideoError(
+        job.errorMessage,
+      ),
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     updatedAt: job.updatedAt,
