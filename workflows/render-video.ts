@@ -2240,25 +2240,23 @@ async function waitForVeoOperation(
     attempt += 1
   ) {
     const status =
-  readSeedanceWebhookResult(
-    operationName,
-    payload,
-  );
+      await checkVeoOperationStep(
+        jobId,
+        operationName,
+      );
 
-if (!status.done) {
-  return {
-    completed: false,
+    if (
+      status.done &&
+      status.videoUri
+    ) {
+      return status.videoUri;
+    }
 
-    providerMessage:
-      "Seedance erstellt das Video noch. Die bestehende Operation wird weiter beobachtet.",
+    await sleep("10s");
+  }
 
-    restartAllowed: false,
-  };
-}
-
-if (!status.videoUri) {
   throw new Error(
-    "Seedance hat den Auftrag abgeschlossen, aber keine Video-URL geliefert.",
+    "Google Veo hat die Videoerstellung nicht rechtzeitig abgeschlossen.",
   );
 }
 
@@ -3247,9 +3245,42 @@ async function handleSeedanceWebhookStep(
         payload,
       );
 
-    if (
-      !status.videoUri
-    ) {
+    if (!status.done) {
+      await jobStore.set(
+        jobId,
+        {
+          ...job,
+
+          status:
+            "processing",
+
+          renderStage:
+            "waiting-provider",
+
+          lastProviderPollAt:
+            Date.now(),
+
+          currentOperationName:
+            operationName,
+
+          errorMessage:
+            undefined,
+        },
+      );
+
+      return {
+        completed:
+          false,
+
+        providerMessage:
+          "Seedance erstellt das Video noch. Die bestehende Operation wird weiter beobachtet.",
+
+        restartAllowed:
+          false,
+      };
+    }
+
+    if (!status.videoUri) {
       throw new Error(
         "Seedance hat den Auftrag abgeschlossen, aber keine Video-URL geliefert.",
       );
