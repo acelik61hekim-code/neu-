@@ -6036,6 +6036,14 @@ export async function POST(
         const dialogueValid =
           providedDialogue.length > 0 ||
           isSingleSpeakerDialogue ||
+          /*
+           * Der Gemini-Aufruf plant hier Bild, Szenen und Kontinuität.
+           * Wenn der spezialisierte OpenAI-Dialogautor verfügbar ist,
+           * ersetzt er den vorläufigen Gemini-Dialog unmittelbar danach.
+           * Ein unvollständiger Platzhalterdialog darf deshalb nicht den
+           * gesamten visuellen Filmplan schon vorher verwerfen.
+           */
+          Boolean(openAiApiKey) ||
           hasMandatoryDialoguePlan(
             normalizedCandidate,
             expectedDialogueSpeakers,
