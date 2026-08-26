@@ -2298,11 +2298,6 @@ async function startVeoOpeningStep(
   }
 
   const referenceImages = undefined;
-        ).loadStoredPreview(
-          job.referenceImageUrl,
-          job.referenceImageMimeType,
-        )
-      : undefined;
 
   let storedStory:
     Record<
