@@ -2297,7 +2297,6 @@ async function startVeoOpeningStep(
     return job.currentOperationName;
   }
 
-  const referenceImages = undefined;
 
   let storedStory:
     Record<
