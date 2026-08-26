@@ -21,6 +21,7 @@ import {
   isVideoAudioStyle,
   isVideoSpokenLanguage,
   isVideoVoiceMode,
+  isVoiceoverVoiceName,
 } from "../../../lib/audio-options";
 
 import {
@@ -123,6 +124,8 @@ type CheckoutRequest = {
   spokenLanguage?: unknown;
 
   voiceoverText?: unknown;
+
+  voiceoverVoiceName?: unknown;
 
   closingText?: unknown;
 
@@ -1237,6 +1240,13 @@ export async function POST(
           .trim()
       : "";
 
+  const voiceoverVoiceName =
+    isVoiceoverVoiceName(
+      body.voiceoverVoiceName,
+    )
+      ? body.voiceoverVoiceName
+      : "Charon";
+
   const closingText =
     typeof body.closingText ===
     "string"
@@ -1592,6 +1602,11 @@ export async function POST(
       voiceoverText:
         voiceoverText ||
         undefined,
+
+      voiceoverVoiceName:
+        voiceMode === "voiceover"
+          ? voiceoverVoiceName
+          : undefined,
 
       closingText:
         closingText ||

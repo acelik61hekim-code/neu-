@@ -54,6 +54,10 @@ import {
 } from "@/services/voiceoverClient";
 
 import type {
+  VoiceoverVoiceName,
+} from "@/lib/audio-options";
+
+import type {
   ViralCharacter,
 } from "@/lib/viral-characters";
 
@@ -723,6 +727,14 @@ export default function StudioHome({
   ] =
     useState(
       "",
+    );
+
+  const [
+    voiceoverVoiceName,
+    setVoiceoverVoiceName,
+  ] =
+    useState<VoiceoverVoiceName>(
+      "Charon",
     );
 
   const [
@@ -2073,6 +2085,8 @@ export default function StudioHome({
 
                 voiceoverText,
 
+                voiceoverVoiceName,
+
                 closingText,
 
                 musicVideoAudioUri:
@@ -2892,6 +2906,54 @@ export default function StudioHome({
             {voiceMode ===
               "voiceover" && (
               <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                <div className="lg:col-span-2">
+                  <span className="mb-2 block text-xs font-medium text-zinc-400">
+                    Sprecherstimme
+                  </span>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVoiceoverVoiceName(
+                          "Charon",
+                        )
+                      }
+                      aria-pressed={
+                        voiceoverVoiceName ===
+                        "Charon"
+                      }
+                      className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                        voiceoverVoiceName === "Charon"
+                          ? "border-violet-400/60 bg-violet-500/20 text-violet-100"
+                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20"
+                      }`}
+                    >
+                      Männliche Stimme
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setVoiceoverVoiceName(
+                          "Kore",
+                        )
+                      }
+                      aria-pressed={
+                        voiceoverVoiceName ===
+                        "Kore"
+                      }
+                      className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                        voiceoverVoiceName === "Kore"
+                          ? "border-violet-400/60 bg-violet-500/20 text-violet-100"
+                          : "border-white/10 bg-black/20 text-zinc-400 hover:border-white/20"
+                      }`}
+                    >
+                      Weibliche Stimme
+                    </button>
+                  </div>
+                </div>
+
                 <label className="block">
                   <span className="mb-2 block text-xs font-medium text-zinc-400">
                     Exakter Sprechertext
@@ -3021,6 +3083,9 @@ export default function StudioHome({
             }
             onVoiceModeChange={
               setVoiceMode
+            }
+            onVoiceoverVoiceNameChange={
+              setVoiceoverVoiceName
             }
             targetDurationSeconds={
               targetDurationSeconds

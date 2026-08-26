@@ -14,6 +14,7 @@ const exec = promisify(execFile);
 
 export type VideoFinishingOptions = {
   voiceoverText?: string;
+  voiceoverVoiceName?: "Charon" | "Kore";
   dialogueCues?: DialogueCue[];
   closingText?: string;
   spokenLanguage?: "auto" | "de" | "en";
@@ -848,6 +849,15 @@ async function finishVideo(
         voiceoverText,
         seconds,
         options.spokenLanguage,
+        {
+          voiceName:
+            options.voiceoverVoiceName,
+          deliveryDirection:
+            options.voiceoverVoiceName ===
+              "Charon"
+              ? "Use a professional, calm and authoritative male documentary narrator voice."
+              : "Use a professional, warm and confident female studio narrator voice.",
+        },
       );
 
     narrationInputIndex =

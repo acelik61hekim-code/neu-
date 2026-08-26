@@ -28,7 +28,55 @@ export const SUPPORTED_SPOKEN_LANGUAGES = [
 
 export type PromptSpeechIntent =
   | "single-speaker"
-  | "conversation";
+  | "conversation"
+  | "voiceover";
+
+export const SUPPORTED_VOICEOVER_VOICES = [
+  "Charon",
+  "Kore",
+] as const;
+
+export type VoiceoverVoiceName =
+  (typeof SUPPORTED_VOICEOVER_VOICES)[number];
+
+export function inferPromptVoiceoverVoiceName(
+  value: string,
+): VoiceoverVoiceName | null {
+  const text =
+    value
+      .toLocaleLowerCase("de-DE")
+      .replace(/\s+/g, " ")
+      .trim();
+
+  if (
+    /\b(?:männlich(?:e|er|en)?|mannesstimme|männerstimme|male voice|male narrator)\b/i.test(
+      text,
+    )
+  ) {
+    return "Charon";
+  }
+
+  if (
+    /\b(?:weiblich(?:e|er|en)?|frauenstimme|female voice|female narrator)\b/i.test(
+      text,
+    )
+  ) {
+    return "Kore";
+  }
+
+  return null;
+}
+
+export function isVoiceoverVoiceName(
+  value: unknown,
+): value is VoiceoverVoiceName {
+  return (
+    typeof value === "string" &&
+    SUPPORTED_VOICEOVER_VOICES.includes(
+      value as VoiceoverVoiceName,
+    )
+  );
+}
 
 export function inferPromptSpeechIntent(
   value: string,
@@ -52,6 +100,15 @@ export function inferPromptSpeechIntent(
 
   if (explicitlySilent) {
     return null;
+  }
+
+  const explicitlyRequestsVoiceover =
+    /\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off)\b/i.test(
+      text,
+    );
+
+  if (explicitlyRequestsVoiceover) {
+    return "voiceover";
   }
 
   const speakerLabelCount =

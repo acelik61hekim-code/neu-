@@ -56,6 +56,7 @@ type PreparedRender = {
 
   finishing: {
     voiceoverText?: string;
+    voiceoverVoiceName?: "Charon" | "Kore";
     dialogueCues?: DialogueCue[];
     closingText?: string;
     spokenLanguage?: "auto" | "de" | "en";
@@ -1024,6 +1025,9 @@ async function prepareRecoveryFinalizationStep(
         0
           ? undefined
           : job.voiceoverText,
+
+      voiceoverVoiceName:
+        job.voiceoverVoiceName,
 
       dialogueCues:
         recoveryDialogueCues,
@@ -2113,6 +2117,9 @@ async function prepareRenderJobStep(
         viralStoryMode
           ? undefined
           : job.voiceoverText,
+
+      voiceoverVoiceName:
+        job.voiceoverVoiceName,
 
       dialogueCues:
         nativeCharacterDialogue

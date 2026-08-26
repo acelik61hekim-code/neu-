@@ -128,6 +128,10 @@ export type VideoJob = {
    */
   voiceoverText?: string;
 
+  voiceoverVoiceName?:
+    "Charon" |
+    "Kore";
+
   closingText?: string;
 
   /*

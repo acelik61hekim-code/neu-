@@ -3,7 +3,11 @@
 import { useState } from "react";
 
 import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
-import { inferPromptSpeechIntent } from "@/lib/audio-options";
+import {
+  inferPromptSpeechIntent,
+  inferPromptVoiceoverVoiceName,
+  type VoiceoverVoiceName,
+} from "@/lib/audio-options";
 
 import {
   requestAiDirector,
@@ -43,6 +47,7 @@ type ChatProps = {
   onStoryChange: (story: string) => void;
   onVoiceoverTextChange?: (text: string) => void;
   onVoiceModeChange?: (mode: VideoVoiceMode) => void;
+  onVoiceoverVoiceNameChange?: (voiceName: VoiceoverVoiceName) => void;
 
   /*
    * Optional, damit app/page.tsx während der Umstellung
@@ -127,6 +132,7 @@ export default function Chat({
   onStoryChange,
   onVoiceoverTextChange,
   onVoiceModeChange,
+  onVoiceoverVoiceNameChange,
   targetDurationSeconds = 60,
   aspectRatio = "9:16",
   editingStyle = "social",
@@ -402,20 +408,30 @@ export default function Chat({
           }),
         );
 
+      const speechRequestText =
+        conversation
+          .filter(
+            (message) =>
+              message.role ===
+              "user",
+          )
+          .map(
+            (message) =>
+              message.content,
+          )
+          .join("\n");
+
       const speechIntent =
         inferPromptSpeechIntent(
-          conversation
-            .filter(
-              (message) =>
-                message.role ===
-                "user",
-            )
-            .map(
-              (message) =>
-                message.content,
-            )
-            .join("\n"),
+          speechRequestText,
         );
+
+      const inferredVoiceoverMode =
+        !isViralStory &&
+        editingStyle !==
+          "music-video" &&
+        speechIntent ===
+          "voiceover";
 
       const inferredDialogueMode =
         !isViralStory &&
@@ -424,14 +440,19 @@ export default function Chat({
         voiceMode ===
           "auto" &&
         speechIntent !==
-          null;
+          null &&
+        speechIntent !==
+          "voiceover";
 
       const effectiveVoiceMode:
         VideoVoiceMode =
-        isViralStory ||
-        inferredDialogueMode
+        isViralStory
           ? "dialogue"
-          : voiceMode;
+          : inferredVoiceoverMode
+            ? "voiceover"
+            : inferredDialogueMode
+              ? "dialogue"
+              : voiceMode;
 
       const singleSpeakerMode =
         !isViralStory &&
@@ -448,9 +469,22 @@ export default function Chat({
           )
         );
 
-      if (
-        inferredDialogueMode
-      ) {
+      if (inferredVoiceoverMode) {
+        onVoiceModeChange?.(
+          "voiceover",
+        );
+
+        const inferredVoiceName =
+          inferPromptVoiceoverVoiceName(
+            speechRequestText,
+          );
+
+        if (inferredVoiceName) {
+          onVoiceoverVoiceNameChange?.(
+            inferredVoiceName,
+          );
+        }
+      } else if (inferredDialogueMode) {
         onVoiceModeChange?.(
           "dialogue",
         );
@@ -569,7 +603,7 @@ export default function Chat({
       }
 
       if (
-        voiceMode ===
+        effectiveVoiceMode ===
           "voiceover" &&
 
         !voiceoverText.trim() &&
