@@ -4598,6 +4598,255 @@ function applySingleSpeakerFallback(
   );
 }
 
+function applyConversationFallback(
+  response: ArchitectResponse,
+  story: StoryDraft,
+  speakers: readonly string[],
+  spokenLanguage: VideoSpokenLanguage,
+  targetDurationSeconds: VideoDurationSeconds,
+  creationMode: VideoCreationMode,
+): ArchitectResponse {
+  const activeSpeakers =
+    speakers
+      .map((speaker) =>
+        speaker.trim(),
+      )
+      .filter(Boolean)
+      .slice(0, 3);
+
+  if (activeSpeakers.length < 1) {
+    return response;
+  }
+
+  const beatCount =
+    1 +
+    response.moviePlan.continuations.length;
+
+  const requiredLineCount =
+    targetDurationSeconds <= 8
+      ? activeSpeakers.length
+      : targetDurationSeconds <= 15
+        ? Math.max(
+            3,
+            activeSpeakers.length,
+          )
+        : Math.min(
+            24,
+            Math.max(
+              activeSpeakers.length,
+              beatCount * 3,
+            ),
+          );
+
+  const topic =
+    story.title
+      .toLocaleLowerCase("de-DE")
+      .replace(/[^a-zäöüß\s-]+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .split(" ")
+      .slice(0, 3)
+      .join(" ") ||
+    (
+      spokenLanguage === "en"
+        ? "today's decision"
+        : "die heutige Entscheidung"
+    );
+
+  const isEnglish =
+    spokenLanguage === "en";
+
+  const briefLines =
+    isEnglish
+      ? [
+          "Today, clarity comes first.",
+          "I state my position.",
+          "Then we decide together.",
+        ]
+      : [
+          "Heute zählt nur Klarheit.",
+          "Ich nenne meinen Standpunkt.",
+          "Dann entscheiden wir gemeinsam.",
+        ];
+
+  const generalLines =
+    isEnglish
+      ? [
+          `Today we speak openly about ${topic}.`,
+          "Then we begin with the central point.",
+          "I add the consequences from my perspective.",
+          "First, we establish the decisive moment.",
+          "I answer clearly and without detours.",
+          "This answer changes our shared decision.",
+          "Now I explain what matters to me.",
+          "I accept responsibility for my part.",
+          "That makes our next step clear.",
+          "Together, we examine what follows from this.",
+          "Every answer stays with the same central issue.",
+          "This keeps our conversation clear and credible.",
+          "I explain my position in greater detail.",
+          "Your reaction reveals the most important question.",
+          "I give a concrete and honest answer.",
+          "Now we connect the cause with its consequence.",
+          "I decide based on the facts presented.",
+          "This decision has a visible consequence.",
+          "We leave no important point unanswered.",
+          "I summarize what has truly changed.",
+          "The next step follows directly from our conversation.",
+          "Our shared position remains clearly recognizable.",
+          "Now we make a decision everyone can understand.",
+          "Our conversation ends with a clear result.",
+        ]
+      : [
+          `Heute sprechen wir offen über ${topic}.`,
+          "Dann beginnen wir mit dem wichtigsten Punkt.",
+          "Ich ergänze die Folgen aus meiner Sicht.",
+          "Zuerst halten wir den entscheidenden Moment fest.",
+          "Darauf antworte ich klar und ohne Umwege.",
+          "Diese Antwort verändert unsere gemeinsame Entscheidung.",
+          "Jetzt benenne ich, was für mich zählt.",
+          "Ich übernehme Verantwortung für meinen Anteil.",
+          "Damit steht unser nächster Schritt eindeutig fest.",
+          "Wir prüfen gemeinsam, welche Folge daraus entsteht.",
+          "Jede Antwort bleibt beim selben zentralen Thema.",
+          "So bleibt das Gespräch verständlich und glaubwürdig.",
+          "Ich erkläre meinen Standpunkt jetzt noch genauer.",
+          "Deine Reaktion zeigt mir die wichtigste offene Frage.",
+          "Darauf gebe ich eine konkrete und ehrliche Antwort.",
+          "Nun verbinden wir Ursache und Folge miteinander.",
+          "Ich entscheide mich nach den genannten Fakten.",
+          "Diese Entscheidung hat eine sichtbare Konsequenz.",
+          "Wir lassen keinen wichtigen Punkt unbeantwortet.",
+          "Ich fasse zusammen, was sich wirklich verändert.",
+          "Der nächste Schritt folgt direkt aus unserem Gespräch.",
+          "Dabei bleibt unsere gemeinsame Haltung klar erkennbar.",
+          "Jetzt treffen wir eine nachvollziehbare Entscheidung.",
+          "Damit endet unser Gespräch mit einem klaren Ergebnis.",
+        ];
+
+  const infidelityOpening =
+    isEnglish
+      ? [
+          "I saw you kissing at the pool yesterday.",
+          "Yes, I lied, and that was wrong.",
+        ]
+      : [
+          "Ich sah euch gestern am Pool küssen.",
+          "Ja, ich habe gelogen, und das war falsch.",
+        ];
+
+  const infidelityMiddle =
+    isEnglish
+      ? [
+          "I was there and witnessed the kiss myself.",
+          "That kiss was a mistake, not an excuse.",
+          "I should have admitted it immediately.",
+          "Your explanation arrives far too late.",
+          "I understand why trust has disappeared.",
+          "An apology cannot undo that moment.",
+          "We must face the consequence honestly now.",
+          "I will not minimize what happened.",
+          "This betrayal changes our relationship completely.",
+          "I accept the decision that follows now.",
+          "We have said every necessary fact clearly.",
+          "Nothing excuses that kiss by the pool.",
+          "I hear your answer and remain certain.",
+          "This conversation confirms my final decision.",
+          "I will protect my dignity from now on.",
+          "We cannot continue as if nothing happened.",
+          "I understand the damage I caused.",
+          "Now the consequence must become visible.",
+          "We end this conflict without another excuse.",
+          "My trust will not return today.",
+        ]
+      : [
+          "Ich war dabei und sah den Kuss ebenfalls.",
+          "Dieser Kuss war ein Fehler, keine Ausrede.",
+          "Ich hätte es sofort zugeben müssen.",
+          "Deine Erklärung kommt dafür viel zu spät.",
+          "Ich verstehe, warum das Vertrauen verschwunden ist.",
+          "Eine Entschuldigung macht diesen Moment nicht ungeschehen.",
+          "Wir müssen der Konsequenz jetzt ehrlich begegnen.",
+          "Ich werde den Kuss nicht länger verharmlosen.",
+          "Dieser Verrat verändert unsere Beziehung vollständig.",
+          "Ich akzeptiere die Entscheidung, die jetzt folgt.",
+          "Wir haben alle notwendigen Fakten klar benannt.",
+          "Nichts entschuldigt diesen Kuss am Pool.",
+          "Ich höre deine Antwort und bleibe sicher.",
+          "Dieses Gespräch bestätigt meine endgültige Entscheidung.",
+          "Ich schütze ab jetzt meine eigene Würde.",
+          "Wir können nicht einfach weitermachen wie zuvor.",
+          "Ich verstehe den Schaden, den ich verursacht habe.",
+          "Jetzt muss die Konsequenz sichtbar werden.",
+          "Wir beenden diesen Konflikt ohne weitere Ausrede.",
+          "Mein Vertrauen kehrt heute nicht zurück.",
+        ];
+
+  const infidelityClosing =
+    isEnglish
+      ? [
+          "My trust is gone, and this relationship is over.",
+          "I leave now and draw a final line.",
+        ]
+      : [
+          "Mein Vertrauen ist weg, unsere Beziehung ist vorbei.",
+          "Ich gehe jetzt und ziehe einen klaren Schlussstrich.",
+        ];
+
+  let selectedLines: string[];
+
+  if (targetDurationSeconds <= 8) {
+    selectedLines =
+      briefLines.slice(
+        0,
+        requiredLineCount,
+      );
+  } else if (
+    creationMode === "viral-story" &&
+    isInfidelityStory(story)
+  ) {
+    selectedLines = [
+      ...infidelityOpening,
+      ...infidelityMiddle.slice(
+        0,
+        Math.max(
+          0,
+          requiredLineCount - 4,
+        ),
+      ),
+      ...infidelityClosing,
+    ].slice(0, requiredLineCount);
+
+    if (requiredLineCount === 3) {
+      selectedLines = [
+        ...infidelityOpening,
+        infidelityClosing[0],
+      ];
+    }
+  } else {
+    selectedLines =
+      generalLines.slice(
+        0,
+        requiredLineCount,
+      );
+  }
+
+  return applyProvidedDialogueLines(
+    response,
+    selectedLines.map(
+      (text, index) => ({
+        speaker:
+          activeSpeakers[
+            index %
+              activeSpeakers.length
+          ],
+        text,
+      }),
+    ),
+    spokenLanguage,
+  );
+}
+
 function hasExactProvidedDialoguePlan(
   response: ArchitectResponse,
   expectedLines: readonly ProvidedDialogueLine[],
@@ -6721,7 +6970,7 @@ export async function POST(
     }
 
     if (
-      isSingleSpeakerDialogue &&
+      voiceMode === "dialogue" &&
       providedDialogue.length === 0
     ) {
       const studioAdvertisement =
@@ -6735,30 +6984,72 @@ export async function POST(
           ].join("\n"),
         );
 
-      if (studioAdvertisement) {
-        normalized =
-          applyStudioSpokespersonFallback(
-            normalized,
-            expectedDialogueSpeakers[0],
-            spokenLanguage,
-            targetDurationSeconds,
-          );
-      } else if (
-        !hasMandatoryDialoguePlan(
+      const automaticDialogueSpeakers =
+        expectedDialogueSpeakers.length > 0
+          ? expectedDialogueSpeakers
+          : normalized.productionBible.characterBible
+              .slice(
+                0,
+                creationMode === "viral-story"
+                  ? 2
+                  : 1,
+              )
+              .map(
+                (character) =>
+                  character.name,
+              );
+
+      const automaticDialogueIsValid =
+        hasMandatoryDialoguePlan(
           normalized,
           expectedDialogueSpeakers,
           targetDurationSeconds,
           creationMode,
           story,
-        )
+        ) ||
+        hasMandatoryDialoguePlan(
+          normalized,
+          expectedDialogueSpeakers,
+          targetDurationSeconds,
+          creationMode,
+          story,
+          false,
+        );
+
+      if (
+        studioAdvertisement &&
+        automaticDialogueSpeakers.length === 1
+      ) {
+        normalized =
+          applyStudioSpokespersonFallback(
+            normalized,
+            automaticDialogueSpeakers[0],
+            spokenLanguage,
+            targetDurationSeconds,
+          );
+      } else if (
+        !automaticDialogueIsValid &&
+        automaticDialogueSpeakers.length === 1
       ) {
         normalized =
           applySingleSpeakerFallback(
             normalized,
             story,
-            expectedDialogueSpeakers[0],
+            automaticDialogueSpeakers[0],
             spokenLanguage,
             targetDurationSeconds,
+          );
+      } else if (
+        !automaticDialogueIsValid
+      ) {
+        normalized =
+          applyConversationFallback(
+            normalized,
+            story,
+            automaticDialogueSpeakers,
+            spokenLanguage,
+            targetDurationSeconds,
+            creationMode,
           );
       }
     }
