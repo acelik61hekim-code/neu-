@@ -6722,13 +6722,7 @@ export async function POST(
 
     if (
       isSingleSpeakerDialogue &&
-      !hasMandatoryDialoguePlan(
-        normalized,
-        expectedDialogueSpeakers,
-        targetDurationSeconds,
-        creationMode,
-        story,
-      )
+      providedDialogue.length === 0
     ) {
       const studioAdvertisement =
         isStudioWebsiteAdvertisement(
@@ -6741,21 +6735,32 @@ export async function POST(
           ].join("\n"),
         );
 
-      normalized =
-        studioAdvertisement
-          ? applyStudioSpokespersonFallback(
-              normalized,
-              expectedDialogueSpeakers[0],
-              spokenLanguage,
-              targetDurationSeconds,
-            )
-          : applySingleSpeakerFallback(
-              normalized,
-              story,
-              expectedDialogueSpeakers[0],
-              spokenLanguage,
-              targetDurationSeconds,
-            );
+      if (studioAdvertisement) {
+        normalized =
+          applyStudioSpokespersonFallback(
+            normalized,
+            expectedDialogueSpeakers[0],
+            spokenLanguage,
+            targetDurationSeconds,
+          );
+      } else if (
+        !hasMandatoryDialoguePlan(
+          normalized,
+          expectedDialogueSpeakers,
+          targetDurationSeconds,
+          creationMode,
+          story,
+        )
+      ) {
+        normalized =
+          applySingleSpeakerFallback(
+            normalized,
+            story,
+            expectedDialogueSpeakers[0],
+            spokenLanguage,
+            targetDurationSeconds,
+          );
+      }
     }
 
     if (
