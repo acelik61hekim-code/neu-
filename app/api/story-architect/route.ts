@@ -6195,22 +6195,44 @@ export async function POST(
         "dialogue" &&
       providedDialogue.length > 0
     ) {
-      const dialogueCapacity =
-        (
-          1 +
-          normalized.moviePlan.continuations.length
-        ) * 4;
+      const providedDialogueWordCount =
+        providedDialogue.reduce(
+          (total, line) =>
+            total +
+            line.text
+              .trim()
+              .split(/\s+/)
+              .filter(Boolean)
+              .length,
+          0,
+        );
+
+      /*
+       * Kurze Sprecherwechsel sind filmisch deutlich schneller als
+       * lange Sätze. Deshalb entscheidet die tatsächliche Wortmenge
+       * statt einer pauschalen Zahl von Dialogzeilen. Rund 2,3 Wörter
+       * pro Sekunde lassen natürliche deutsche Sprache samt kleinen
+       * Reaktionspausen zu.
+       */
+      const dialogueWordCapacity =
+        Math.max(
+          12,
+          Math.floor(
+            targetDurationSeconds *
+              2.3,
+          ),
+        );
 
       if (
-        providedDialogue.length >
-        dialogueCapacity
+        providedDialogueWordCount >
+        dialogueWordCapacity
       ) {
         return NextResponse.json(
           {
             success:
               false,
             error:
-              `Dein Originaldialog enthält ${providedDialogue.length} Zeilen. Für die gewählte Videolänge sind höchstens ${dialogueCapacity} kurze Dialogzeilen möglich. Bitte verlängere das Video oder reduziere die Zeilen.`,
+              `Dein Originaldialog enthält ${providedDialogueWordCount} Wörter. Für ${targetDurationSeconds} Sekunden passen ungefähr ${dialogueWordCapacity} natürlich gesprochene Wörter. Bitte verlängere das Video oder kürze den Text.`,
           },
           {
             status:

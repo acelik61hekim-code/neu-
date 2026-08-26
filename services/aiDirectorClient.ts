@@ -6,6 +6,7 @@ import type {
 export type ConversationMessage = {
   role: "user" | "assistant";
   content: string;
+  dialogueContent?: string;
 };
 
 export type AiDirectorResponse = {

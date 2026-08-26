@@ -25,6 +25,7 @@ export const dynamic = "force-dynamic";
 type ConversationMessage = {
   role: "user" | "assistant";
   content: string;
+  dialogueContent?: string;
 };
 
 type RequestBody = {
@@ -426,7 +427,15 @@ function isConversationMessage(
       message.role === "assistant") &&
     typeof message.content === "string" &&
     message.content.trim().length > 0 &&
-    message.content.length <= AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
+    message.content.length <= AI_DIRECTOR_MESSAGE_MAX_CHARACTERS &&
+    (
+      message.dialogueContent === undefined ||
+      (
+        typeof message.dialogueContent === "string" &&
+        message.dialogueContent.length <=
+          AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
+      )
+    )
   );
 }
 
@@ -787,6 +796,10 @@ function extractProvidedDialogue(
       continue;
     }
 
+    const dialogueSource =
+      message.dialogueContent ??
+      message.content;
+
     /*
      * Ready-to-use prompts commonly format an exact monologue as:
      *
@@ -801,7 +814,7 @@ function extractProvidedDialogue(
 
     for (
       const match
-      of message.content.matchAll(
+      of dialogueSource.matchAll(
         quotedSpeechPattern,
       )
     ) {
@@ -812,7 +825,7 @@ function extractProvidedDialogue(
     }
 
     const lines =
-      message.content
+      dialogueSource
         .replace(/\r\n?/g, "\n")
         .split("\n");
 

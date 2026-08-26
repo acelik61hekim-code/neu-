@@ -389,6 +389,16 @@ export default function Chat({
             content:
               message.apiContent ??
               message.content,
+
+            /*
+             * Nur der tatsächlich sichtbare Kundentext darf als
+             * wortgetreu vorgegebener Dialog ausgewertet werden.
+             * Der ausführliche interne Viral-Regieprompt enthält
+             * ebenfalls Schreibweisen wie "Ruby: ...", die keine
+             * vom Kunden gesprochenen Zeilen sind.
+             */
+            dialogueContent:
+              message.content,
           }),
         );
 
