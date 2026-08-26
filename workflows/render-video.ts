@@ -1009,6 +1009,7 @@ async function prepareRecoveryFinalizationStep(
           job.targetDurationSeconds,
           job.videoModel ??
             "seedance-2-fast",
+          job.voiceoverVoiceName,
         )
       : [];
 
@@ -1838,6 +1839,8 @@ async function prepareRenderJobStep(
           ],
 
           job.targetDurationSeconds,
+
+          job.voiceoverVoiceName,
         );
 
       const dialogueSpeakers =
@@ -5080,6 +5083,9 @@ function buildExtensionDialogueCues(
 
   targetDurationSeconds:
     number,
+
+  preferredSingleSpeakerVoice?:
+    string,
 ): DialogueCue[] {
   const cues:
     DialogueCue[] = [];
@@ -5089,6 +5095,41 @@ function buildExtensionDialogueCues(
       string,
       string
     >();
+
+  const dialogueSpeakers =
+    new Set(
+      dialogueShots
+        .flat()
+        .map(
+          readViralDialogue,
+        )
+        .filter(
+          (
+            dialogue,
+          ): dialogue is NonNullable<
+            ReturnType<
+              typeof readViralDialogue
+            >
+          > =>
+            dialogue !==
+            null,
+        )
+        .map(
+          (dialogue) =>
+            dialogue.speaker
+              .trim()
+              .toLocaleLowerCase(
+                "de-DE",
+              ),
+        ),
+    );
+
+  const fixedSingleSpeakerVoice =
+    dialogueSpeakers.size ===
+      1 &&
+    preferredSingleSpeakerVoice
+      ? preferredSingleSpeakerVoice
+      : undefined;
 
   const legacyEightSecond =
     targetDurationSeconds ===
@@ -5190,6 +5231,7 @@ function buildExtensionDialogueCues(
               dialogue.text,
 
             voiceName:
+              fixedSingleSpeakerVoice ??
               getFixedVoiceName(
                 dialogue.speaker,
                 voiceAssignments,
@@ -5211,6 +5253,7 @@ function buildDialogueCuesFromStoredPrompt(
   prompt: string,
   targetDurationSeconds: number,
   videoModel: VideoModelId,
+  preferredSingleSpeakerVoice?: string,
 ): DialogueCue[] {
   try {
     const story =
@@ -5349,6 +5392,7 @@ function buildDialogueCuesFromStoredPrompt(
     return buildExtensionDialogueCues(
       dialogueShots,
       targetDurationSeconds,
+      preferredSingleSpeakerVoice,
     );
   } catch {
     return [];

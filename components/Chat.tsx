@@ -71,6 +71,7 @@ type ChatProps = {
   onGeneralCharactersChange?: (
     characters: ViralCharacter[],
   ) => Promise<void> | void;
+  initialInput?: string;
 };
 
 type Message = ConversationMessage & {
@@ -144,6 +145,7 @@ export default function Chat({
   musicTrack,
   onViralStoryStart,
   onGeneralCharactersChange,
+  initialInput = "",
 }: ChatProps) {
   const [
     messages,
@@ -165,7 +167,7 @@ export default function Chat({
     input,
     setInput,
   ] =
-    useState("");
+    useState(initialInput);
 
   const [
     thinking,

@@ -1604,7 +1604,8 @@ export async function POST(
         undefined,
 
       voiceoverVoiceName:
-        voiceMode === "voiceover"
+        voiceMode === "voiceover" ||
+        voiceMode === "dialogue"
           ? voiceoverVoiceName
           : undefined,
 

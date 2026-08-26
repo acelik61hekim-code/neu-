@@ -6,6 +6,7 @@ import { songStore } from "@/lib/song-store";
 import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { getActiveVideoSubscription } from "@/lib/video-subscription";
 import { jobStore } from "@/lib/store";
+import { hasPrivateInfluencerAccess } from "@/lib/private-influencer";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -29,6 +30,7 @@ export async function GET(request: NextRequest) {
     configured: true,
     authenticated: true,
     email: user.email,
+    privateInfluencerAccess: hasPrivateInfluencerAccess(user.email),
     media,
     subscription: subscription ? {
       planName: subscription.plan.name,

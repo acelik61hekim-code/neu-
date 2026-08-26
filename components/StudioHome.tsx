@@ -775,6 +775,90 @@ export default function StudioHome({
     );
 
   const [
+    influencerInitialInput,
+    setInfluencerInitialInput,
+  ] = useState("");
+
+  useEffect(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    if (parameters.get("influencer") !== "1") return;
+
+    let draft: {
+      prompt?: unknown;
+      duration?: unknown;
+      voiceName?: unknown;
+      createdAt?: unknown;
+    } = {};
+
+    try {
+      draft = JSON.parse(
+        sessionStorage.getItem("private-influencer-draft-v1") || "{}",
+      ) as typeof draft;
+    } catch {
+      setError("Der vorbereitete KI-Influencer-Beitrag konnte nicht gelesen werden.");
+      return;
+    }
+
+    const prompt = typeof draft.prompt === "string" ? draft.prompt.trim() : "";
+    const requestedDuration = Number(draft.duration);
+    if (!prompt) {
+      setError("Bereite deinen Tagesbeitrag zuerst im privaten KI-Influencer-Bereich vor.");
+      return;
+    }
+
+    setTargetDurationSeconds(
+      requestedDuration === 15 || requestedDuration === 60 ? requestedDuration : 30,
+    );
+    setAspectRatio("9:16");
+    setEditingStyle("social");
+    setAudioStyle("upbeat");
+    setVoiceMode("dialogue");
+    setSpokenLanguage("de");
+    if (draft.voiceName === "Charon" || draft.voiceName === "Kore") {
+      setVoiceoverVoiceName(draft.voiceName);
+    }
+
+    void fetch("/api/influencer/profile", { cache: "no-store" })
+      .then(async (response) => {
+        const result = (await response.json()) as {
+          profile?: null | {
+            displayName?: string;
+            updatedAt?: number;
+            imageUrls?: string[];
+          };
+          error?: string;
+        };
+        if (!response.ok || !result.profile) {
+          throw new Error(result.error || "Das private KI-Influencer-Profil wurde nicht gefunden.");
+        }
+
+        const preparedReferences = await Promise.all(
+          (result.profile.imageUrls ?? []).slice(0, 3).map(async (imageUrl, index) => ({
+            dataUrl: await loadPublicImageAsDataUrl(imageUrl),
+            name: `${result.profile?.displayName || "KI-Influencer"} – feste private Referenz ${index + 1}`,
+          })),
+        );
+        if (preparedReferences.length === 0) {
+          throw new Error("Das private Profil enthält noch keine Referenzbilder.");
+        }
+
+        setReferenceImages(preparedReferences);
+        setInfluencerInitialInput(prompt);
+        setPreviewImage(null);
+        setPreviewApproved(false);
+        setError(null);
+        setChatSessionKey((current) => current + 1);
+      })
+      .catch((caught) =>
+        setError(
+          caught instanceof Error
+            ? caught.message
+            : "Der KI-Influencer konnte nicht in das Video Studio geladen werden.",
+        ),
+      );
+  }, []);
+
+  const [
     loading,
     setLoading,
   ] =
@@ -3119,6 +3203,9 @@ export default function StudioHome({
             }
             onGeneralCharactersChange={
               handleGeneralCharacterSelection
+            }
+            initialInput={
+              influencerInitialInput
             }
           />
 
