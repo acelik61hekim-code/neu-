@@ -4508,6 +4508,292 @@ function hasExactProvidedDialoguePlan(
   );
 }
 
+function buildViralDialogueFallback(
+  story: StoryDraft,
+  speakerNames: readonly string[],
+  turnCount: number,
+): TerraDialogueTurn[] | undefined {
+  if (
+    speakerNames.length < 3 ||
+    turnCount < 3
+  ) {
+    return undefined;
+  }
+
+  const [lead, accused, third] =
+    speakerNames;
+
+  const shortName =
+    (name: string) =>
+      name
+        .split(",")[0]
+        .trim();
+
+  const leadName = shortName(lead);
+  const accusedName =
+    shortName(accused);
+  const thirdName =
+    shortName(third);
+
+  const storyContext = [
+    story.title,
+    story.genre,
+    story.summary,
+  ]
+    .join(" ")
+    .toLocaleLowerCase("de-DE");
+
+  let texts: string[];
+
+  if (
+    /bombshell|ex-partner|trennungsdatum|ex zieht ein/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, diese Umarmung mit ${thirdName} war eindeutig vertraut.`,
+      `${thirdName} ist meine Ex. Wir sind längst getrennt.`,
+      "Dann verschweigst du unser Treffen von gestern.",
+      "Du hast mir gestern eure Funkstille versprochen.",
+      `Das Treffen war ein Fehler, ${leadName}.`,
+      "Warum öffnet mein Schlüssel noch dein Schlafzimmer?",
+      "Mit diesem Schlüssel ist dein Versprechen wertlos.",
+      `${leadName}, ich habe dich belogen. Es ist vorbei.`,
+    ];
+  } else if (
+    /heimliche hochzeit|ehering|verheiratet|trauung/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, warum versteckst du diesen Ehering?`,
+      "Dieser Ring bedeutet mir längst nichts mehr.",
+      "Unsere Hochzeit war erst letzten Monat.",
+      "Du hast uns beide über eure Ehe belogen.",
+      `${thirdName}, ich wollte heute die Trennung erklären.`,
+      `${leadName}, ich bin die verschwiegene Ehepartnerin.`,
+      "Für mich ist diese Beziehung beendet.",
+      "Ich habe beide Beziehungen zerstört.",
+    ];
+  } else if (
+    /paarwahl|paarzeremonie|recoupling/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, heute Morgen hast du noch mich gewählt.`,
+      `Jetzt wähle ich ${thirdName}. Meine Entscheidung steht.`,
+      "Diese Paarwahl planten wir seit drei Tagen.",
+      "Dein Morgenversprechen war also bewusst gelogen.",
+      `${leadName}, ich habe deine Hoffnung ausgenutzt.`,
+      "Der Wohnungsschlüssel gehört jetzt auf den Tisch.",
+      "Ich nehme den Schlüssel und gehe.",
+      "Damit verliere ich mehr als diese Paarwahl.",
+    ];
+  } else if (
+    /halskette|gestohlene kette|schmuckstück/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${thirdName}, meine Kette fiel aus deiner Tasche.`,
+      `${accusedName} gab mir die Kette am Pool.`,
+      `Nein, ${thirdName} nahm die Kette selbst.`,
+      "Wann fand diese Übergabe genau statt?",
+      "Gestern Nacht, direkt hinter der Poolterrasse.",
+      "Ich wollte den Anhänger nur verstecken.",
+      "Der Anhänger öffnet mein verschlossenes Fach.",
+      `Im Fach liegt der Beleg für ${accusedName}s Auftrag.`,
+    ];
+  } else if (
+    /geheime allianz|team-symbol|abstimmung/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, ich sah eure Übergabe hinter der Tür.`,
+      "Das goldene Symbol war nur geliehen.",
+      "Nein, das Symbol besiegelt unsere geheime Allianz.",
+      "Wen wolltet ihr bei der Abstimmung treffen?",
+      `Wir wollten ${leadName} aus der Villa wählen.`,
+      `${leadName} war ursprünglich Teil unseres Plans.`,
+      "Dann zerbricht eure Allianz genau jetzt.",
+      `Ohne ${leadName} verlieren wir die Abstimmung.`,
+    ];
+  } else if (
+    /koffer|reiseset|ticket für zwei/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, warum liegt ${thirdName}s Kleidung in deinem Koffer?`,
+      `${thirdName} hat diese Kleidung gestern hier vergessen.`,
+      "Nein, diese Kleidung trug ich letzte Nacht.",
+      `Dann war ${thirdName} gestern in deinem Zimmer.`,
+      `${leadName}, ich habe dieses Treffen verschwiegen.`,
+      "Unter der Kleidung liegt ein Ticket für uns.",
+      "Dieses Ticket beendet unsere gemeinsame Reise.",
+      "Ich habe euch beide mitgenommen und belogen.",
+    ];
+  } else if (
+    /sabotage|challenge|requisit/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, ich sah dich beim Vertauschen des Requisits.`,
+      "Ich habe das Requisit allein vertauscht.",
+      "Nein, ich versprach dafür einen klaren Vorteil.",
+      "Welches Team sollte durch die Sabotage verlieren?",
+      `${leadName}s Team sollte die Challenge verlieren.`,
+      "Das manipulierte Requisit war nur eine Falle.",
+      "Die echte Entscheidung treffe jetzt ich.",
+      "Dann ist unsere Absprache endgültig gescheitert.",
+    ];
+  } else if (
+    /preisgeld|geldumschlag|verschwundene.*geld/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, dieser Geldumschlag lag in deiner Tasche.`,
+      "Ich wollte das Preisgeld für alle sichern.",
+      "Nein, du wolltest allein damit verschwinden.",
+      "Wann hast du den Umschlag heimlich genommen?",
+      "Gestern Nacht, direkt nach unserer Abmachung.",
+      "Mein größerer Umschlag beweist den geplanten Alleingang.",
+      "Du bekommst keinen Anteil mehr.",
+      "Dann habe ich eure Loyalität verspielt.",
+    ];
+  } else if (
+    /zwei verlobungen|verlobungsringe|doppelte verlobung/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, dieser Verlobungsring stammt von dir.`,
+      `Der Ring für ${thirdName} ist eine Fälschung.`,
+      "Unsere Ringe tragen dieselbe Gravur.",
+      "Du hast uns dieselbe Zukunft versprochen.",
+      `${leadName}, ich habe beide Anträge heimlich geplant.`,
+      "An deiner Hand steckt noch ein dritter Ring.",
+      "Damit endet jede unserer Verlobungen.",
+      "Ich kann keinen dieser Anträge retten.",
+    ];
+  } else if (
+    /fremde jacke|falschen zimmer|aufgeflogene ausrede/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, du kommst aus ${thirdName}s Zimmer.`,
+      "Ich suchte dort nur meine Jacke.",
+      "Diese Jacke gehört mir seit Jahren.",
+      `Warum trägst du dann ${thirdName}s Jacke?`,
+      `${leadName}, ich blieb dort über Nacht.`,
+      "Die zweite Hälfte liegt noch in meinem Zimmer.",
+      "Deine Ausrede passt nicht zu diesem Morgen.",
+      "Ich habe unsere Beziehung damit beendet.",
+    ];
+  } else if (
+    /zwei versprechen|doppeltes lieb|dasselbe.*armband/.test(
+      storyContext,
+    )
+  ) {
+    texts = [
+      `${accusedName}, du hast uns dasselbe Armband geschenkt.`,
+      `Das Armband war für ${leadName}, nicht für ${thirdName}.`,
+      "Du gabst mir das Armband am Montag.",
+      "Mir versprachst du gestern dieselbe Zukunft.",
+      "Ich habe beide Versprechen heimlich vermischt.",
+      "Dann entscheide dich jetzt vor uns.",
+      "Ein drittes Armband fällt aus deiner Tasche.",
+      "Das dritte Armband war für jemand anderen.",
+    ];
+  } else {
+    texts = [
+      `${accusedName}, ich sah euren Kuss am Pool.`,
+      `Ich habe ${thirdName} geküsst. Das war mein Fehler.`,
+      `${accusedName} wollte diesen Kuss seit gestern.`,
+      "Seit gestern belügst du mich also.",
+      `${leadName}, ich habe unser Versprechen gebrochen.`,
+      `Ich bekam denselben Ring von ${accusedName}.`,
+      "Dann ist unsere Beziehung vorbei.",
+      `${leadName}, ich akzeptiere deine Entscheidung.`,
+    ];
+  }
+
+  const speakers = [
+    lead,
+    accused,
+    third,
+    lead,
+    accused,
+    third,
+    lead,
+    accused,
+  ];
+
+  const purposes:
+    TerraDialoguePurpose[] = [
+      "discovery",
+      "answer",
+      "contradiction",
+      "accusation",
+      "admission",
+      "cliffhanger",
+      "decision",
+      "consequence",
+    ];
+
+  const factKeys:
+    TerraDialogueFactKey[][] = [
+      ["witnessedEvent"],
+      ["accusedResponse"],
+      ["contradiction"],
+      ["relationship"],
+      ["accusedResponse"],
+      ["supportingEvidence"],
+      ["consequence"],
+      ["consequence"],
+    ];
+
+  const voiceDirections = [
+    "direkt, verletzt und kontrolliert",
+    "angespannt und ohne Ausflucht",
+    "ruhig, bestimmt und konkret",
+    "fassungslos und fordernd",
+    "ehrlich, leise und unter Druck",
+    "klar und enthüllend",
+    "fest, ruhig und endgültig",
+    "erschüttert und einsichtig",
+  ];
+
+  return texts
+    .slice(
+      0,
+      Math.min(
+        turnCount,
+        texts.length,
+      ),
+    )
+    .map(
+      (text, index) => ({
+        speaker:
+          speakers[index],
+        text,
+        voiceDirection:
+          voiceDirections[index],
+        purpose:
+          purposes[index],
+        respondsToTurn:
+          index,
+        factKeys:
+          factKeys[index],
+      }),
+    );
+}
+
 function buildInfidelityDialogueFallback(
   story: StoryDraft,
   speakerNames: readonly string[],
@@ -4739,7 +5025,9 @@ async function writeDialogueWithTerra(
     TerraDialoguePayload | undefined;
 
   const maximumAttempts =
-    isSingleSpeakerSpokesperson
+    isSingleSpeakerSpokesperson ||
+    creationMode ===
+      "viral-story"
       ? 1
       : 2;
 
@@ -4882,10 +5170,17 @@ async function writeDialogueWithTerra(
 
   const fallbackTurns =
     creationMode === "viral-story"
-      ? buildInfidelityDialogueFallback(
-          story,
-          speakerNames,
-          maximumTurns,
+      ? (
+          buildViralDialogueFallback(
+            story,
+            speakerNames,
+            maximumTurns,
+          ) ??
+          buildInfidelityDialogueFallback(
+            story,
+            speakerNames,
+            maximumTurns,
+          )
         )
       : undefined;
 
