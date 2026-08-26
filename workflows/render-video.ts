@@ -2297,12 +2297,7 @@ async function startVeoOpeningStep(
     return job.currentOperationName;
   }
 
-  const referenceImage =
-    job.referenceImageUrl
-      ? await (
-          await import(
-            "@/lib/video-backend/images"
-          )
+  const referenceImages = undefined;
         ).loadStoredPreview(
           job.referenceImageUrl,
           job.referenceImageMimeType,
