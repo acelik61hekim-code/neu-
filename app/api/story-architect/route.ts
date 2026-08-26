@@ -4454,16 +4454,15 @@ function applyStudioSpokespersonFallback(
     response.moviePlan.continuations.length;
 
   const requiredLineCount =
-    Math.min(
-      beatCount * 4,
-      Math.max(
-        3,
-        Math.ceil(
-          targetDurationSeconds /
-            15,
-        ) * 2,
-      ),
-    );
+    targetDurationSeconds <= 8
+      ? 3
+      : Math.min(
+          beatCount * 4,
+          Math.max(
+            3,
+            beatCount * 3,
+          ),
+        );
 
   const lines =
     targetDurationSeconds <= 8
@@ -4489,6 +4488,14 @@ function applyStudioSpokespersonFallback(
           "So behältst du jederzeit den Überblick über deine Inhalte.",
           "Starte mit deiner Idee und prüfe zuerst die Vorschau.",
           "KI Video Studio begleitet dich bis zum fertigen Projekt.",
+          "Wähle Hochformat für Reels oder Breitbild für längere Projekte.",
+          "Musik, Stimmen und Atmosphäre werden passend zum Video geplant.",
+          "Eigene Bilder helfen dir, den gewünschten Look festzulegen.",
+          "Auch fertige Songs lassen sich als Musikvideo inszenieren.",
+          "Jede Szene folgt einem zusammenhängenden visuellen Konzept.",
+          "Nach der Erstellung bearbeitest du dein Projekt im Studio.",
+          "So entstehen Inhalte, die zu deiner Idee passen.",
+          "Öffne KI Video Studio und beginne dein nächstes Projekt.",
         ];
 
   return applyProvidedDialogueLines(
@@ -4520,16 +4527,15 @@ function applySingleSpeakerFallback(
     response.moviePlan.continuations.length;
 
   const requiredLineCount =
-    Math.min(
-      beatCount * 4,
-      Math.max(
-        3,
-        Math.ceil(
-          targetDurationSeconds /
-            15,
-        ) * 2,
-      ),
-    );
+    targetDurationSeconds <= 8
+      ? 3
+      : Math.min(
+          beatCount * 4,
+          Math.max(
+            3,
+            beatCount * 3,
+          ),
+        );
 
   const topic =
     story.title
@@ -4565,6 +4571,14 @@ function applySingleSpeakerFallback(
           "Dann entscheide ich, welcher Weg wirklich zu mir passt.",
           "Diese Entscheidung beendet den bisherigen Konflikt.",
           "So bekommt meine Geschichte einen klaren Abschluss.",
+          "Der nächste Schritt folgt sichtbar aus meiner Entscheidung.",
+          "Ich erkläre den Zusammenhang ohne unnötige Umwege.",
+          "Dabei bleibt meine Haltung in jeder Szene erkennbar.",
+          "Die Kamera begleitet meinen Weg bis zur Konsequenz.",
+          "Neue Informationen verändern nur nachvollziehbare Entscheidungen.",
+          "Ich reagiere auf jeden Wendepunkt klar und glaubwürdig.",
+          "Am Schluss bleibt keine wichtige Frage unbeantwortet.",
+          "Damit endet diese Geschichte genau an ihrem Ziel.",
         ];
 
   return applyProvidedDialogueLines(
