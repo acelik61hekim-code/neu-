@@ -27,7 +27,7 @@ function seedanceModelId(
 const BYTEPLUS_OPERATION_PREFIX = "byteplus-seedance";
 const LEGACY_FAL_OPERATION_PREFIX = "fal-seedance";
 const BYTEPLUS_BASE_URL =
-  "https://operator.las.ap-southeast-1.bytepluses.com";
+  "https://ark.ap-southeast.bytepluses.com";
 
 type SeedanceProvider = "byteplus" | "fal";
 
@@ -40,7 +40,8 @@ export function getConfiguredSeedanceProvider(): SeedanceProvider {
 export function hasConfiguredSeedanceCredentials(): boolean {
   return getConfiguredSeedanceProvider() === "byteplus"
     ? Boolean(
-        process.env.BYTEPLUS_LAS_API_KEY ||
+        process.env.BYTEPLUS_ARK_API_KEY ||
+          process.env.BYTEPLUS_LAS_API_KEY ||
           process.env.LAS_API_KEY,
       )
     : Boolean(process.env.FAL_KEY);
@@ -290,12 +291,13 @@ function configureFal(): void {
 
 function getBytePlusApiKey(): string {
   const key =
+    process.env.BYTEPLUS_ARK_API_KEY ||
     process.env.BYTEPLUS_LAS_API_KEY ||
     process.env.LAS_API_KEY;
 
   if (!key) {
     throw new Error(
-      "BYTEPLUS_LAS_API_KEY fehlt in den Umgebungsvariablen.",
+      "BYTEPLUS_ARK_API_KEY fehlt in den Umgebungsvariablen.",
     );
   }
 
@@ -545,7 +547,7 @@ async function submitSeedance(
 
     try {
       const response = await fetch(
-        `${BYTEPLUS_BASE_URL}/api/v1/contents/generations/tasks`,
+        `${BYTEPLUS_BASE_URL}/api/v3/contents/generations/tasks`,
         {
           method: "POST",
           headers: {
@@ -1082,7 +1084,7 @@ export async function checkVideoStatus(
   if (provider === "byteplus") {
     try {
       const response = await fetch(
-        `${BYTEPLUS_BASE_URL}/api/v1/contents/generations/tasks/${encodeURIComponent(requestId)}`,
+        `${BYTEPLUS_BASE_URL}/api/v3/contents/generations/tasks/${encodeURIComponent(requestId)}`,
         {
           method: "GET",
           headers: {

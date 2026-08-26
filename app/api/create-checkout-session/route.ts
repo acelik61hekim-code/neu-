@@ -194,6 +194,7 @@ function missingProductionServices():
   if (
     process.env.SEEDANCE_PROVIDER === "byteplus"
       ? !(
+          process.env.BYTEPLUS_ARK_API_KEY ||
           process.env.BYTEPLUS_LAS_API_KEY ||
           process.env.LAS_API_KEY
         )
