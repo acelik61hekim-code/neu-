@@ -2,7 +2,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { accountLibrary } from "@/lib/account-library";
-import { getVideoPlan, isVideoPlanId, type VideoPlan } from "@/lib/video-plans";
+import {
+  getVideoPlan,
+  isVideoPlanId,
+  type VideoPlan,
+} from "@/lib/video-plans";
 import { getVideoSubscriptionUsage } from "@/lib/video-subscription-usage";
 import {
   getInternalTestIds,
@@ -13,6 +17,18 @@ import { stripe } from "@/lib/stripe";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const VIDEO_SUBSCRIPTION_COOKIE = "kvs_video_studio";
+
+/*
+ * Dieser Wert dient ausschließlich dazu,
+ * das interne Video-Testkontingent von
+ * info@kivideostudio.de neu zu starten.
+ *
+ * Wenn du dein Kontingent später erneut
+ * zurücksetzen möchtest, muss nur dieser
+ * Wert geändert werden, z. B. auf:
+ * "2026-08-27-renew-2"
+ */
+const INTERNAL_VIDEO_TEST_CYCLE = "2026-08-27-renew-1";
 
 type SubscriptionCookie = {
   subscriptionId: string;
@@ -26,41 +42,91 @@ export type ActiveVideoSubscription = {
   periodStart: number;
   periodEnd: number;
   cancelAtPeriodEnd: boolean;
-  usage: { videoSeconds: number; studioEdits: number };
+  usage: {
+    videoSeconds: number;
+    studioEdits: number;
+  };
 };
 
 function signingSecret(): string {
-  const secret = process.env.VIDEO_SUBSCRIPTION_SECRET?.trim() || process.env.STRIPE_SECRET_KEY?.trim();
-  if (!secret) throw new Error("Video-Abo-Sitzungen sind nicht konfiguriert.");
+  const secret =
+    process.env.VIDEO_SUBSCRIPTION_SECRET?.trim() ||
+    process.env.STRIPE_SECRET_KEY?.trim();
+
+  if (!secret) {
+    throw new Error(
+      "Video-Abo-Sitzungen sind nicht konfiguriert.",
+    );
+  }
+
   return secret;
 }
 
 function signature(payload: string): string {
-  return createHmac("sha256", signingSecret()).update(payload).digest("base64url");
+  return createHmac("sha256", signingSecret())
+    .update(payload)
+    .digest("base64url");
 }
 
-export function createVideoSubscriptionCookie(value: SubscriptionCookie): string {
-  const payload = Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
+export function createVideoSubscriptionCookie(
+  value: SubscriptionCookie,
+): string {
+  const payload = Buffer.from(
+    JSON.stringify(value),
+    "utf8",
+  ).toString("base64url");
+
   return `${payload}.${signature(payload)}`;
 }
 
-function readVideoSubscriptionCookie(raw: string | undefined): SubscriptionCookie | null {
+function readVideoSubscriptionCookie(
+  raw: string | undefined,
+): SubscriptionCookie | null {
   if (!raw) return null;
+
   const [payload, suppliedSignature] = raw.split(".");
-  if (!payload || !suppliedSignature) return null;
+
+  if (!payload || !suppliedSignature) {
+    return null;
+  }
+
   const expected = Buffer.from(signature(payload));
   const supplied = Buffer.from(suppliedSignature);
-  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+
+  if (
+    supplied.length !== expected.length ||
+    !timingSafeEqual(supplied, expected)
+  ) {
+    return null;
+  }
+
   try {
-    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Partial<SubscriptionCookie>;
-    if (!parsed.subscriptionId?.startsWith("sub_") || !parsed.customerId?.startsWith("cus_")) return null;
-    return { subscriptionId: parsed.subscriptionId, customerId: parsed.customerId };
+    const parsed = JSON.parse(
+      Buffer.from(
+        payload,
+        "base64url",
+      ).toString("utf8"),
+    ) as Partial<SubscriptionCookie>;
+
+    if (
+      !parsed.subscriptionId?.startsWith("sub_") ||
+      !parsed.customerId?.startsWith("cus_")
+    ) {
+      return null;
+    }
+
+    return {
+      subscriptionId: parsed.subscriptionId,
+      customerId: parsed.customerId,
+    };
   } catch {
     return null;
   }
 }
 
-export async function getActiveVideoSubscription(request: NextRequest): Promise<ActiveVideoSubscription | null> {
+export async function getActiveVideoSubscription(
+  request: NextRequest,
+): Promise<ActiveVideoSubscription | null> {
   const user = await getCurrentUser();
 
   if (
@@ -75,55 +141,142 @@ export async function getActiveVideoSubscription(request: NextRequest): Promise<
       "video",
     );
 
+    /*
+     * Nur info@kivideostudio.de bekommt durch
+     * den neuen Test-Zyklus ein frisches
+     * Verbrauchskontingent.
+     *
+     * Andere interne Testnutzer behalten ihre
+     * bisherige Subscription-ID und damit auch
+     * ihren bisherigen Verbrauch.
+     */
+    const renewedSubscriptionId =
+      user.email?.trim().toLowerCase() ===
+      "info@kivideostudio.de"
+        ? `${subscriptionId}_${INTERNAL_VIDEO_TEST_CYCLE}`
+        : subscriptionId;
+
     const {
       periodStart,
       periodEnd,
     } = getInternalTestPeriod();
 
     return {
-      subscriptionId,
+      subscriptionId: renewedSubscriptionId,
       customerId,
-      plan:
-        getVideoPlan(
-          "video-studio-max",
-        ),
+
+      plan: getVideoPlan(
+        "video-studio-max",
+      ),
+
       periodStart,
       periodEnd,
-      cancelAtPeriodEnd:
-        false,
+
+      cancelAtPeriodEnd: false,
+
       usage:
         await getVideoSubscriptionUsage(
-          subscriptionId,
+          renewedSubscriptionId,
           periodStart,
         ),
     };
   }
 
-  const accountLink = user ? await accountLibrary.getVideoSubscription(user.id) : undefined;
-  const cookie = readVideoSubscriptionCookie(request.cookies.get(VIDEO_SUBSCRIPTION_COOKIE)?.value);
+  /*
+   * Ab hier läuft das normale Stripe-Abo-System.
+   * Dieser Bereich wurde nicht verändert.
+   */
+  const accountLink = user
+    ? await accountLibrary.getVideoSubscription(
+        user.id,
+      )
+    : undefined;
+
+  const cookie =
+    readVideoSubscriptionCookie(
+      request.cookies.get(
+        VIDEO_SUBSCRIPTION_COOKIE,
+      )?.value,
+    );
+
   const link = accountLink ?? cookie;
-  if (!link) return null;
 
-  const subscription = await stripe.subscriptions.retrieve(link.subscriptionId);
-  if (subscription.status !== "active" && subscription.status !== "trialing") return null;
-  const customerId = typeof subscription.customer === "string" ? subscription.customer : subscription.customer.id;
-  if (customerId !== link.customerId || !isVideoPlanId(subscription.metadata.videoPlanId)) return null;
-
-  if (user && !accountLink) {
-    if (subscription.metadata.userId && subscription.metadata.userId !== user.id) return null;
-    await accountLibrary.setVideoSubscription(user.id, { subscriptionId: subscription.id, customerId });
+  if (!link) {
+    return null;
   }
 
-  const periodStart = subscription.current_period_start;
-  const periodEnd = subscription.current_period_end;
-  const usage = await getVideoSubscriptionUsage(subscription.id, periodStart);
+  const subscription =
+    await stripe.subscriptions.retrieve(
+      link.subscriptionId,
+    );
+
+  if (
+    subscription.status !== "active" &&
+    subscription.status !== "trialing"
+  ) {
+    return null;
+  }
+
+  const customerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer.id;
+
+  if (
+    customerId !== link.customerId ||
+    !isVideoPlanId(
+      subscription.metadata.videoPlanId,
+    )
+  ) {
+    return null;
+  }
+
+  if (
+    user &&
+    !accountLink
+  ) {
+    if (
+      subscription.metadata.userId &&
+      subscription.metadata.userId !== user.id
+    ) {
+      return null;
+    }
+
+    await accountLibrary.setVideoSubscription(
+      user.id,
+      {
+        subscriptionId: subscription.id,
+        customerId,
+      },
+    );
+  }
+
+  const periodStart =
+    subscription.current_period_start;
+
+  const periodEnd =
+    subscription.current_period_end;
+
+  const usage =
+    await getVideoSubscriptionUsage(
+      subscription.id,
+      periodStart,
+    );
+
   return {
     subscriptionId: subscription.id,
     customerId,
-    plan: getVideoPlan(subscription.metadata.videoPlanId),
+
+    plan: getVideoPlan(
+      subscription.metadata.videoPlanId,
+    ),
+
     periodStart,
     periodEnd,
-    cancelAtPeriodEnd: subscription.cancel_at_period_end,
+
+    cancelAtPeriodEnd:
+      subscription.cancel_at_period_end,
+
     usage,
   };
 }
