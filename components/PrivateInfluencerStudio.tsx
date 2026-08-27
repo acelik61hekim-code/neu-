@@ -1,6 +1,5 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
@@ -79,7 +78,7 @@ async function optimizeImage(file: File): Promise<File> {
       element.onerror = () => reject(new Error("Das Bild konnte nicht gelesen werden."));
       element.src = objectUrl;
     });
-    const scale = Math.min(1, 1200 / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, 960 / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -88,10 +87,18 @@ async function optimizeImage(file: File): Promise<File> {
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.82),
+    let blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.78),
     );
     if (!blob) throw new Error("Das Bild konnte nicht vorbereitet werden.");
+    if (blob.size > 1_200_000) {
+      blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", 0.6),
+      );
+    }
+    if (!blob || blob.size > 1_500_000) {
+      throw new Error("Das Bild ist trotz Optimierung noch zu groß. Bitte verwende ein kleineres Bild.");
+    }
     return new File([blob], `${file.name.replace(/\.[^.]+$/, "").slice(0, 80) || "referenz"}.jpg`, {
       type: "image/jpeg",
     });
@@ -195,16 +202,30 @@ export default function PrivateInfluencerStudio() {
     setMessage("");
     try {
       const storedImages = await Promise.all(
-        images.map(async (image, index) => {
+        images.map(async (image) => {
           if (!image.file) {
             return { pathname: image.pathname, name: image.name, mimeType: image.mimeType };
           }
-          const safeName = image.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 100) || `referenz-${index + 1}.jpg`;
-          const blob = await upload(`${uploadPrefix}${Date.now()}-${index + 1}-${safeName}`, image.file, {
-            access: "private",
-            handleUploadUrl: "/api/influencer/upload-image",
+          const formData = new FormData();
+          formData.set("file", image.file);
+          const response = await fetch("/api/influencer/upload-image", {
+            method: "POST",
+            body: formData,
           });
-          return { pathname: blob.pathname, name: image.name, mimeType: image.file.type };
+          const result = (await response.json()) as {
+            pathname?: string;
+            name?: string;
+            mimeType?: string;
+            error?: string;
+          };
+          if (!response.ok || !result.pathname || !result.mimeType) {
+            throw new Error(result.error || "Das Referenzbild konnte nicht sicher gespeichert werden.");
+          }
+          return {
+            pathname: result.pathname,
+            name: result.name || image.name,
+            mimeType: result.mimeType,
+          };
         }),
       );
 

@@ -1,14 +1,12 @@
-import {
-  handleUpload,
-  type HandleUploadBody,
-} from "@vercel/blob/client";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import {
   hasPrivateInfluencerAccess,
-  isOwnedInfluencerImagePath,
   PRIVATE_INFLUENCER_IMAGE_TYPES,
   PRIVATE_INFLUENCER_MAX_IMAGE_BYTES,
+  privateInfluencerStore,
+  privateInfluencerUploadPrefix,
 } from "@/lib/private-influencer";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -18,45 +16,62 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as HandleUploadBody;
-    const result = await handleUpload({
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json(
+        { error: "Bitte melde dich zuerst an." },
+        { status: 401 },
+      );
+    }
+    if (!hasPrivateInfluencerAccess(user.email)) {
+      return NextResponse.json(
+        { error: "Dieser private Bereich ist für dein Konto nicht freigeschaltet." },
+        { status: 403 },
+      );
+    }
+
+    const rateLimit = await checkRateLimit(
       request,
-      body,
-      onBeforeGenerateToken: async (pathname) => {
-        const user = await getCurrentUser();
-        if (!user) throw new Error("Bitte melde dich zuerst an.");
-        if (!hasPrivateInfluencerAccess(user.email)) {
-          throw new Error("Dieser private Bereich ist für dein Konto nicht freigeschaltet.");
-        }
+      "private-influencer-image-upload-v2",
+      12,
+      60 * 60,
+    );
+    if (!rateLimit.allowed) {
+      throw new Error("Zu viele Bild-Uploads in kurzer Zeit. Bitte versuche es später erneut.");
+    }
 
-        const rateLimit = await checkRateLimit(
-          request,
-          "private-influencer-image-upload",
-          12,
-          60 * 60,
-        );
-        if (!rateLimit.allowed) {
-          throw new Error("Zu viele Bild-Uploads in kurzer Zeit. Bitte versuche es später erneut.");
-        }
+    const formData = await request.formData();
+    const file = formData.get("file");
+    if (!(file instanceof File)) {
+      throw new Error("Wähle ein gültiges Referenzbild aus.");
+    }
+    if (
+      !PRIVATE_INFLUENCER_IMAGE_TYPES.includes(
+        file.type as (typeof PRIVATE_INFLUENCER_IMAGE_TYPES)[number],
+      )
+    ) {
+      throw new Error("Bitte verwende nur JPG-, PNG- oder WebP-Bilder.");
+    }
+    if (file.size < 1 || file.size > PRIVATE_INFLUENCER_MAX_IMAGE_BYTES) {
+      throw new Error("Das vorbereitete Referenzbild ist zu groß.");
+    }
 
-        if (!isOwnedInfluencerImagePath(user.id, pathname)) {
-          throw new Error("Der Speicherpfad des Referenzbildes ist ungültig.");
-        }
+    const safeName =
+      file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 100) ||
+      "referenz.jpg";
+    const pathname = `${privateInfluencerUploadPrefix(user.id)}${Date.now()}-${randomUUID()}-${safeName}`;
+    const dataBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
 
-        return {
-          allowedContentTypes: [...PRIVATE_INFLUENCER_IMAGE_TYPES],
-          maximumSizeInBytes: PRIVATE_INFLUENCER_MAX_IMAGE_BYTES,
-          validUntil: Date.now() + 15 * 60 * 1_000,
-          addRandomSuffix: true,
-          tokenPayload: JSON.stringify({ userId: user.id }),
-        };
-      },
-      onUploadCompleted: async () => {
-        /* Das Profil übernimmt das Bild erst beim ausdrücklichen Speichern. */
-      },
+    await privateInfluencerStore.setImage(user.id, pathname, {
+      dataBase64,
+      mimeType: file.type,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json({
+      pathname,
+      name: file.name.slice(0, 120) || "Referenzbild",
+      mimeType: file.type,
+    });
   } catch (error) {
     return NextResponse.json(
       {

@@ -1,5 +1,3 @@
-import { get } from "@vercel/blob";
-
 import {
   hasPrivateInfluencerAccess,
   privateInfluencerStore,
@@ -27,16 +25,22 @@ export async function GET(
   const image = profile?.images[index];
   if (!image) return Response.json({ error: "Bild nicht gefunden." }, { status: 404 });
 
-  const result = await get(image.pathname, { access: "private" });
-  if (!result?.stream) return Response.json({ error: "Bild nicht gefunden." }, { status: 404 });
+  const storedImage = await privateInfluencerStore.getImage(
+    user.id,
+    image.pathname,
+  );
+  if (!storedImage) {
+    return Response.json({ error: "Bild nicht gefunden." }, { status: 404 });
+  }
+
+  const imageBytes = Buffer.from(storedImage.dataBase64, "base64");
 
   const headers = new Headers({
-    "Content-Type": result.headers.get("content-type") || image.mimeType,
+    "Content-Type": storedImage.mimeType || image.mimeType,
     "Cache-Control": "private, no-store",
     "Content-Disposition": 'inline; filename="ki-influencer-referenz.jpg"',
+    "Content-Length": String(imageBytes.byteLength),
   });
-  const length = result.headers.get("content-length");
-  if (length) headers.set("Content-Length", length);
 
-  return new Response(result.stream, { headers });
+  return new Response(imageBytes, { headers });
 }

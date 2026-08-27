@@ -8,7 +8,7 @@ export const PRIVATE_INFLUENCER_IMAGE_TYPES = [
   "image/png",
   "image/webp",
 ] as const;
-export const PRIVATE_INFLUENCER_MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+export const PRIVATE_INFLUENCER_MAX_IMAGE_BYTES = 1_500_000;
 
 export type PrivateInfluencerImage = {
   pathname: string;
@@ -28,6 +28,11 @@ export type PrivateInfluencerProfile = {
   updatedAt: number;
 };
 
+type PrivateInfluencerStoredImage = {
+  dataBase64: string;
+  mimeType: string;
+};
+
 const redis =
   process.env.UPSTASH_REDIS_REST_URL &&
   process.env.UPSTASH_REDIS_REST_TOKEN
@@ -38,7 +43,9 @@ const redis =
     : null;
 
 const memoryProfiles = new Map<string, PrivateInfluencerProfile>();
+const memoryImages = new Map<string, PrivateInfluencerStoredImage>();
 const profileKey = (userId: string) => `account:${userId}:private-influencer`;
+const imageKey = (pathname: string) => `private-influencer-image:${pathname}`;
 
 function configuredOwnerEmails(): string[] {
   const configured = process.env.PRIVATE_INFLUENCER_EMAILS
@@ -86,5 +93,48 @@ export const privateInfluencerStore = {
     }
 
     memoryProfiles.set(userId, profile);
+  },
+
+  async setImage(
+    userId: string,
+    pathname: string,
+    image: PrivateInfluencerStoredImage,
+  ): Promise<void> {
+    if (!isOwnedInfluencerImagePath(userId, pathname)) {
+      throw new Error("Der Speicherpfad des Referenzbildes ist ungültig.");
+    }
+
+    if (redis) {
+      await redis.set(imageKey(pathname), image);
+      return;
+    }
+
+    memoryImages.set(imageKey(pathname), image);
+  },
+
+  async getImage(
+    userId: string,
+    pathname: string,
+  ): Promise<PrivateInfluencerStoredImage | null> {
+    if (!isOwnedInfluencerImagePath(userId, pathname)) return null;
+
+    if (redis) {
+      return (
+        (await redis.get<PrivateInfluencerStoredImage>(imageKey(pathname))) ?? null
+      );
+    }
+
+    return memoryImages.get(imageKey(pathname)) ?? null;
+  },
+
+  async deleteImage(userId: string, pathname: string): Promise<void> {
+    if (!isOwnedInfluencerImagePath(userId, pathname)) return;
+
+    if (redis) {
+      await redis.del(imageKey(pathname));
+      return;
+    }
+
+    memoryImages.delete(imageKey(pathname));
   },
 };

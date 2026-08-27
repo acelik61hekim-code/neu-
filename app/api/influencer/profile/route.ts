@@ -114,6 +114,7 @@ export async function PUT(request: Request) {
       throw new Error("Wähle eine gültige feste Stimme aus.");
     }
 
+    const previousProfile = await privateInfluencerStore.get(access.user.id);
     const profile = {
       displayName: cleanText(body.displayName, 60, "Der Name"),
       appearance: cleanText(body.appearance, 800, "Die Beschreibung des Aussehens"),
@@ -127,6 +128,14 @@ export async function PUT(request: Request) {
     };
 
     await privateInfluencerStore.set(access.user.id, profile);
+    const retainedPaths = new Set(profile.images.map((image) => image.pathname));
+    await Promise.allSettled(
+      (previousProfile?.images ?? [])
+        .filter((image) => !retainedPaths.has(image.pathname))
+        .map((image) =>
+          privateInfluencerStore.deleteImage(access.user.id, image.pathname),
+        ),
+    );
     return NextResponse.json({ success: true, profile });
   } catch (error) {
     return NextResponse.json(
