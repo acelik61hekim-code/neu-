@@ -9,6 +9,10 @@ import { jobStore } from "@/lib/store";
 import { hasPrivateInfluencerAccess } from "@/lib/private-influencer";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getCurrentUser } from "@/lib/supabase/server";
+import {
+  isRestartableSongProviderError,
+  publicSongFailureMessage,
+} from "@/lib/song-recovery";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -54,7 +58,26 @@ async function resolveRecord(userId: string, record: AccountMediaRecord) {
     const job = await songStore.get(record.jobId);
     if (!job || job.userId !== userId || job.paymentStatus !== "paid") return null;
     const ready = job.status === "done" && Boolean(job.audioUri);
-    return { ...record, title: job.title || record.title, status: job.status, progress: job.progressPercent, ready, mediaUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}` : undefined, downloadUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}?download=1` : undefined, studioUrl: ready && job.providerSongId ? `/sound-studio?jobId=${encodeURIComponent(record.jobId)}&account=1` : undefined };
+    return {
+      ...record,
+      title: job.title || record.title,
+      status: job.status,
+      progress: job.progressPercent,
+      ready,
+      mediaUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}` : undefined,
+      downloadUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}?download=1` : undefined,
+      studioUrl: ready && job.providerSongId ? `/sound-studio?jobId=${encodeURIComponent(record.jobId)}&account=1` : undefined,
+      retryUrl:
+        job.status === "error" &&
+        isRestartableSongProviderError(job.errorMessage) &&
+        (job.recoveryAttempts ?? 0) < 3
+          ? "/api/recover-song"
+          : undefined,
+      errorMessage:
+        job.status === "error"
+          ? publicSongFailureMessage(job.errorMessage)
+          : undefined,
+    };
   }
   if (record.kind === "image") {
     const job = await imageStore.get(record.jobId);

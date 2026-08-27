@@ -30,6 +30,7 @@ export type SongJob = {
   revisionMode?: boolean;
   revisionApproach?: "character" | "new-melody" | "free";
   recoveryAttempts?: number;
+  providerRestartAttempts?: number;
   audioUri?: string;
   audioMimeType?: string;
   generatedLyrics?: string;

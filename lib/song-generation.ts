@@ -30,6 +30,7 @@ import {
 } from "@/lib/song-quality";
 
 import { songStore } from "@/lib/song-store";
+import { isRestartableSongProviderError } from "@/lib/song-recovery";
 
 import {
   downloadAceDataAudio,
@@ -1432,17 +1433,71 @@ export async function generateAndStoreSong(
   /*
    * Auf die bestehende AceData/Suno-Task warten.
    */
-  const generatedSongs =
-    await waitForAceDataSong(
-      providerTaskId,
-      {
-        timeoutMs:
-          8 * 60 * 1000,
+  let generatedSongs:
+    AceDataSongResult[];
 
-        intervalMs:
-          10_000,
-      },
-    );
+  try {
+    generatedSongs =
+      await waitForAceDataSong(
+        providerTaskId,
+        {
+          timeoutMs:
+            8 * 60 * 1000,
+
+          intervalMs:
+            10_000,
+        },
+      );
+  } catch (error) {
+    const providerRestartAttempts =
+      job.providerRestartAttempts ??
+      0;
+
+    if (
+      isRestartableSongProviderError(
+        error,
+      ) &&
+      providerRestartAttempts < 2
+    ) {
+      /*
+       * Die Provider-Task selbst ist intern fehlgeschlagen.
+       * Ein normaler Workflow-Retry darf deshalb nicht erneut
+       * dieselbe kaputte Task-ID abfragen, sondern startet genau
+       * einen frischen Auftrag mit denselben Kundendaten.
+       */
+      await songStore.update(
+        jobId,
+        (current) => ({
+          ...current,
+
+          providerTaskId:
+            undefined,
+
+          providerTraceId:
+            undefined,
+
+          providerSongId:
+            undefined,
+
+          providerRestartAttempts:
+            providerRestartAttempts +
+            1,
+
+          progressPercent:
+            25,
+
+          errorMessage:
+            undefined,
+        }),
+      );
+
+      throw new Error(
+        "Der Musikdienst hatte einen vorübergehenden internen Fehler. Der Songauftrag wird automatisch mit einer neuen Anbieter-ID wiederholt.",
+      );
+    }
+
+    throw error;
+  }
 
   if (
     generatedSongs.length === 0

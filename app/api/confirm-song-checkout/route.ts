@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { start } from "workflow/api";
 
 import { songStore } from "@/lib/song-store";
+import { isRestartableSongProviderError } from "@/lib/song-recovery";
 import { stripe } from "@/lib/stripe";
 import { renderSongWorkflow } from "@/workflows/render-song";
 
@@ -59,6 +60,9 @@ export async function POST(request: NextRequest) {
       job.status === "error" &&
       (job.recoveryAttempts ?? 0) < recoveryLimit;
     if (canRecoverPaidSong) {
+      const restartProviderTask =
+        isRestartableSongProviderError(job.errorMessage);
+
       await songStore.clearWorkflowStart(jobId);
       await songStore.set(jobId, {
         ...job,
@@ -66,6 +70,10 @@ export async function POST(request: NextRequest) {
         renderStage: "queued",
         progressPercent: 5,
         recoveryAttempts: (job.recoveryAttempts ?? 0) + 1,
+        providerTaskId: restartProviderTask ? undefined : job.providerTaskId,
+        providerTraceId: restartProviderTask ? undefined : job.providerTraceId,
+        providerSongId: restartProviderTask ? undefined : job.providerSongId,
+        providerRestartAttempts: restartProviderTask ? 0 : job.providerRestartAttempts,
         errorMessage: undefined,
       });
     }

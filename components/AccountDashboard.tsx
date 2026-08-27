@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import Header from "@/components/Header";
 import { ImageIcon, LoadingIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
 
-type MediaItem = { kind: "song" | "video" | "image"; jobId: string; title: string; createdAt: number; status: "pending" | "processing" | "done" | "error"; progress?: number; ready: boolean; mediaUrl?: string; downloadUrl?: string; studioUrl?: string };
+type MediaItem = { kind: "song" | "video" | "image"; jobId: string; title: string; createdAt: number; status: "pending" | "processing" | "done" | "error"; progress?: number; ready: boolean; mediaUrl?: string; downloadUrl?: string; studioUrl?: string; retryUrl?: string; errorMessage?: string };
 type AccountData = { configured: boolean; authenticated: boolean; email?: string; privateInfluencerAccess?: boolean; media?: MediaItem[]; subscription?: null | { planName: string; songsRemaining: number; editsRemaining: number; renewsAt: number; cancelAtPeriodEnd: boolean }; videoSubscription?: null | { planName: string; videoSecondsRemaining: number; studioEditsRemaining: number; renewsAt: number; cancelAtPeriodEnd: boolean } };
 
 export default function AccountDashboard() {
@@ -26,7 +26,39 @@ export default function AccountDashboard() {
   </Shell>;
 }
 
-function MediaCard({ item }: { item: MediaItem }) { const working = item.status === "pending" || item.status === "processing"; return <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035]"><div className="flex aspect-video items-center justify-center bg-black/30">{item.ready && item.kind === "image" ? <img src={item.mediaUrl} alt={item.title} className="h-full w-full object-cover" /> : item.ready && item.kind === "video" ? <video src={item.mediaUrl} controls preload="metadata" className="h-full w-full object-contain" /> : item.ready && item.kind === "song" ? <div className="w-full px-6 text-center"><MusicIcon className="mx-auto text-fuchsia-300" /><audio src={item.mediaUrl} controls preload="metadata" className="mt-4 w-full" /></div> : <div className="text-center text-zinc-500">{working ? <LoadingIcon className="mx-auto animate-spin" /> : item.kind === "image" ? <ImageIcon className="mx-auto" /> : <MusicIcon className="mx-auto" />}<p className="mt-3 text-xs">{working ? `${item.progress ?? 0} % erstellt` : "Erstellung unterbrochen"}</p></div>}</div><div className="p-5"><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-semibold uppercase tracking-wider text-violet-300">{item.kind === "song" ? "Song" : item.kind === "video" ? "Video" : "Bild"}</span><span className="text-[10px] text-zinc-600">{new Date(item.createdAt).toLocaleDateString("de-DE")}</span></div><h3 className="mt-2 truncate font-semibold">{item.title}</h3><div className="mt-4 flex flex-wrap gap-2">{item.downloadUrl && <a href={item.downloadUrl} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-200">Herunterladen</a>}{item.studioUrl && <a href={item.studioUrl} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.kind === "video" ? "bg-blue-600" : "bg-fuchsia-600"}`}>{item.kind === "video" ? "Video Studio" : "Sound Studio"}</a>}</div></div></article>; }
+function MediaCard({ item }: { item: MediaItem }) {
+  const working = item.status === "pending" || item.status === "processing";
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState("");
+
+  async function retrySong() {
+    if (!item.retryUrl || retrying) return;
+    setRetrying(true);
+    setRetryError("");
+    try {
+      const response = await fetch(item.retryUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId: item.jobId }),
+      });
+      const result = await response.json() as { success?: boolean; error?: string };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Der Song konnte nicht neu gestartet werden.");
+      }
+      window.location.reload();
+    } catch (error) {
+      setRetryError(error instanceof Error ? error.message : "Der Song konnte nicht neu gestartet werden.");
+      setRetrying(false);
+    }
+  }
+
+  return <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035]">
+    <div className="flex aspect-video items-center justify-center bg-black/30">{item.ready && item.kind === "image" ? <img src={item.mediaUrl} alt={item.title} className="h-full w-full object-cover" /> : item.ready && item.kind === "video" ? <video src={item.mediaUrl} controls preload="metadata" className="h-full w-full object-contain" /> : item.ready && item.kind === "song" ? <div className="w-full px-6 text-center"><MusicIcon className="mx-auto text-fuchsia-300" /><audio src={item.mediaUrl} controls preload="metadata" className="mt-4 w-full" /></div> : <div className="text-center text-zinc-500">{working ? <LoadingIcon className="mx-auto animate-spin" /> : item.kind === "image" ? <ImageIcon className="mx-auto" /> : <MusicIcon className="mx-auto" />}<p className="mt-3 text-xs">{working ? `${item.progress ?? 0} % erstellt` : "Erstellung unterbrochen"}</p></div>}</div>
+    <div className="p-5"><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-semibold uppercase tracking-wider text-violet-300">{item.kind === "song" ? "Song" : item.kind === "video" ? "Video" : "Bild"}</span><span className="text-[10px] text-zinc-600">{new Date(item.createdAt).toLocaleDateString("de-DE")}</span></div><h3 className="mt-2 truncate font-semibold">{item.title}</h3>{item.errorMessage && <p className="mt-3 text-xs leading-5 text-red-200/80">{item.errorMessage}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">{item.downloadUrl && <a href={item.downloadUrl} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-200">Herunterladen</a>}{item.studioUrl && <a href={item.studioUrl} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.kind === "video" ? "bg-blue-600" : "bg-fuchsia-600"}`}>{item.kind === "video" ? "Video Studio" : "Sound Studio"}</a>}{item.retryUrl && <button type="button" onClick={() => void retrySong()} disabled={retrying} className="rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-semibold disabled:opacity-50">{retrying ? "Wird neu gestartet …" : "Ohne neue Berechnung wiederholen"}</button>}</div>{retryError && <p className="mt-3 text-xs text-red-300">{retryError}</p>}
+    </div>
+  </article>;
+}
 function Shell({ children }: { children: React.ReactNode }) { return <main className="min-h-screen bg-[#07070b] text-white"><Header active="account" /><div className="mx-auto max-w-7xl px-5 pb-20 pt-12 sm:px-8">{children}</div></main>; }
 
 function formatVideoMinutes(seconds: number): string { const minutes = seconds / 60; return `${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(minutes)} ${minutes === 1 ? "Video-Minute" : "Video-Minuten"}`; }
