@@ -4854,12 +4854,24 @@ function distributeViralDialogues(
             );
 
       if (destination >= 0) {
-        chunks[
-          destination
-        ].push(
-          dialogue,
-        );
-      }
+  chunks[
+    destination
+  ].push(
+    dialogue,
+  );
+} else {
+  /*
+   * Niemals einen gültigen Dialog stillschweigend verlieren.
+   * Bei sehr kurzen Fruit Stories dürfen notfalls
+   * mehrere extrem kurze Reaktionen im selben Clip liegen.
+   */
+  chunks[
+    index %
+      chunks.length
+  ].push(
+    dialogue,
+  );
+}
     },
   );
 
