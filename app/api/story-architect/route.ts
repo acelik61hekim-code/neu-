@@ -5480,12 +5480,12 @@ async function writeDialogueWithTerra(
 
   let previousDraft:
     TerraDialoguePayload | undefined;
-
-  const maximumAttempts =
-    isSingleSpeakerSpokesperson ||
-    creationMode ===
-      "viral-story"
-      ? 1
+  
+const maximumAttempts =
+  creationMode === "viral-story"
+    ? 3
+    : isSingleSpeakerSpokesperson
+      ? 2
       : 2;
 
   for (
