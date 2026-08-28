@@ -104,8 +104,21 @@ type ProviderStartResult =
 const SEEDANCE_CLIP_DURATION_SECONDS =
   15;
 
+const SEEDANCE_STATUS_POLL_INTERVAL_SECONDS =
+  15;
+
+const MAX_SEEDANCE_STATUS_POLLS =
+  Math.ceil(
+    60 *
+      60 /
+      SEEDANCE_STATUS_POLL_INTERVAL_SECONDS,
+  );
+
 const PROVIDER_RETRY_DELAYS_MS = [
+  15_000,
+  30_000,
   60_000,
+  2 * 60_000,
   5 * 60_000,
   15 * 60_000,
   30 * 60_000,
@@ -113,9 +126,6 @@ const PROVIDER_RETRY_DELAYS_MS = [
   2 * 60 * 60_000,
   4 * 60 * 60_000,
   8 * 60 * 60_000,
-  12 * 60 * 60_000,
-  12 * 60 * 60_000,
-  12 * 60 * 60_000,
   12 * 60 * 60_000,
 ] as const;
 
@@ -555,7 +565,8 @@ async function waitForExistingSeedanceOperation(
    */
   for (
     let attempt = 0;
-    attempt < 120;
+    attempt <
+      MAX_SEEDANCE_STATUS_POLLS;
     attempt += 1
   ) {
     const result =
@@ -580,7 +591,7 @@ async function waitForExistingSeedanceOperation(
     }
 
     await sleep(
-      "30s",
+      `${SEEDANCE_STATUS_POLL_INTERVAL_SECONDS}s`,
     );
   }
 
@@ -594,6 +605,38 @@ async function waitForExistingSeedanceOperation(
     providerMessage:
       "Die bereits gestartete Seedance-Operation laeuft nach 60 Minuten noch. Sie wurde nicht doppelt gestartet.",
   };
+}
+
+function activeSeedanceRenderStage(
+  currentOperationType:
+    | "opening"
+    | "extension"
+    | "chapter-opening"
+    | undefined,
+  chapterNumber: number,
+  generationStrategy: unknown,
+):
+  | "generating-opening"
+  | "extending"
+  | "generating-chapter" {
+  if (
+    currentOperationType ===
+    "extension"
+  ) {
+    return "extending";
+  }
+
+  if (
+    currentOperationType ===
+      "chapter-opening" ||
+    chapterNumber > 1 ||
+    generationStrategy ===
+      "chaptered"
+  ) {
+    return "generating-chapter";
+  }
+
+  return "generating-opening";
 }
 
 async function completeOpeningWithOperationRecovery(
@@ -3341,7 +3384,11 @@ async function handleSeedanceWebhookStep(
             "processing",
 
           renderStage:
-            "waiting-provider",
+            activeSeedanceRenderStage(
+              job.currentOperationType,
+              chapterNumber,
+              job.generationStrategy,
+            ),
 
           lastProviderPollAt:
             Date.now(),
@@ -3594,6 +3641,13 @@ async function recoverExistingSeedanceOperationStep(
       jobId,
       {
         ...job,
+
+        renderStage:
+          activeSeedanceRenderStage(
+            job.currentOperationType,
+            chapterNumber,
+            job.generationStrategy,
+          ),
 
         lastProviderPollAt:
           Date.now(),

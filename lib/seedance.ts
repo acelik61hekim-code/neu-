@@ -540,6 +540,47 @@ export function isSeedanceOperationName(
   );
 }
 
+function parseRetryAfterMs(
+  value: string | null,
+): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const seconds =
+    Number(value);
+
+  if (
+    Number.isFinite(
+      seconds,
+    ) &&
+    seconds >= 0
+  ) {
+    return Math.max(
+      1000,
+      Math.round(
+        seconds * 1000,
+      ),
+    );
+  }
+
+  const date =
+    Date.parse(value);
+
+  if (
+    Number.isFinite(
+      date,
+    )
+  ) {
+    return Math.max(
+      1000,
+      date - Date.now(),
+    );
+  }
+
+  return undefined;
+}
+
 async function submitSeedance(
   modelId: string,
   input: Record<string, unknown>,
@@ -655,6 +696,12 @@ async function submitSeedance(
           providerMessage,
           {
             httpStatus: response.status,
+            retryAfterMs:
+              parseRetryAfterMs(
+                response.headers.get(
+                  "retry-after",
+                ),
+              ),
           },
         );
       }

@@ -124,7 +124,7 @@ const STAGE_LABELS: Record<
     "Der Filmplan wird geprüft",
 
   "waiting-provider":
-    "Video-KI ausgelastet – automatischer neuer Versuch",
+    "Video-KI bereitet den nächsten Versuch vor",
 
   "generating-opening":
     "Die erste Filmsequenz entsteht",
@@ -961,7 +961,13 @@ function StatusCard({
     formatVideoModel(videoStatus.videoModel);
 
   const stageLabel =
-    videoStatus.renderStage
+    videoStatus.renderStage ===
+      "waiting-provider" &&
+    !videoStatus.nextAttemptAt
+      ? videoStatus.currentExtension
+        ? "Seedance rendert die nächste Filmsequenz"
+        : "Seedance rendert die erste Filmsequenz"
+      : videoStatus.renderStage
       ? STAGE_LABELS[
           videoStatus.renderStage
         ]
@@ -1232,15 +1238,15 @@ function StatusCard({
               )}
 
               {videoStatus.renderStage ===
-                "waiting-provider" && (
-                <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-xs leading-5 text-amber-100/80">
-                  Dein bezahlter Auftrag ist sicher gespeichert.
-                  Die Video-KI versucht den Start automatisch erneut –
-                  ohne erneute Zahlung und ohne einen bereits gestarteten
-                  Abschnitt doppelt auszulösen.
+                "waiting-provider" &&
+                (videoStatus.nextAttemptAt ? (
+                  <p className="mt-5 rounded-xl border border-amber-400/20 bg-amber-400/[0.07] px-4 py-3 text-xs leading-5 text-amber-100/80">
+                    Dein bezahlter Auftrag ist sicher gespeichert.
+                    Die Video-KI versucht den Start automatisch erneut –
+                    ohne erneute Zahlung und ohne einen bereits gestarteten
+                    Abschnitt doppelt auszulösen.
 
-                  {videoStatus.nextAttemptAt
-                    ? ` Nächster Versuch ungefähr um ${new Date(
+                    {` Nächster Versuch ungefähr um ${new Date(
                         videoStatus.nextAttemptAt,
                       ).toLocaleTimeString(
                         "de-DE",
@@ -1251,10 +1257,17 @@ function StatusCard({
                           minute:
                             "2-digit",
                         },
-                      )} Uhr.`
-                    : ""}
-                </p>
-              )}
+                      )} Uhr.`}
+                  </p>
+                ) : (
+                  <p className="mt-5 rounded-xl border border-violet-400/20 bg-violet-400/[0.07] px-4 py-3 text-xs leading-5 text-violet-100/80">
+                    Seedance hat den Abschnitt angenommen und rendert ihn
+                    gerade. Bei längeren Videos entstehen mehrere
+                    15-Sekunden-Filmsequenzen nacheinander. Deshalb kann der
+                    Fortschritt einige Minuten auf derselben Zahl bleiben –
+                    es ist kein Fehler und es wird nichts doppelt berechnet.
+                  </p>
+                ))}
             </div>
           )}
 
