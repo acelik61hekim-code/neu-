@@ -4865,24 +4865,6 @@ function distributeViralDialogues(
 
   return chunks;
 }
-
-  const validDialogues =
-    dialogues.filter(
-      (dialogue) =>
-        readViralDialogue(
-          dialogue,
-        ) !== null,
-    );
-
-  validDialogues.forEach(
-    (
-      dialogue,
-      index,
-    ) => {
-      
-  return chunks;
-}
-
 function buildViralFocusedPhaseDirection(
   phaseIndex: number,
   phaseCount: number,
