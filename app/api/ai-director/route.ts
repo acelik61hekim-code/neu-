@@ -14,6 +14,9 @@ import {
 } from "@/lib/studio-brand";
 import { getViralCharacters } from "@/lib/viral-characters";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
+import {
+  extractInlineAttributedDialogue,
+} from "@/lib/provided-dialogue";
 
 import type {
   MusicVideoTrackContext,
@@ -166,6 +169,8 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Die Zusammenfassung muss ein echtes abwechselndes Gespräch ermöglichen. Kein Monolog, kein Erzähler, kein Voice-over und keine Offscreen-Stimme.
 - Lege den Konflikt vor dem Dialog konkret fest: Beziehung, Auslöser, sichtbares Beweisstück, verborgenes Wissen und Konsequenz.
 - Jede Antwort reagiert direkt auf den vorherigen Satz und ergänzt eine neue überprüfbare Information. Vermeide austauschbare Platzhaltersätze wie „Das ist alles anders“, „Du verstehst das nicht“, „Warte ab“ oder „Das ist erst der Anfang“.
+- Automatisch geschriebene Dialogzeilen bestehen überwiegend aus 3–8 Wörtern und höchstens aus einem sehr kurzen Satz. Alle 2–4 Sekunden folgt eine gesprochene Zeile, eine sichtbare Reaktion oder eine neue Handlung.
+- Nutze schnelle Alltagssprache: Frage, direkte Antwort, Reaktion, Gegenreaktion. Keine Drehbuchsprache, Therapiesprache, Zusammenfassung oder Meta-Sätze über „das Gespräch“, „den wichtigsten Punkt“ oder „die gemeinsame Entscheidung“.
 - Lege intern vor dem Schreiben eine unveränderliche Faktenkette fest: Beziehung, sichtbare Handlung, direkter Zeuge, genaue Lüge, widerlegendes Detail, Konsequenz und Cliffhanger.
 - Jede Dialogzeile erfüllt genau eine Funktion: Vorwurf, Antwort, Widerspruch, Teilgeständnis, Entscheidung oder Enthüllung. Eine Antwort darf nie das Thema wechseln oder ein unverbundenes neues Geheimnis erfinden.
 - Die Figuren brauchen unterscheidbare Sprechhaltungen passend zu ihrer Persönlichkeit. Wenn zwei Figuren ihre Sätze problemlos tauschen könnten, ist der Dialog noch nicht gut genug.
@@ -174,6 +179,7 @@ ZUSÄTZLICHER VERBINDLICHER DIALOGMODUS
 - Der zentrale Regelbruch wird sichtbar als Handlung gezeigt. Bei Fremdgehen sieht die betrogene Figur den Kuss, die vertraute Umarmung, das Händchenhalten oder das gemeinsame Verlassen eines Zimmers selbst. Handy, Chat, Foto, Brief oder Rechnung sind höchstens zusätzliche Bestätigung, nie der einzige Hauptbeweis.
 - Plane Ursache, Entdeckung und Reaktion kausal: konkrete Handlung im Bild, entdeckende Figur, unmittelbarer Vorwurf, überprüfbare Antwort, Widerspruch und Konsequenz.
 - Wenn die übrigen Story-Angaben ausreichen, darf ready erst dann true sein, wenn mindestens zwei Gesprächsfiguren im Story-Objekt stehen.
+- Wörtlich zitierte Sätze im Nutzerprompt sind verbindlicher Originaldialog. Ordne sie der genannten Figur und der beschriebenen Handlung zu; ersetze sie nicht durch neu erfundene Standardsätze.
 `;
 
 const SINGLE_SPEAKER_SYSTEM_INSTRUCTION = `
@@ -654,7 +660,12 @@ function stripDialogueQuotes(
   return trimmed;
 }
 
-const PROVIDED_DIALOGUE_WORDS_PER_LINE = 10;
+/*
+ * Explicit dialogue wins over the automatic writer. Fourteen words still fit
+ * comfortably into a short spoken beat, but avoid breaking a supplied quote
+ * into an unnatural orphan such as a final one-word line.
+ */
+const PROVIDED_DIALOGUE_WORDS_PER_LINE = 14;
 const PROVIDED_DIALOGUE_MAX_CHARACTERS = 4_000;
 
 function splitProvidedDialogueText(
@@ -739,6 +750,9 @@ function extractProvidedDialogue(
   const dialogue:
     ProvidedDialogueLine[] = [];
 
+  const seenDialogue =
+    new Set<string>();
+
   const addDialogue = (
     speakerLabel: string,
     rawText: string,
@@ -770,18 +784,20 @@ function extractProvidedDialogue(
         rawText,
       )
     ) {
-      const previous =
-        dialogue[
-          dialogue.length - 1
-        ];
+      const dialogueKey =
+        `${knownSpeaker.fullKey}\u0000${text}`;
 
       if (
-        previous?.speaker ===
-          knownSpeaker.fullName &&
-        previous.text === text
+        seenDialogue.has(
+          dialogueKey,
+        )
       ) {
         continue;
       }
+
+      seenDialogue.add(
+        dialogueKey,
+      );
 
       dialogue.push({
         speaker:
@@ -821,6 +837,28 @@ function extractProvidedDialogue(
       addDialogue(
         match[1],
         match[2],
+      );
+    }
+
+    /*
+     * Ready-made prompts often embed dialogue inside prose instead of using
+     * "Speaker: line" formatting. Only quotes attributed to known visible
+     * characters are accepted; screen text and unknown off-screen voices stay
+     * outside the spoken dialogue plan.
+     */
+    for (
+      const line
+      of extractInlineAttributedDialogue(
+        dialogueSource,
+        knownSpeakers.map(
+          (speaker) =>
+            speaker.fullName,
+        ),
+      )
+    ) {
+      addDialogue(
+        line.speaker,
+        line.text,
       );
     }
 

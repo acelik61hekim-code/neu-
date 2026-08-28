@@ -144,6 +144,9 @@ const isViralStory =
               ? "Der contract hält Produkt, Zielgruppe, Nutzen, sichtbare Umgebung, Beleg und Handlungsaufforderung unveränderlich fest. Erfinde keine zweite Figur, keinen Streit und kein Interview."
               : "Lege zuerst im contract genau eine unveränderliche Faktenkette fest. Jeder Dialogsatz darf nur diese Fakten verwenden; neue Gegenstände, Beweise, Beziehungen oder Orte während des Gesprächs sind verboten.",
             isSpokesperson
+              ? "Der Monolog klingt spontan und glaubwürdig, nicht wie vorgelesener Werbetext."
+              : "Schreibe schnelle Alltagssprache wie in einer viralen TikTok-Mini-Serie: überwiegend drei bis acht Wörter, direkter Sprecherwechsel, unmittelbare Antwort und Gegenreaktion. Verboten sind Meta-Sätze über das Gespräch, den wichtigsten Punkt, die gemeinsame Entscheidung oder die Folgen aus einer Perspektive.",
+            isSpokesperson
               ? "respondsToTurn entspricht für jede Monologzeile ihrer vorherigen Position: erste Zeile null, zweite Zeile eins, dritte Zeile zwei."
               : "respondsToTurn verweist ab der zweiten Zeile immer auf die unmittelbar vorherige einbasierte Zeilennummer. Die erste Zeile verwendet null.",
             "Antworte ausschließlich im vorgegebenen JSON-Schema. Keine Erklärung und keine zusätzlichen Felder.",

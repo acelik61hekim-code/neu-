@@ -2100,6 +2100,57 @@ function isVagueDramaLine(
   );
 }
 
+function isMetaConversationLine(
+  text: string,
+): boolean {
+  const normalized =
+    text
+      .trim()
+      .toLocaleLowerCase(
+        "de-DE",
+      )
+      .replace(
+        /[„“"'!?.,…:;]+/g,
+        "",
+      )
+      .replace(
+        /\s+/g,
+        " ",
+      );
+
+  return [
+    /^(?:heute )?(?:sprechen|reden) wir (?:offen )?über\b/,
+    /^(?:today )?we (?:speak|talk) (?:openly )?about\b/,
+    /\b(?:wichtigsten|zentralen|entscheidenden) punkt\b/,
+    /\b(?:central|most important|decisive) point\b/,
+    /\bfolgen? aus meiner sicht\b/,
+    /\bconsequences? from my perspective\b/,
+    /\bentscheidenden moment fest(?:halten|legen)\b/,
+    /\bestablish (?:the )?decisive moment\b/,
+    /\b(?:klar|ehrlich) und ohne umwege (?:antworten|antworte)\b/,
+    /\banswer (?:clearly|honestly) and without detours\b/,
+    /\b(?:gemeinsame|nächste) entscheidung\b/,
+    /\b(?:shared|next) decision\b/,
+    /\b(?:zentralen thema|selben thema)\b/,
+    /\b(?:central|same) (?:issue|topic)\b/,
+    /\bgespräch (?:verständlich|glaubwürdig|klar|beenden|endet)\b/,
+    /\bconversation (?:clear|credible|ends|understandable)\b/,
+    /\bursache und folge\b/,
+    /\bcause (?:and|with) (?:its )?consequence\b/,
+    /\bgenannten fakten\b/,
+    /\b(?:stated|presented) facts\b/,
+    /\bkeinen wichtigen punkt unbeantwortet\b/,
+    /\bno important point unanswered\b/,
+    /\bzusammenfass(?:e|en).*was sich.*verändert\b/,
+    /\bsummari[sz]e.*what has.*changed\b/,
+  ].some(
+    (pattern) =>
+      pattern.test(
+        normalized,
+      ),
+  );
+}
+
 function buildViralDialogueArc(
   targetDurationSeconds:
     VideoDurationSeconds,
@@ -2414,6 +2465,13 @@ function hasMandatoryDialoguePlan(
     if (
       isVagueDramaLine(
         dialogue.text,
+      ) ||
+      (
+        minimumSpeakerCount >
+          1 &&
+        isMetaConversationLine(
+          dialogue.text,
+        )
       ) ||
       (
         isViralDialogue &&
@@ -3916,7 +3974,9 @@ function buildTerraDialoguePrompt(
     creationMode ===
       "viral-story"
       ? 9
-      : 12;
+      : speakerNames.length > 1
+        ? 10
+        : 12;
 
   const language =
     spokenLanguage ===
@@ -4071,6 +4131,7 @@ VERBINDLICHE AUFGABE
 - Verwende konkrete Handlungen, Orte, Zeitpunkte oder sichtbare Beweise statt allgemeiner Dramawörter.
 - Bei drei Figuren sind „er“, „sie“, „ihn“, „ihm“ und „ihr“ als unklare Verweise verboten. Verwende den Namen, „ich“, „du“, „mich“, „dich“, „wir“ oder „euch“ und nenne die konkrete Handlung.
 - Ein Vorwurf wird beantwortet. Keine Themenwechsel, keine losen Geheimnisse und keine austauschbaren Standardsätze.
+- Verboten sind Meta-Sätze über das Gespräch selbst, zum Beispiel „Beginnen wir mit dem wichtigsten Punkt“, „Ich ergänze die Folgen aus meiner Sicht“, „Darauf antworte ich klar“ oder „Diese Antwort verändert unsere Entscheidung“.
 - Schreibe wie tatsächlich gesprochene deutsche Reality-TV-Sprache: kurze Hauptsätze oder Satzfragmente, spontane Reaktionen und klare Unterbrechungen statt höflicher Erklärprosa.
 - Nutze im gesprochenen Deutsch Präsens oder Perfekt. Literarisches Präteritum wie „du küsstest“, „ich küsste“ oder „Ora küsste mich“ ist verboten.
 - Nach der klaren Benennung darf „Kuss“ oder „küssen“ nicht in fast jeder Zeile wiederholt werden. Sprich danach natürlich über Absicht, Lüge, Vertrauen und die persönliche Entscheidung.
@@ -4308,6 +4369,19 @@ function getTerraDialogueQualityIssues(
 ): string[] {
   const issues: string[] = [];
   const { contract, turns } = payload;
+
+  if (
+    turns.some(
+      (turn) =>
+        isMetaConversationLine(
+          turn.text,
+        ),
+    )
+  ) {
+    issues.push(
+      "Der Dialog beschreibt abstrakt das Gespräch oder seine Struktur. Jede Zeile muss stattdessen eine konkrete Handlung, Reaktion, Lüge, Enthüllung oder Entscheidung der Szene aussprechen.",
+    );
+  }
 
   if (creationMode === "viral-story") {
         issues.push(
@@ -4933,212 +5007,232 @@ function applyConversationFallback(
             Math.max(
               activeSpeakers.length,
               beatCount * 3,
-            ),
+          ),
           );
-
-  const topic =
-    story.title
-      .toLocaleLowerCase("de-DE")
-      .replace(/[^a-zäöüß\s-]+/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim()
-      .split(" ")
-      .slice(0, 3)
-      .join(" ") ||
-    (
-      spokenLanguage === "en"
-        ? "today's decision"
-        : "die heutige Entscheidung"
-    );
 
   const isEnglish =
     spokenLanguage === "en";
 
-  const briefLines =
+  const completeStoryContext = [
+    story.title,
+    story.genre,
+    story.mood,
+    story.setting,
+    story.summary,
+    response.moviePlan.opening.hook,
+    response.moviePlan.opening.action,
+    ...response.moviePlan.continuations.flatMap(
+      (continuation) => [
+        continuation.storyBeat,
+        continuation.actionContinuation,
+      ],
+    ),
+  ]
+    .join(" ")
+    .toLocaleLowerCase(
+      "de-DE",
+    );
+
+  type FallbackTurn = {
+    speakerIndex: number;
+    text: string;
+  };
+
+  const twoSpeakerConflict:
+    FallbackTurn[] =
     isEnglish
       ? [
-          "Today, clarity comes first.",
-          "I state my position.",
-          "Then we decide together.",
+          { speakerIndex: 0, text: "Why have you been avoiding me?" },
+          { speakerIndex: 1, text: "Because I kept something from you." },
+          { speakerIndex: 0, text: "Then tell me the truth now." },
+          { speakerIndex: 1, text: "I was afraid of losing you." },
+          { speakerIndex: 0, text: "Your silence already hurt me." },
+          { speakerIndex: 1, text: "I know. There is no excuse." },
+          { speakerIndex: 0, text: "I need distance from you." },
+          { speakerIndex: 1, text: "Understood. I will let you go." },
+          { speakerIndex: 0, text: "Do not call me tonight." },
+          { speakerIndex: 1, text: "I will respect that." },
+          { speakerIndex: 0, text: "I wish you had spoken sooner." },
+          { speakerIndex: 1, text: "So do I. Now it is late." },
         ]
       : [
-          "Heute zählt nur Klarheit.",
-          "Ich nenne meinen Standpunkt.",
-          "Dann entscheiden wir gemeinsam.",
+          { speakerIndex: 0, text: "Warum gehst du mir ständig aus dem Weg?" },
+          { speakerIndex: 1, text: "Weil ich dir etwas verschwiegen habe." },
+          { speakerIndex: 0, text: "Dann sag mir jetzt die Wahrheit." },
+          { speakerIndex: 1, text: "Ich hatte Angst, dich zu verlieren." },
+          { speakerIndex: 0, text: "Dein Schweigen hat mich längst verletzt." },
+          { speakerIndex: 1, text: "Ich weiß. Dafür gibt es keine Ausrede." },
+          { speakerIndex: 0, text: "Ich brauche Abstand von dir." },
+          { speakerIndex: 1, text: "Verstanden. Ich lasse dich gehen." },
+          { speakerIndex: 0, text: "Ruf mich heute nicht mehr an." },
+          { speakerIndex: 1, text: "Ich respektiere das." },
+          { speakerIndex: 0, text: "Du hättest früher reden müssen." },
+          { speakerIndex: 1, text: "Ja. Jetzt ist es zu spät." },
         ];
 
-  const generalLines =
+  const threeSpeakerConflict:
+    FallbackTurn[] =
     isEnglish
       ? [
-          `Today we speak openly about ${topic}.`,
-          "Then we begin with the central point.",
-          "I add the consequences from my perspective.",
-          "First, we establish the decisive moment.",
-          "I answer clearly and without detours.",
-          "This answer changes our shared decision.",
-          "Now I explain what matters to me.",
-          "I accept responsibility for my part.",
-          "That makes our next step clear.",
-          "Together, we examine what follows from this.",
-          "Every answer stays with the same central issue.",
-          "This keeps our conversation clear and credible.",
-          "I explain my position in greater detail.",
-          "Your reaction reveals the most important question.",
-          "I give a concrete and honest answer.",
-          "Now we connect the cause with its consequence.",
-          "I decide based on the facts presented.",
-          "This decision has a visible consequence.",
-          "We leave no important point unanswered.",
-          "I summarize what has truly changed.",
-          "The next step follows directly from our conversation.",
-          "Our shared position remains clearly recognizable.",
-          "Now we make a decision everyone can understand.",
-          "Our conversation ends with a clear result.",
+          { speakerIndex: 0, text: "Why are you both here?" },
+          { speakerIndex: 1, text: "Because I kept something from you." },
+          { speakerIndex: 2, text: "I came so you learn everything." },
+          { speakerIndex: 0, text: "Then tell me the truth now." },
+          { speakerIndex: 1, text: "I was afraid of your reaction." },
+          { speakerIndex: 2, text: "No. You wanted to stay silent." },
+          { speakerIndex: 0, text: "How long have you known?" },
+          { speakerIndex: 1, text: "Since yesterday. I pushed it away." },
+          { speakerIndex: 2, text: "I witnessed everything myself." },
+          { speakerIndex: 0, text: "Then my trust is gone." },
+          { speakerIndex: 1, text: "There is no excuse for that." },
+          { speakerIndex: 0, text: "I need distance from both of you." },
         ]
       : [
-          `Heute sprechen wir offen über ${topic}.`,
-          "Dann beginnen wir mit dem wichtigsten Punkt.",
-          "Ich ergänze die Folgen aus meiner Sicht.",
-          "Zuerst halten wir den entscheidenden Moment fest.",
-          "Darauf antworte ich klar und ohne Umwege.",
-          "Diese Antwort verändert unsere gemeinsame Entscheidung.",
-          "Jetzt benenne ich, was für mich zählt.",
-          "Ich übernehme Verantwortung für meinen Anteil.",
-          "Damit steht unser nächster Schritt eindeutig fest.",
-          "Wir prüfen gemeinsam, welche Folge daraus entsteht.",
-          "Jede Antwort bleibt beim selben zentralen Thema.",
-          "So bleibt das Gespräch verständlich und glaubwürdig.",
-          "Ich erkläre meinen Standpunkt jetzt noch genauer.",
-          "Deine Reaktion zeigt mir die wichtigste offene Frage.",
-          "Darauf gebe ich eine konkrete und ehrliche Antwort.",
-          "Nun verbinden wir Ursache und Folge miteinander.",
-          "Ich entscheide mich nach den genannten Fakten.",
-          "Diese Entscheidung hat eine sichtbare Konsequenz.",
-          "Wir lassen keinen wichtigen Punkt unbeantwortet.",
-          "Ich fasse zusammen, was sich wirklich verändert.",
-          "Der nächste Schritt folgt direkt aus unserem Gespräch.",
-          "Dabei bleibt unsere gemeinsame Haltung klar erkennbar.",
-          "Jetzt treffen wir eine nachvollziehbare Entscheidung.",
-          "Damit endet unser Gespräch mit einem klaren Ergebnis.",
+          { speakerIndex: 0, text: "Warum seid ihr beide hier?" },
+          { speakerIndex: 1, text: "Weil ich dir etwas verschwiegen habe." },
+          { speakerIndex: 2, text: "Ich bin hier, damit du alles erfährst." },
+          { speakerIndex: 0, text: "Dann sagt mir jetzt die Wahrheit." },
+          { speakerIndex: 1, text: "Ich hatte Angst vor deiner Reaktion." },
+          { speakerIndex: 2, text: "Nein. Du wolltest weiter schweigen." },
+          { speakerIndex: 0, text: "Wie lange weißt du davon?" },
+          { speakerIndex: 1, text: "Seit gestern. Ich habe es verdrängt." },
+          { speakerIndex: 2, text: "Ich habe alles selbst mitbekommen." },
+          { speakerIndex: 0, text: "Damit ist mein Vertrauen weg." },
+          { speakerIndex: 1, text: "Dafür gibt es keine Ausrede." },
+          { speakerIndex: 0, text: "Ich brauche Abstand von euch." },
         ];
 
-  const infidelityOpening =
+  const weddingConflict:
+    FallbackTurn[] =
     isEnglish
       ? [
-          "I saw you kissing at the pool yesterday.",
-          "Yes, I lied, and that was wrong.",
+          { speakerIndex: 0, text: "Why are you stopping my wedding?" },
+          { speakerIndex: 1, text: "Because this whole story is a lie." },
+          { speakerIndex: 2, text: "No. You lied to both of us." },
+          { speakerIndex: 0, text: "Then show me the DNA report." },
+          { speakerIndex: 2, text: "Here. Read the result yourself." },
+          { speakerIndex: 1, text: "That report was forged." },
+          { speakerIndex: 2, text: "Maybe. But our affair was real." },
+          { speakerIndex: 0, text: "So the baby was only a lie?" },
+          { speakerIndex: 1, text: "Yes. But I still betrayed you." },
+          { speakerIndex: 0, text: "Then there will be no wedding." },
+          { speakerIndex: 2, text: "You promised you would leave." },
+          { speakerIndex: 0, text: "You two deserve each other." },
         ]
       : [
-          "Ich sah euch gestern am Pool küssen.",
-          "Ja, ich habe gelogen, und das war falsch.",
+          { speakerIndex: 0, text: "Warum stoppst du meine Hochzeit?" },
+          { speakerIndex: 1, text: "Weil diese ganze Geschichte gelogen ist." },
+          { speakerIndex: 2, text: "Nein. Du hast uns beide belogen." },
+          { speakerIndex: 0, text: "Dann zeig mir den DNA-Bericht." },
+          { speakerIndex: 2, text: "Hier. Lies das Ergebnis selbst." },
+          { speakerIndex: 1, text: "Dieser Bericht wurde gefälscht." },
+          { speakerIndex: 2, text: "Vielleicht. Aber unsere Affäre war echt." },
+          { speakerIndex: 0, text: "Also war das Baby nur eine Lüge?" },
+          { speakerIndex: 1, text: "Ja. Aber ich habe dich trotzdem betrogen." },
+          { speakerIndex: 0, text: "Dann gibt es keine Hochzeit." },
+          { speakerIndex: 2, text: "Du wolltest sie längst verlassen." },
+          { speakerIndex: 0, text: "Ihr beide verdient euch wirklich." },
         ];
 
-  const infidelityMiddle =
-    isEnglish
-      ? [
-          "I was there and witnessed the kiss myself.",
-          "That kiss was a mistake, not an excuse.",
-          "I should have admitted it immediately.",
-          "Your explanation arrives far too late.",
-          "I understand why trust has disappeared.",
-          "An apology cannot undo that moment.",
-          "We must face the consequence honestly now.",
-          "I will not minimize what happened.",
-          "This betrayal changes our relationship completely.",
-          "I accept the decision that follows now.",
-          "We have said every necessary fact clearly.",
-          "Nothing excuses that kiss by the pool.",
-          "I hear your answer and remain certain.",
-          "This conversation confirms my final decision.",
-          "I will protect my dignity from now on.",
-          "We cannot continue as if nothing happened.",
-          "I understand the damage I caused.",
-          "Now the consequence must become visible.",
-          "We end this conflict without another excuse.",
-          "My trust will not return today.",
-        ]
-      : [
-          "Ich war dabei und sah den Kuss ebenfalls.",
-          "Dieser Kuss war ein Fehler, keine Ausrede.",
-          "Ich hätte es sofort zugeben müssen.",
-          "Deine Erklärung kommt dafür viel zu spät.",
-          "Ich verstehe, warum das Vertrauen verschwunden ist.",
-          "Eine Entschuldigung macht diesen Moment nicht ungeschehen.",
-          "Wir müssen der Konsequenz jetzt ehrlich begegnen.",
-          "Ich werde den Kuss nicht länger verharmlosen.",
-          "Dieser Verrat verändert unsere Beziehung vollständig.",
-          "Ich akzeptiere die Entscheidung, die jetzt folgt.",
-          "Wir haben alle notwendigen Fakten klar benannt.",
-          "Nichts entschuldigt diesen Kuss am Pool.",
-          "Ich höre deine Antwort und bleibe sicher.",
-          "Dieses Gespräch bestätigt meine endgültige Entscheidung.",
-          "Ich schütze ab jetzt meine eigene Würde.",
-          "Wir können nicht einfach weitermachen wie zuvor.",
-          "Ich verstehe den Schaden, den ich verursacht habe.",
-          "Jetzt muss die Konsequenz sichtbar werden.",
-          "Wir beenden diesen Konflikt ohne weitere Ausrede.",
-          "Mein Vertrauen kehrt heute nicht zurück.",
-        ];
+  const infidelityConflict:
+    FallbackTurn[] =
+    activeSpeakers.length >= 3
+      ? (
+          isEnglish
+            ? [
+                { speakerIndex: 0, text: "I saw you two kissing yesterday." },
+                { speakerIndex: 1, text: "Yes. I lied to you." },
+                { speakerIndex: 2, text: "The kiss was not my idea." },
+                { speakerIndex: 0, text: "Then tell me what really happened." },
+                { speakerIndex: 1, text: "I was afraid of losing you." },
+                { speakerIndex: 2, text: "No. You wanted to stay silent." },
+                { speakerIndex: 0, text: "How long has this been happening?" },
+                { speakerIndex: 1, text: "Since yesterday. It was a mistake." },
+                { speakerIndex: 2, text: "We met once before that." },
+                { speakerIndex: 0, text: "Then my trust is gone." },
+                { speakerIndex: 1, text: "Please give me one more chance." },
+                { speakerIndex: 0, text: "No. We are finished." },
+              ]
+            : [
+                { speakerIndex: 0, text: "Ich sah euch gestern küssen." },
+                { speakerIndex: 1, text: "Ja. Ich habe dich belogen." },
+                { speakerIndex: 2, text: "Der Kuss ging nicht von mir aus." },
+                { speakerIndex: 0, text: "Dann sagt mir, was wirklich passiert ist." },
+                { speakerIndex: 1, text: "Ich hatte Angst, dich zu verlieren." },
+                { speakerIndex: 2, text: "Nein. Du wolltest weiter schweigen." },
+                { speakerIndex: 0, text: "Seit wann läuft das zwischen euch?" },
+                { speakerIndex: 1, text: "Seit gestern. Es war ein Fehler." },
+                { speakerIndex: 2, text: "Wir trafen uns schon einmal vorher." },
+                { speakerIndex: 0, text: "Damit ist mein Vertrauen weg." },
+                { speakerIndex: 1, text: "Bitte gib mir noch eine Chance." },
+                { speakerIndex: 0, text: "Nein. Für uns ist es vorbei." },
+              ]
+        )
+      : (
+          isEnglish
+            ? [
+                { speakerIndex: 0, text: "I saw you kiss someone yesterday." },
+                { speakerIndex: 1, text: "Yes. I lied to you." },
+                { speakerIndex: 0, text: "How long has this been happening?" },
+                { speakerIndex: 1, text: "Since yesterday. It was a mistake." },
+                { speakerIndex: 0, text: "You should have told me immediately." },
+                { speakerIndex: 1, text: "I was afraid of losing you." },
+                { speakerIndex: 0, text: "Your lie destroyed my trust." },
+                { speakerIndex: 1, text: "Please give me one more chance." },
+                { speakerIndex: 0, text: "No. We are finished." },
+                { speakerIndex: 1, text: "I understand your decision." },
+              ]
+            : [
+                { speakerIndex: 0, text: "Ich sah dich gestern jemand anderen küssen." },
+                { speakerIndex: 1, text: "Ja. Ich habe dich belogen." },
+                { speakerIndex: 0, text: "Seit wann läuft das schon?" },
+                { speakerIndex: 1, text: "Seit gestern. Es war ein Fehler." },
+                { speakerIndex: 0, text: "Du hättest es sofort sagen müssen." },
+                { speakerIndex: 1, text: "Ich hatte Angst, dich zu verlieren." },
+                { speakerIndex: 0, text: "Deine Lüge hat mein Vertrauen zerstört." },
+                { speakerIndex: 1, text: "Bitte gib mir noch eine Chance." },
+                { speakerIndex: 0, text: "Nein. Für uns ist es vorbei." },
+                { speakerIndex: 1, text: "Ich verstehe deine Entscheidung." },
+              ]
+        );
 
-  const infidelityClosing =
-    isEnglish
-      ? [
-          "My trust is gone, and this relationship is over.",
-          "I leave now and draw a final line.",
-        ]
-      : [
-          "Mein Vertrauen ist weg, unsere Beziehung ist vorbei.",
-          "Ich gehe jetzt und ziehe einen klaren Schlussstrich.",
-        ];
+  const isWeddingStory =
+    /hochzeit|heirat|trauung|wedding|marry|dna|vaterschaft|paternity/.test(
+      completeStoryContext,
+    );
 
-  let selectedLines: string[];
-
-  if (targetDurationSeconds <= 8) {
-    selectedLines =
-      briefLines.slice(
+  const selectedTurns =
+    (
+      isWeddingStory &&
+      activeSpeakers.length >= 3
+        ? weddingConflict
+        : isInfidelityStory(story)
+          ? infidelityConflict
+          : activeSpeakers.length >= 3
+            ? threeSpeakerConflict
+            : twoSpeakerConflict
+    )
+      .slice(
         0,
-        requiredLineCount,
-      );
-  } else if (
-    creationMode === "viral-story" &&
-    isInfidelityStory(story)
-  ) {
-    selectedLines = [
-      ...infidelityOpening,
-      ...infidelityMiddle.slice(
-        0,
-        Math.max(
-          0,
-          requiredLineCount - 4,
+        Math.min(
+          requiredLineCount,
+          12,
         ),
-      ),
-      ...infidelityClosing,
-    ].slice(0, requiredLineCount);
-
-    if (requiredLineCount === 3) {
-      selectedLines = [
-        ...infidelityOpening,
-        infidelityClosing[0],
-      ];
-    }
-  } else {
-    selectedLines =
-      generalLines.slice(
-        0,
-        requiredLineCount,
       );
-  }
 
   return applyProvidedDialogueLines(
     response,
-    selectedLines.map(
-      (text, index) => ({
+    selectedTurns.map(
+      (turn) => ({
         speaker:
           activeSpeakers[
-            index %
-              activeSpeakers.length
+            Math.min(
+              turn.speakerIndex,
+              activeSpeakers.length - 1,
+            )
           ],
-        text,
+        text:
+          turn.text,
       }),
     ),
     spokenLanguage,
@@ -5722,7 +5816,7 @@ NATÜRLICHKEITS-GATE FÜR FRUIT STORIES
           maximumTurns,
           Math.max(
             speakerNames.length,
-            beatCount * 2,
+            beatCount * 3,
           ),
         );
 
