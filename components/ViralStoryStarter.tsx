@@ -139,6 +139,7 @@ export default function ViralStoryStarter({
                   >
                     <video
                       src={template.previewVideoPath}
+                      poster={template.previewImagePath}
                       autoPlay
                       muted
                       loop

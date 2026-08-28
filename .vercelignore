@@ -9,7 +9,9 @@
 node_modules/
 output/
 
-*.mp4
+# Lokale MP4-Dateien im Projektstamm bleiben ausgeschlossen. Die kuratierten
+# Vorschauvideos unter public/viral-templates werden dagegen veröffentlicht.
+/*.mp4
 *.log
 *.tsbuildinfo
 

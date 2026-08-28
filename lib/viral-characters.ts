@@ -273,6 +273,7 @@ export type ViralStoryTemplate = {
   badge: string;
   description: string;
   previewVideoPath: string;
+  previewImagePath: string;
   characterIds: readonly string[];
   topic: string;
 };
@@ -284,6 +285,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Trending",
     description: "Ein heimlicher Kuss fliegt vor allen auf.",
     previewVideoPath: "/viral-templates/firepit-confrontation.mp4",
+    previewImagePath: "/viral-templates/firepit-confrontation.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
@@ -298,6 +300,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Neu",
     description: "Die neue Kandidatin kennt ein gefährliches Geheimnis.",
     previewVideoPath: "/viral-templates/bombshell-arrival.mp4",
+    previewImagePath: "/viral-templates/bombshell-arrival.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
@@ -312,6 +315,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Viral",
     description: "Ruby sieht den Kuss; die Nachricht bestätigt nur den Zeitraum.",
     previewVideoPath: "/viral-templates/phone-evidence.mp4",
+    previewImagePath: "/viral-templates/phone-evidence.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
@@ -326,6 +330,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Plot Twist",
     description: "Bei der Paarwahl wechselt Melo plötzlich die Seite.",
     previewVideoPath: "/viral-templates/recoupling-betrayal.mp4",
+    previewImagePath: "/viral-templates/recoupling-betrayal.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
@@ -340,6 +345,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Serie",
     description: "Ruby will gehen – dann fällt ein Beweis aus dem Koffer.",
     previewVideoPath: "/viral-templates/suitcase-cliffhanger.mp4",
+    previewImagePath: "/viral-templates/suitcase-cliffhanger.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
@@ -354,6 +360,7 @@ export const VIRAL_STORY_TEMPLATES = [
     badge: "Drama",
     description: "Die Terrassentür öffnet sich im schlimmsten Moment.",
     previewVideoPath: "/viral-templates/caught-in-the-act.mp4",
+    previewImagePath: "/viral-templates/caught-in-the-act.webp",
     characterIds: [
       "ruby-strawberry",
       "melo-watermelon",
