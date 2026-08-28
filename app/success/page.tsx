@@ -1294,7 +1294,13 @@ function StatusCard({
 
                 <a
                   className="mt-5 inline-flex items-center justify-center rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-violet-500"
-                  href={`${videoStatus.videoUrl}&download=1`}
+                  href={`${videoStatus.videoUrl}${
+                    videoStatus.videoUrl.includes(
+                      "?",
+                    )
+                      ? "&"
+                      : "?"
+                  }download=1`}
                 >
                   Video herunterladen
                 </a>
