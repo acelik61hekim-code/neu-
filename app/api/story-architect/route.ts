@@ -3978,6 +3978,8 @@ ${speakerNames[0]}
 SPRACHE
 ${language}
 
+${viralNaturalnessSection}
+
 VERBINDLICHE AUFGABE
 
 - Erzeuge zwischen ${minimumTurns} und ${maximumTurns} kurzen Monologzeilen in genauer zeitlicher Reihenfolge.
@@ -4089,6 +4091,187 @@ Falls der sichtbare Filmplan mehrere widersprüchliche Requisiten oder Nebenhand
 `;
 }
 
+function getViralDialogueNaturalnessIssues(
+  turns: readonly TerraDialogueTurn[],
+): string[] {
+  const issues: string[] = [];
+
+  const lines =
+    turns
+      .map(
+        (turn) =>
+          turn.text.trim(),
+      )
+      .filter(Boolean);
+
+  const artificialPatterns: Array<{
+    pattern: RegExp;
+    message: string;
+  }> = [
+    {
+      pattern:
+        /\b(?:diese|die|unsere|meine) konsequenz(?:en)?\b/i,
+      message:
+        "Verwende im gesprochenen Dialog nicht das abstrakte Wort Konsequenz. Die Figur soll konkret sagen, was sie jetzt tut oder fühlt.",
+    },
+    {
+      pattern:
+        /\b(?:dieses|unser) gespräch (?:zeigt|bestätigt|beweist|klärt|beendet)\b/i,
+      message:
+        "Eine Figur darf das Gespräch nicht wie ein Erzähler kommentieren.",
+    },
+    {
+      pattern:
+        /\bich akzeptiere (?:deine|diese|die) entscheidung\b/i,
+      message:
+        "„Ich akzeptiere deine Entscheidung“ klingt zu geschrieben. Reagiere emotional und konkret.",
+    },
+    {
+      pattern:
+        /\b(?:dieser|der) verrat verändert (?:unsere|die) beziehung\b/i,
+      message:
+        "Die Beziehung darf nicht in abstrakter Drehbuchsprache erklärt werden.",
+    },
+    {
+      pattern:
+        /\bich schütze (?:ab jetzt )?meine (?:eigene )?würde\b/i,
+      message:
+        "Vermeide therapeutische oder künstlich bedeutungsschwere Sprache.",
+    },
+    {
+      pattern:
+        /\bjetzt muss .{0,35} sichtbar werden\b/i,
+      message:
+        "Figuren dürfen keine filmische Regie- oder Storysprache sprechen.",
+    },
+    {
+      pattern:
+        /\bwir haben (?:alle|die) (?:notwendigen |wichtigen )?(?:fakten|punkte)\b/i,
+      message:
+        "Figuren dürfen das Geschehen nicht für den Zuschauer zusammenfassen.",
+    },
+    {
+      pattern:
+        /\b(?:damit|dadurch) (?:steht|ist) .{0,25} (?:fest|klar)\b/i,
+      message:
+        "Vermeide erklärende Schlussfolgerungssprache. Lass die Figur unmittelbar reagieren.",
+    },
+    {
+      pattern:
+        /\b(?:diese|die) entscheidung (?:beendet|verändert|bestätigt)\b/i,
+      message:
+        "Die Entscheidung soll ausgesprochen werden, nicht abstrakt beschrieben werden.",
+    },
+    {
+      pattern:
+        /\b(?:ich|wir) übernehme[n]? verantwortung für (?:meinen|unseren) anteil\b/i,
+      message:
+        "Vermeide Coaching-, Therapie- und Managementsprache.",
+    },
+  ];
+
+  for (const line of lines) {
+    for (
+      const rule
+      of artificialPatterns
+    ) {
+      if (
+        rule.pattern.test(
+          line,
+        )
+      ) {
+        issues.push(
+          `${rule.message} Problemzeile: "${line}"`,
+        );
+
+        break;
+      }
+    }
+  }
+
+  /*
+   * Zu viel abstraktes Vokabular ist ein typisches
+   * Merkmal künstlicher KI-Dialoge.
+   */
+  const abstractVocabulary =
+    /\b(?:konsequenz|tatsachen?|fakten?|beweisstücke?|nachvollziehbar|vollständig|eindeutig|endgültige entscheidung)\b/i;
+
+  const abstractLineCount =
+    lines.filter(
+      (line) =>
+        abstractVocabulary.test(
+          line,
+        ),
+    ).length;
+
+  if (
+    lines.length >= 4 &&
+    abstractLineCount >= 2
+  ) {
+    issues.push(
+      "Zu viele Zeilen klingen abstrakt oder erklärend. Schreibe konkrete Alltagssprache, Reaktionen und Handlungen.",
+    );
+  }
+
+  /*
+   * Menschen sprechen sich in einem kurzen Streit
+   * nicht in fast jeder Zeile mit Namen an.
+   */
+  const speakerNames = [
+    ...new Set(
+      turns
+        .map(
+          (turn) =>
+            turn.speaker
+              .split(",")[0]
+              .trim()
+              .toLocaleLowerCase(
+                "de-DE",
+              ),
+        )
+        .filter(
+          (name) =>
+            name.length >= 3,
+        ),
+    ),
+  ];
+
+  const linesUsingNames =
+    lines.filter(
+      (line) => {
+        const normalized =
+          line.toLocaleLowerCase(
+            "de-DE",
+          );
+
+        return speakerNames.some(
+          (name) =>
+            normalized.includes(
+              name,
+            ),
+        );
+      },
+    ).length;
+
+  if (
+    lines.length >= 5 &&
+    linesUsingNames >
+      Math.ceil(
+        lines.length * 0.6,
+      )
+  ) {
+    issues.push(
+      "Die Figuren nennen sich zu oft gegenseitig beim Namen. Verwende Namen nur, wenn die Emotion oder Verständlichkeit es wirklich verlangt.",
+    );
+  }
+
+  return [
+    ...new Set(
+      issues,
+    ),
+  ];
+}
+
 function getTerraDialogueQualityIssues(
   payload: TerraDialoguePayload,
   story: StoryDraft,
@@ -4098,6 +4281,11 @@ function getTerraDialogueQualityIssues(
   const { contract, turns } = payload;
 
   if (creationMode === "viral-story") {
+        issues.push(
+      ...getViralDialogueNaturalnessIssues(
+        turns,
+      ),
+    );
     if (
       turns.some((turn) =>
         hasAmbiguousThirdPersonReference(
@@ -5465,7 +5653,31 @@ const maximumTurns =
           beatCount * 3,
         ),
       );
+  const viralNaturalnessSection =
+    creationMode ===
+      "viral-story"
+      ? `
+NATÜRLICHKEITS-GATE FÜR FRUIT STORIES
 
+- Schreibe das Gespräch für die Figuren, niemals für den Zuschauer.
+- Keine Figur erklärt Informationen, die beide Gesprächspartner bereits kennen.
+- Jede Zeile muss wie eine unmittelbare Reaktion auf die vorige Handlung oder Aussage klingen.
+- Bevorzuge Alltagssprache, kurze Satzfragmente und spontane Reaktionen.
+- Natürliches gesprochenes Deutsch darf Verkürzungen wie „hab“, „glaub“, „komm“, „lass“ oder „warte“ verwenden, wenn sie zur Figur passen.
+- Nicht jede Antwort muss ein vollständiger grammatischer Satz sein.
+- Eine kurze Pause, Gegenfrage oder unvollständige Reaktion ist besser als künstliche Erklärprosa.
+- contract, factKeys und purpose sind ausschließlich interne Planungsdaten. Ihre Begriffe dürfen niemals hörbar in den Dialog gelangen.
+- Wörter wie „Konsequenz“, „Fakten“, „Tatsachen“, „Beweisstück“, „nachvollziehbar“ oder „endgültige Entscheidung“ nur verwenden, wenn ein echter Mensch sie in genau dieser Situation tatsächlich sagen würde.
+- Kein Satz darf wie Erzählertext, Therapiesprache, Managementsprache oder eine Zusammenfassung der Handlung klingen.
+- Figuren dürfen widersprechen, ausweichen, stocken, unterbrechen oder emotional reagieren.
+- Vermeide perfekte Frage-Antwort-Muster. Ein Streit darf unordentlich wirken, muss inhaltlich aber verständlich bleiben.
+- Jede Figur braucht eine erkennbare eigene Haltung und Sprechweise.
+- Wenn eine Zeile auch problemlos von einer anderen Figur gesprochen werden könnte, schreibe sie neu.
+- Namen nur verwenden, wenn es emotional oder zur eindeutigen Zuordnung notwendig ist.
+- Höchstens eine neue Information pro Zeile.
+- Der Dialog muss beim lauten Vorlesen wie eine echte Unterhaltung klingen.
+`
+      : "";
   const isSingleSpeakerSpokesperson =
     creationMode ===
       "standard" &&
@@ -5658,6 +5870,13 @@ const maximumAttempts =
       : undefined;
 
   if (fallbackTurns) {
+        const fallbackNaturalnessIssues =
+      creationMode ===
+        "viral-story"
+        ? getViralDialogueNaturalnessIssues(
+            fallbackTurns,
+          )
+        : [];
     const fallbackCandidate =
       applyTerraDialogueTurns(
         response,
@@ -5666,17 +5885,19 @@ const maximumAttempts =
       );
 
     if (
-      validateArchitectResponse(
-        fallbackCandidate,
-      ) &&
-      hasMandatoryDialoguePlan(
-        fallbackCandidate,
-        speakerNames,
-        targetDurationSeconds,
-        creationMode,
-        story,
-      )
-    ) {
+  validateArchitectResponse(
+    fallbackCandidate,
+  ) &&
+  hasMandatoryDialoguePlan(
+    fallbackCandidate,
+    speakerNames,
+    targetDurationSeconds,
+    creationMode,
+    story,
+  ) &&
+  fallbackNaturalnessIssues.length ===
+    0
+) {
       console.warn(
         "Story Architect verwendet einen geprüften fokussierten Untreue-Dialog als Ausfallsicherung.",
       );
