@@ -5521,12 +5521,15 @@ const maximumAttempts =
             minimumTurns,
             maximumTurns,
             style:
-              creationMode ===
-                  "standard" &&
-                speakerNames.length ===
-                  1
-                ? "spokesperson"
-                : "conversation",
+  creationMode ===
+    "viral-story"
+    ? "viral-story"
+    : creationMode ===
+          "standard" &&
+        speakerNames.length ===
+          1
+      ? "spokesperson"
+      : "conversation",
           },
         );
 
