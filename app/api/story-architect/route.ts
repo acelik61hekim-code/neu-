@@ -5444,14 +5444,27 @@ async function writeDialogueWithTerra(
     1 +
     response.moviePlan.continuations.length;
 
-  const maximumTurns =
-    Math.min(
-      beatCount * 4,
-      Math.max(
-        speakerNames.length,
-        beatCount * 3,
+  const viralDialogueTurnCount =
+  Math.min(
+    12,
+    Math.max(
+      speakerNames.length,
+      Math.ceil(
+        targetDurationSeconds / 6,
       ),
-    );
+    ),
+  );
+
+const maximumTurns =
+  creationMode === "viral-story"
+    ? viralDialogueTurnCount
+    : Math.min(
+        beatCount * 4,
+        Math.max(
+          speakerNames.length,
+          beatCount * 3,
+        ),
+      );
 
   const isSingleSpeakerSpokesperson =
     creationMode ===
