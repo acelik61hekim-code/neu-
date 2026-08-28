@@ -492,7 +492,9 @@ function hasValidDialoguePlan(
      * dadurch ausreichend gut sprechbar.
      */
     const maximumWordsPerLine =
-      12;
+  requireViralStory
+    ? 9
+    : 12;
 
     const forbiddenSpeaker =
       /narrat|voice[ -]?over|off[ -]?screen|erz(?:ae|ä)hl|sprecher(?:in)?$/i;
