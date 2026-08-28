@@ -25,6 +25,10 @@ import {
   buildVideoDurationPlan,
 } from "@/lib/veo";
 
+import {
+  ensureTimedInternalShotPlan,
+} from "@/lib/video-shot-plan";
+
 import type {
   MovieContinuation,
   MusicVideoTrackContext,
@@ -1675,6 +1679,83 @@ function normalizeArchitectResponse(
   return {
     productionBible,
     moviePlan,
+  };
+}
+
+function applyRequiredInternalShotPlans(
+  response: ArchitectResponse,
+  story: StoryDraft,
+  editingStyle: VideoEditingStyle,
+): ArchitectResponse {
+  const intentText = [
+    story.title,
+    story.genre,
+    story.mood,
+    story.setting,
+    story.summary,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const opening =
+    response.moviePlan.opening;
+
+  const plannedOpening: MovieOpening = {
+    ...opening,
+    veoPrompt:
+      ensureTimedInternalShotPlan({
+        prompt:
+          opening.veoPrompt,
+        durationSeconds:
+          opening.durationSeconds,
+        editingStyle,
+        intentText,
+        sectionLabel:
+          "opening",
+        narrativeCues: [
+          opening.hook,
+          opening.action,
+          opening.storyBeat,
+          opening.emotionalBeat,
+          `Complete this beat in ${opening.location} with a clear visual payoff.`,
+        ],
+      }),
+  };
+
+  const plannedContinuations =
+    response.moviePlan.continuations.map(
+      (continuation) => ({
+        ...continuation,
+        continuationPrompt:
+          ensureTimedInternalShotPlan({
+            prompt:
+              continuation.continuationPrompt,
+            durationSeconds:
+              continuation.durationSeconds,
+            editingStyle,
+            intentText,
+            sectionLabel:
+              `continuation ${continuation.extensionNumber}`,
+            narrativeCues: [
+              continuation.actionContinuation,
+              continuation.storyBeat,
+              continuation.escalationPurpose,
+              continuation.emotionalBeat,
+              "Finish on a visibly new story state that follows from this action.",
+            ],
+          }),
+      }),
+    );
+
+  return {
+    ...response,
+    moviePlan: {
+      ...response.moviePlan,
+      opening:
+        plannedOpening,
+      continuations:
+        plannedContinuations,
+    },
   };
 }
 
@@ -5966,6 +6047,9 @@ SCHNITTSTIL: SOCIAL / REELS
 - Starker Hook sehr früh.
 - Schnelle visuelle Entwicklung.
 - Häufige, aber motivierte Bildwechsel.
+- Plane innerhalb jedes 15-Sekunden-Provider-Clips mindestens vier klar getrennte, zeitlich markierte Einstellungen.
+- Wenn Story, Stimmung oder Nutzerwunsch schnelle Szenenwechsel, schnelle Schnitte oder eine Montage verlangen, plane exakt fünf Einstellungen pro 15 Sekunden: 0–3, 3–6, 6–9, 9–12 und 12–15 Sekunden.
+- Ein Wechsel der Brennweite bei unverändert posierenden Figuren zählt nicht als neue Einstellung. Jede Einstellung zeigt eine neue Handlung, Reaktion, Information oder räumliche Phase.
 - Keine unnötigen Pausen.
 `;
 
@@ -6188,6 +6272,9 @@ Der Prompt muss auf Englisch enthalten:
 - Licht
 - Handlung
 - natürliche Bewegung
+- bei Social, Musikvideo oder ausdrücklich schnellen Szenenwechseln einen verbindlichen zeitcodierten internen Schnittplan mit mehreren echten Einstellungen innerhalb des Provider-Clips
+- bei ausdrücklich schnellen Szenenwechseln exakt fünf unterschiedliche Einstellungen: SHOT 1 (0-3 seconds), SHOT 2 (3-6 seconds), SHOT 3 (6-9 seconds), SHOT 4 (9-12 seconds), SHOT 5 (12-15 seconds)
+- jede neue Einstellung muss neue sichtbare Handlung oder Story-Information enthalten; bloßes Umkadrieren derselben statischen Pose ist verboten
 
 FORTSETZUNGEN
 
@@ -6200,6 +6287,8 @@ Wenn generationStrategy = "extension-chain":
 - Kein Neustart.
 - Identität, Kleidung, Umgebung und Licht bleiben stabil.
 - Jede Fortsetzung bringt die Story sichtbar voran.
+- Bei Social, Musikvideo oder ausdrücklich schnellen Szenenwechseln enthält auch jeder continuationPrompt einen zeitcodierten internen Schnittplan.
+- Schnelle Szenenwechsel bedeuten mehrere echte Einstellungen innerhalb der 15 Sekunden und niemals nur schnellere Kamerabewegung in einem Dauershot.
 
 Wenn generationStrategy = "single-shot":
 - continuations = [].
@@ -6238,6 +6327,8 @@ QUALITÄTSKONTROLLE
 - jede neue continuation.durationSeconds = 15
 - korrekte Zeitbereiche
 - Hook innerhalb der ersten 2 Sekunden
+- Social- und Musikvideo-Prompts enthalten mehrere zeitcodierte Einstellungen pro 15-Sekunden-Clip
+- Bei ausdrücklich schnellen Szenenwechseln enthält jeder 15-Sekunden-Prompt exakt fünf unterschiedliche Einstellungen mit neuer Handlung oder Information
 - keine Story-Wiederholungen
 - stabile Charaktere
 - stabile Kamera und Beleuchtung
@@ -7053,6 +7144,18 @@ export async function POST(
           );
       }
     }
+
+    /*
+     * Provider clips are fifteen seconds long. Translate pacing requests into
+     * an explicit clip-local edit map after every dialogue fallback so the
+     * final prompt cannot collapse "fast cuts" into one long camera move.
+     */
+    normalized =
+      applyRequiredInternalShotPlans(
+        normalized,
+        story,
+        editingStyle,
+      );
 
     if (
       !validateArchitectResponse(

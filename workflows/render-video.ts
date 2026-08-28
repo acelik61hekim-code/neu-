@@ -1110,6 +1110,13 @@ async function prepareRenderJobStep(
       "@/lib/audio-options"
     );
 
+  const {
+    ensureTimedInternalShotPlan,
+  } =
+    await import(
+      "@/lib/video-shot-plan"
+    );
+
   const job =
     await jobStore.get(
       jobId,
@@ -1160,6 +1167,19 @@ async function prepareRenderJobStep(
     asRecord(
       story.moviePlan,
     );
+
+  const storyIntentText = [
+    story.title,
+    story.genre,
+    story.mood,
+    story.setting,
+    story.summary,
+  ]
+    .filter(
+      (value): value is string =>
+        typeof value === "string",
+    )
+    .join("\n");
 
   if (
     Object.keys(
@@ -1681,13 +1701,44 @@ async function prepareRenderJobStep(
           : opening.dialogueTurns,
 
       veoPrompt:
-        removeVisibleTextRenderingInstructions(
-          readString(
-            opening.veoPrompt,
+        ensureTimedInternalShotPlan({
+          prompt:
+            removeVisibleTextRenderingInstructions(
+              readString(
+                opening.veoPrompt,
 
-            "moviePlan.opening.veoPrompt fehlt.",
-          ),
-        ),
+                "moviePlan.opening.veoPrompt fehlt.",
+              ),
+            ),
+          durationSeconds:
+            typeof opening.durationSeconds ===
+            "number"
+              ? opening.durationSeconds
+              : SEEDANCE_CLIP_DURATION_SECONDS,
+          editingStyle:
+            job.editingStyle,
+          intentText:
+            storyIntentText,
+          sectionLabel:
+            "opening",
+          narrativeCues: [
+            typeof opening.hook === "string"
+              ? opening.hook
+              : "",
+            typeof opening.action === "string"
+              ? opening.action
+              : "",
+            typeof opening.storyBeat === "string"
+              ? opening.storyBeat
+              : "",
+            typeof opening.emotionalBeat === "string"
+              ? opening.emotionalBeat
+              : "",
+            typeof opening.location === "string"
+              ? `Complete the beat in ${opening.location} with a new visible story state.`
+              : "Finish on a clear new story state.",
+          ],
+        }),
     };
 
     const openingPrompt = [
@@ -1729,7 +1780,7 @@ async function prepareRenderJobStep(
 
     const continuationPrompts =
       rawContinuations.map(
-        (item) => {
+        (item, continuationIndex) => {
           const continuation =
             asRecord(
               item,
@@ -1786,7 +1837,7 @@ async function prepareRenderJobStep(
                 }
               : continuation;
 
-          return [
+          const providerPrompt =
             buildMovieContinuationPrompt(
               story as unknown as import(
                 "@/types/story"
@@ -1795,7 +1846,39 @@ async function prepareRenderJobStep(
               safeContinuation as unknown as import(
                 "@/types/story"
               ).MovieContinuation,
-            ),
+            );
+
+          return [
+            ensureTimedInternalShotPlan({
+              prompt:
+                providerPrompt,
+              durationSeconds:
+                typeof continuation.durationSeconds ===
+                "number"
+                  ? continuation.durationSeconds
+                  : SEEDANCE_CLIP_DURATION_SECONDS,
+              editingStyle:
+                job.editingStyle,
+              intentText:
+                storyIntentText,
+              sectionLabel:
+                `continuation ${typeof continuation.extensionNumber === "number" ? continuation.extensionNumber : continuationIndex + 1}`,
+              narrativeCues: [
+                typeof continuation.actionContinuation === "string"
+                  ? continuation.actionContinuation
+                  : "",
+                typeof continuation.storyBeat === "string"
+                  ? continuation.storyBeat
+                  : "",
+                typeof continuation.escalationPurpose === "string"
+                  ? continuation.escalationPurpose
+                  : "",
+                typeof continuation.emotionalBeat === "string"
+                  ? continuation.emotionalBeat
+                  : "",
+                "Finish on a visibly new story state that follows from this action.",
+              ],
+            }),
 
             postProducedDialogue
               ? buildViralVisualDialogueDirection(
