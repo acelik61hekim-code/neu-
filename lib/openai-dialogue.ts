@@ -145,7 +145,7 @@ export async function generateStructuredDialoguePlan(
           ].join("\n"),
           input: prompt,
           reasoning: {
-            effort: "low",
+            effort: "medium",
           },
           text: {
             format: {
