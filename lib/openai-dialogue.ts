@@ -6,9 +6,10 @@ export type DialogueWriterOptions = {
   speakerNames: string[];
   minimumTurns: number;
   maximumTurns: number;
-  style?:
-    | "conversation"
-    | "spokesperson";
+style?:
+  | "conversation"
+  | "spokesperson"
+  | "viral-story";
 };
 
 type OpenAIResponseContent = {
@@ -116,8 +117,12 @@ export async function generateStructuredDialoguePlan(
   );
 
   const isSpokesperson =
-    options.style ===
-    "spokesperson";
+  options.style ===
+  "spokesperson";
+
+const isViralStory =
+  options.style ===
+  "viral-story";
 
   try {
     const response = await fetch(
@@ -144,9 +149,12 @@ export async function generateStructuredDialoguePlan(
             "Antworte ausschließlich im vorgegebenen JSON-Schema. Keine Erklärung und keine zusätzlichen Felder.",
           ].join("\n"),
           input: prompt,
-          reasoning: {
-            effort: "medium",
-          },
+         reasoning: {
+  effort:
+    isViralStory
+      ? "medium"
+      : "low",
+},
           text: {
             format: {
               type: "json_schema",
