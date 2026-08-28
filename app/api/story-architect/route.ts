@@ -4053,6 +4053,8 @@ ${speakerNames.join(", ")}
 SPRACHE
 ${language}
 
+${viralNaturalnessSection}
+
 VERBINDLICHE AUFGABE
 
 - Erzeuge zwischen ${minimumTurns} und ${maximumTurns} Dialogzeilen in genauer zeitlicher Reihenfolge.
@@ -4274,17 +4276,23 @@ function getViralDialogueNaturalnessIssues(
       },
     ).length;
 
-  if (
-    lines.length >= 5 &&
-    linesUsingNames >
-      Math.ceil(
-        lines.length * 0.6,
-      )
-  ) {
-    issues.push(
-      "Die Figuren nennen sich zu oft gegenseitig beim Namen. Verwende Namen nur, wenn die Emotion oder Verständlichkeit es wirklich verlangt.",
-    );
-  }
+  const excessiveNameThreshold =
+  Math.max(
+    5,
+    Math.ceil(
+      lines.length * 0.9,
+    ),
+  );
+
+if (
+  lines.length >= 5 &&
+  linesUsingNames >=
+    excessiveNameThreshold
+) {
+  issues.push(
+    "Fast jede Zeile nennt einen Namen. Verwende Namen nur dort, wo sie für Klarheit oder Emotion wirklich nötig sind.",
+  );
+}
 
   return [
     ...new Set(
