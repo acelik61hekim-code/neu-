@@ -3959,7 +3959,28 @@ Abgelehnter Entwurf:
 ${JSON.stringify(previousDraft)}
 `
       : "";
+const viralNaturalnessSection =
+  creationMode ===
+    "viral-story"
+    ? `
+NATÜRLICHKEITS-GATE FÜR FRUIT STORIES
 
+- Schreibe das Gespräch für die Figuren, niemals für den Zuschauer.
+- Keine Figur erklärt Informationen, die beide Gesprächspartner bereits kennen.
+- Jede Zeile reagiert unmittelbar auf die vorige Handlung oder Aussage.
+- Bevorzuge kurze Alltagssprache, Satzfragmente und spontane Reaktionen.
+- Natürliches Deutsch darf Verkürzungen wie „hab“, „glaub“, „komm“ oder „lass“ verwenden.
+- Nicht jede Antwort muss ein vollständiger grammatischer Satz sein.
+- contract, factKeys und purpose sind nur interne Planungsdaten und dürfen niemals hörbar werden.
+- Vermeide künstliche Wörter wie „Konsequenz“, „Fakten“, „Tatsachen“, „Beweisstück“, „nachvollziehbar“ und „endgültige Entscheidung“.
+- Kein Erzählertext, keine Therapiesprache und keine Zusammenfassung der Handlung.
+- Figuren dürfen widersprechen, stocken, ausweichen oder emotional reagieren.
+- Wenn eine Zeile auch von jeder anderen Figur gesprochen werden könnte, schreibe sie neu.
+- Namen nur verwenden, wenn es wirklich nötig ist.
+- Höchstens eine neue Information pro Zeile.
+- Beim lauten Vorlesen muss es wie ein echtes Gespräch klingen.
+`
+    : "";
   const isSingleSpeakerSpokesperson =
     creationMode ===
       "standard" &&
