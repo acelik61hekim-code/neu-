@@ -1561,10 +1561,18 @@ export default function StudioHome({
     }
 
     setAspectRatio(
-      "9:16",
-    );
+  "9:16",
+);
 
-    setEditingStyle(
+/*
+ * Fruit Stories verwenden immer die
+ * spezialisierte Seedance-Pipeline.
+ */
+setVideoModel(
+  "seedance-2-fast",
+);
+
+setEditingStyle(
       "social",
     );
 
