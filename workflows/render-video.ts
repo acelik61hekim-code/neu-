@@ -4545,7 +4545,7 @@ function readViralDialogue(
   if (
     !speaker ||
     !text ||
-    wordCount > 12 ||
+    wordCount > 9 ||
     text.length > 140
   ) {
     return null;
@@ -4733,15 +4733,17 @@ function getViralProviderShotSeconds(
     return 8;
   }
 
-  if (targetDurationSeconds <= 30) {
-    return 5;
-  }
-
-  if (targetDurationSeconds <= 60) {
-    return 10;
-  }
-
-  return 15;
+  /*
+   * Fruit Story Engine:
+   * Kurze, voneinander unabhängige Seedance-Clips.
+   *
+   * Dadurch gibt es weniger:
+   * - Gesichtsveränderungen
+   * - Outfit-Drift
+   * - Fruchtkopf-Veränderungen
+   * - chaotische Handlungen
+   */
+  return 6;
 }
 
 function distributeViralBeatShotCounts(
@@ -4815,6 +4817,63 @@ function distributeViralDialogues(
         ) !== null,
     );
 
+  /*
+   * Pro Fruit-Clip maximal eine gesprochene Zeile.
+   *
+   * Mehrere Dialogzeilen werden auf verschiedene
+   * kurze Clips verteilt, statt mehrere Sprecher
+   * in eine einzelne Generierung zu pressen.
+   */
+  validDialogues.forEach(
+    (
+      dialogue,
+      index,
+    ) => {
+      const preferredDestination =
+        Math.min(
+          chunks.length - 1,
+
+          Math.floor(
+            index *
+              chunks.length /
+              Math.max(
+                1,
+                validDialogues.length,
+              ),
+          ),
+        );
+
+      const destination =
+        chunks[
+          preferredDestination
+        ].length === 0
+          ? preferredDestination
+          : chunks.findIndex(
+              (chunk) =>
+                chunk.length === 0,
+            );
+
+      if (destination >= 0) {
+        chunks[
+          destination
+        ].push(
+          dialogue,
+        );
+      }
+    },
+  );
+
+  return chunks;
+}
+
+  const validDialogues =
+    dialogues.filter(
+      (dialogue) =>
+        readViralDialogue(
+          dialogue,
+        ) !== null,
+    );
+
   validDialogues.forEach(
     (
       dialogue,
@@ -4848,9 +4907,9 @@ function buildViralFocusedPhaseDirection(
   isFinalShot: boolean,
 ): string {
   if (phaseCount <= 1) {
-    return [
-      "Play exactly one coherent reality-TV story beat with no unrelated subplot.",
-      "Use at most three motivated shots: the concrete action or proof, the direct reaction, then one answer or reveal.",
+  return [
+    "Play exactly one coherent reality-TV micro-beat with no unrelated subplot.",
+    "Show one primary physical action and one readable reaction only. Do not compress discovery, accusation, answer and reveal into the same clip.",
       isFinalShot
         ? "End on the episode's unresolved physical cliffhanger and hold the shocked reaction."
         : "End on a clear reaction that motivates the next clip.",
@@ -4880,7 +4939,7 @@ function buildViralFocusedPhaseDirection(
 
   return [
     "Stage the direct accusation and its immediate relevant answer.",
-    "Keep the active speaker's face readable and let the other character react silently.",
+    "Prefer one active speaker only. Keep that speaker's face readable and let the other character react silently.",
     "Do not change subject, location or evidence.",
   ].join(" ");
 }
@@ -4972,6 +5031,7 @@ function buildViralFocusedShotPrompt(
     ),
 
     "ONE CAUSAL MOMENT ONLY: every gesture, reaction and camera cut must serve this exact beat. Do not compress the entire episode into this clip. Do not repeat an earlier beat.",
+    "FRUIT STORY CLIP RULE: prefer only one or two visible referenced characters. Maximum one speaking character in this clip. If no dialogue line is assigned, nobody speaks; communicate the beat through action and reaction. Never invent extra dialogue.",
 
     "REALITY-TV PERFORMANCE: natural conversational timing with sharp interruptions, accusing looks, defensive posture and one strong readable reaction. Nobody presents to camera or stands neutrally. Keep the conflict non-violent.",
 
@@ -4987,9 +5047,8 @@ function buildViralFocusedShotPrompt(
 
     selectedAudioDirection,
 
-    "CAMERA: one or two motivated shots maximum for clips under eight seconds; stable eyelines, readable faces, no random montage, no whip-pan chaos and no unnecessary establishing shot.",
-
-    "QUALITY LOCK: stable fruit heads and faces, exact outfits, realistic hands, clean lip movement, stable lighting, no humans, no extra characters, no duplicated bodies, no morphing, no text, no subtitles, no logos and no watermark.",
+    "CAMERA: one primary composition and at most one motivated cut. Stable eyelines, readable faces, no random montage, no whip-pan chaos and no unnecessary establishing shot.",
+    "QUALITY LOCK: the supplied reference images are immutable identity anchors for every clip. Stable fruit heads and faces, exact outfits, exact colors and body proportions, realistic hands, clean lip movement, stable lighting, no humans, no extra characters, no duplicated bodies, no morphing, no text, no subtitles, no logos and no watermark.",
   ]
     .filter(Boolean)
     .join("\n\n");
