@@ -7298,32 +7298,27 @@ export async function POST(
             DIALOGUE_WRITER_MODEL,
         };
       } catch (terraError) {
-  console.error(
-    "GPT-5.6 Terra Dialogplanung fehlgeschlagen:",
-    getErrorDetails(
-      terraError,
-    ),
-  );
+        console.error(
+          "GPT-5.6 Terra Dialogplanung fehlgeschlagen:",
+          getErrorDetails(
+            terraError,
+          ),
+        );
 
-  /*
-   * Fruit Stories dürfen niemals auf generische,
-   * künstliche Standarddialoge zurückfallen.
-   *
-   * Wenn selbst nach allen Terra-Rewrite-Versuchen
-   * kein guter Dialog entsteht, brechen wir lieber
-   * die Story-Erstellung ab, statt Müll auszugeben.
-   */
-  if (
-    creationMode ===
-    "viral-story"
-  ) {
-    throw terraError;
-  }
-
-  console.warn(
-    "Der geprüfte Gemini-Dialogplan bleibt als Ausfallsicherung aktiv.",
-  );
-}
+        /*
+         * Fruit Stories dürfen niemals auf generische,
+         * künstliche Standarddialoge zurückfallen.
+         *
+         * Wenn selbst nach allen Terra-Rewrite-Versuchen
+         * kein guter Dialog entsteht, brechen wir lieber
+         * die Story-Erstellung ab, statt Müll auszugeben.
+         */
+        if (
+          creationMode ===
+          "viral-story"
+        ) {
+          throw terraError;
+        }
 
         console.warn(
           "Der geprüfte Gemini-Dialogplan bleibt als Ausfallsicherung aktiv.",
