@@ -4879,25 +4879,7 @@ function distributeViralDialogues(
       dialogue,
       index,
     ) => {
-      const destination =
-        Math.min(
-          chunks.length - 1,
-          Math.floor(
-            index *
-              chunks.length /
-              Math.max(
-                1,
-                validDialogues.length,
-              ),
-          ),
-        );
-
-      chunks[destination].push(
-        dialogue,
-      );
-    },
-  );
-
+      
   return chunks;
 }
 
