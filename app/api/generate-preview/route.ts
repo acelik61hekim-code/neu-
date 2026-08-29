@@ -1,6 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { NextResponse } from "next/server";
 
+import { storeGeneratedPreview } from "@/lib/video-backend/images";
+import { checkRateLimit } from "@/lib/rate-limit";
 
 import type {
   VideoAspectRatio,
