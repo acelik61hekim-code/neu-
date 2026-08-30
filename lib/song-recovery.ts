@@ -1,5 +1,5 @@
 const RESTARTABLE_SONG_PROVIDER_ERROR =
-  /api internal error|provider internal error|upstream internal error|temporary internal error|upstream server|tim(?:ed|ing)? out|timeout|gateway timeout|service unavailable|temporarily unavailable|rate limit|too many requests|vorübergehender (?:interner )?fehler|vorübergehender musikdienst-fehler|\b(?:408|425|429|500|502|503|504)\b/i;
+  /api internal error|provider internal error|upstream internal error|temporary internal error|upstream server|tim(?:ed|ing)? out|timeout|gateway timeout|service unavailable|temporarily unavailable|rate limit|too many requests|zeitüberschreitung|vorübergehender (?:interner )?fehler|vorübergehender musikdienst-fehler|\b(?:408|425|429|500|502|503|504)\b/i;
 
 export function isRestartableSongProviderError(error: unknown): boolean {
   const message =

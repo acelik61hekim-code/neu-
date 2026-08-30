@@ -1544,7 +1544,7 @@ export async function generateAndStoreSong(
         providerTaskId,
         {
           timeoutMs:
-            8 * 60 * 1000,
+            6 * 60 * 1000,
 
           intervalMs:
             10_000,
@@ -1561,14 +1561,21 @@ export async function generateAndStoreSong(
       ) &&
       isRestartableSongProviderError(
         error,
-      ) &&
-      providerRestartAttempts < 2
+      )
     ) {
+      if (providerRestartAttempts >= 2) {
+        throw new FatalError(
+          "Der Musikdienst hat nach mehreren automatischen Neustarts nicht rechtzeitig geantwortet. Dein Auftrag bleibt gespeichert und kann ohne neue Zahlung erneut gestartet werden.",
+        );
+      }
+
       /*
-       * Die Provider-Task selbst ist intern fehlgeschlagen.
+       * Die Provider-Task selbst ist intern fehlgeschlagen
+       * oder trotz mehrerer Statusabfragen festgefahren.
        * Ein normaler Workflow-Retry darf deshalb nicht erneut
        * dieselbe kaputte Task-ID abfragen, sondern startet genau
-       * einen frischen Auftrag mit denselben Kundendaten.
+       * einen frischen Auftrag mit denselben Kundendaten. Die
+       * Anzahl der Neustarts bleibt begrenzt.
        */
       await songStore.update(
         jobId,

@@ -414,7 +414,7 @@ export async function waitForAceDataSong(
   }
 ): Promise<AceDataSongResult[]> {
   const timeoutMs =
-    options?.timeoutMs ?? 8 * 60 * 1000;
+    options?.timeoutMs ?? 6 * 60 * 1000;
 
   const intervalMs =
     options?.intervalMs ?? 10_000;
@@ -431,9 +431,14 @@ export async function waitForAceDataSong(
     } catch (error) {
       if (
         !shouldRestartAceDataTask(error) &&
-        isRestartableSongProviderError(error) &&
-        transientPollFailures < 5
+        isRestartableSongProviderError(error)
       ) {
+        if (transientPollFailures >= 5) {
+          throw new AceDataTaskResponseError(
+            "AceData upstream server timed out repeatedly while checking the song task.",
+          );
+        }
+
         transientPollFailures += 1;
 
         console.warn(
@@ -486,8 +491,8 @@ export async function waitForAceDataSong(
     });
   }
 
-  throw new Error(
-    `Zeitüberschreitung beim Warten auf AceData Task ${taskId}.`
+  throw new AceDataTaskResponseError(
+    "AceData upstream server timed out while waiting for the song task.",
   );
 }
 
