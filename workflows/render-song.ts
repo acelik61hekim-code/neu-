@@ -18,6 +18,8 @@ async function generateSongStep(jobId: string): Promise<void> {
   await generateAndStoreSong(jobId);
 }
 
+generateSongStep.maxRetries = 5;
+
 async function failSongStep(jobId: string, message: string): Promise<void> {
   "use step";
   const { songStore } = await import("@/lib/song-store");
@@ -46,8 +48,8 @@ function readableError(error: unknown): string {
   if (/automatische Gesangsprüfung/i.test(message)) {
     return "Unsere Qualitätsprüfung hat Aussprache, Gesangstempo, Songlänge oder Audioqualität abgelehnt. Falls möglich, wurde bereits automatisch eine korrigierte Version erstellt. So liefern wir dir bewusst keinen fehlerhaften Song aus.";
   }
-  if (/api internal error|provider internal error|upstream internal error|temporary internal error/i.test(message)) {
-    return "Der Musikdienst hatte einen vorübergehenden internen Fehler. Dein Text und deine Einstellungen sind gültig. Du kannst denselben Auftrag ohne neue Berechnung erneut starten.";
+  if (/api internal error|provider internal error|upstream internal error|temporary internal error|upstream server|tim(?:ed|ing)? out|timeout|gateway timeout|service unavailable|temporarily unavailable|rate limit|too many requests|vorübergehender (?:interner )?fehler|vorübergehender musikdienst-fehler|\b(?:408|425|429|500|502|503|504)\b/i.test(message)) {
+    return "Der Musikdienst antwortet momentan zu langsam oder ist vorübergehend ausgelastet. Dein bezahlter Auftrag bleibt sicher gespeichert und kann ohne neue Zahlung erneut gestartet werden.";
   }
   return message.slice(0, 600);
 }

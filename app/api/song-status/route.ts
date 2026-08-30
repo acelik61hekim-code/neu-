@@ -5,6 +5,10 @@ import {
   songStore,
 } from "@/lib/song-store";
 import { canAccessSong } from "@/lib/song-access";
+import {
+  isRestartableSongProviderError,
+  publicSongFailureMessage,
+} from "@/lib/song-recovery";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -91,6 +95,13 @@ export async function GET(request: NextRequest) {
     studioUrl:
       versions[0]
         ?.studioUrl,
-    errorMessage: job.errorMessage,
+    canRetry:
+      job.status === "error" &&
+      isRestartableSongProviderError(job.errorMessage) &&
+      (job.recoveryAttempts ?? 0) < 3,
+    errorMessage:
+      job.status === "error"
+        ? publicSongFailureMessage(job.errorMessage)
+        : undefined,
   });
 }

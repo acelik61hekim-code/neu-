@@ -28,6 +28,7 @@ type SongStatus = {
     imageUrl?: string;
     studioUrl?: string;
   }>;
+  canRetry?: boolean;
   errorMessage?: string;
 };
 
@@ -51,6 +52,8 @@ function SongSuccessContent() {
   const accessToken = params.get("access_token");
   const [status, setStatus] = useState<SongStatus>({ status: "pending", progressPercent: 0 });
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!jobId || (!sessionId && !accessToken)) {
@@ -105,12 +108,53 @@ function SongSuccessContent() {
     void refresh();
     interval = setInterval(() => void refresh(), 4000);
     return () => { stopped = true; if (interval) clearInterval(interval); };
-  }, [jobId, sessionId, accessToken]);
+  }, [jobId, sessionId, accessToken, refreshKey]);
 
-  return <Page status={status} connectionError={connectionError} />;
+  const retrySong = async () => {
+    if (!jobId || retrying) return;
+
+    setRetrying(true);
+    setConnectionError(null);
+
+    try {
+      const response = await fetch("/api/recover-song", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId,
+          sessionId: sessionId || undefined,
+          accessToken: accessToken || undefined,
+        }),
+      });
+
+      const data = await response.json() as { error?: string };
+
+      if (!response.ok && response.status !== 202) {
+        throw new Error(data.error || "Der Song konnte noch nicht neu gestartet werden.");
+      }
+
+      setStatus({
+        status: "processing",
+        paymentStatus: "paid",
+        renderStage: "queued",
+        progressPercent: 5,
+      });
+      setRefreshKey((current) => current + 1);
+    } catch (error) {
+      setConnectionError(
+        error instanceof Error
+          ? error.message
+          : "Der Song konnte noch nicht neu gestartet werden.",
+      );
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  return <Page status={status} connectionError={connectionError} retrying={retrying} onRetry={() => void retrySong()} />;
 }
 
-function Page({ status, connectionError }: { status: SongStatus; connectionError?: string | null }) {
+function Page({ status, connectionError, retrying = false, onRetry }: { status: SongStatus; connectionError?: string | null; retrying?: boolean; onRetry?: () => void }) {
   const state = status.status ?? "pending";
   const working = state === "pending" || state === "processing";
   const done = state === "done";
@@ -172,7 +216,7 @@ function Page({ status, connectionError }: { status: SongStatus; connectionError
 
             {done && songVersions.length > 0 && <div><div className={`grid gap-5 ${songVersions.length > 1 ? "md:grid-cols-2" : "mx-auto max-w-2xl"}`}>{songVersions.map((version) => <article key={version.number} className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/5 text-left"><div className="relative aspect-square overflow-hidden bg-gradient-to-br from-fuchsia-600/25 via-violet-600/20 to-blue-600/20">{version.imageUrl ? <Image src={version.imageUrl} alt={`Cover von ${version.title}`} fill unoptimized sizes="(min-width: 768px) 420px, 90vw" className="object-cover" /> : <div className="absolute inset-0 flex items-center justify-center"><div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-2xl shadow-fuchsia-950/50"><MusicIcon className="h-8 w-8" /></div></div>}<span className="absolute left-4 top-4 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur">Version {version.number}</span></div><div className="p-5 sm:p-6"><h3 className="truncate text-xl font-semibold">{version.title}</h3><p className="mt-1 text-xs text-zinc-500">{formatSongDuration(version.durationSeconds) || songLengthText(status.length)} · MP3</p><audio className="mt-5 w-full" controls preload="metadata" src={version.audioUrl} /><div className="mt-5 flex flex-wrap gap-2"><a className="inline-flex flex-1 items-center justify-center rounded-xl bg-fuchsia-600 px-4 py-3 text-sm font-semibold transition hover:bg-fuchsia-500" href={version.downloadUrl}>MP3 herunterladen</a>{version.studioUrl && <a className="inline-flex items-center justify-center rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-3 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href={version.studioUrl}>Bearbeiten</a>}</div></div></article>)}</div>{status.generatedLyrics && status.lyricsMode !== "instrumental" && <details className="mx-auto mt-6 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 text-left"><summary className="cursor-pointer text-sm font-medium text-fuchsia-200">Lyrics und Songstruktur anzeigen</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-zinc-400">{status.generatedLyrics}</pre></details>}</div>}
 
-            {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p></div></div></div>}
+            {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p>{status.canRetry && onRetry && <button type="button" onClick={onRetry} disabled={retrying} className="mt-4 rounded-xl bg-fuchsia-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:cursor-wait disabled:opacity-60">{retrying ? "Wird sicher neu gestartet …" : "Ohne neue Zahlung erneut starten"}</button>}</div></div></div>}
 
             <div className="mt-7 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-6"><a className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-2.5 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href={status.studioUrl || "/ki-song-erstellen#song-abos"}>{status.studioUrl ? "Im Sound Studio bearbeiten" : "Sound Studio freischalten"}</a><a className="px-4 py-2.5 text-sm font-medium text-fuchsia-300 transition hover:text-fuchsia-200" href="/songs">Weiteren Song erstellen</a></div>
           </div>

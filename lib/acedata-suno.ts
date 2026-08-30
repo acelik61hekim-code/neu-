@@ -1,5 +1,7 @@
 // lib/acedata-suno.ts
 
+import { isRestartableSongProviderError } from "@/lib/song-recovery";
+
 const ACEDATA_BASE_URL = "https://api.acedata.cloud";
 
 export type AceDataSongResult = {
@@ -92,6 +94,16 @@ type UploadSongResponse = {
     message?: string;
   };
 };
+
+class AceDataTaskResponseError extends Error {
+  readonly restartTask = true;
+}
+
+export function shouldRestartAceDataTask(
+  error: unknown,
+): boolean {
+  return error instanceof AceDataTaskResponseError;
+}
 
 function getApiKey(): string {
   const key = process.env.ACEDATA_API_KEY?.trim();
@@ -345,7 +357,7 @@ export async function getAceDataSongTask(
   }
 
   if (task.response?.error) {
-    throw new Error(
+    throw new AceDataTaskResponseError(
       task.response.error.message ||
         task.response.error.code ||
         "AceData Songgenerierung ist fehlgeschlagen."
@@ -371,7 +383,7 @@ export async function getAceDataSongTask(
   });
 
   if (failedSong) {
-    throw new Error(
+    throw new AceDataTaskResponseError(
       `AceData Songgenerierung fehlgeschlagen. ` +
         `Song ${failedSong.id}: ${failedSong.state}.`
     );
@@ -408,10 +420,46 @@ export async function waitForAceDataSong(
     options?.intervalMs ?? 10_000;
 
   const startedAt = Date.now();
+  let transientPollFailures = 0;
 
   while (Date.now() - startedAt < timeoutMs) {
-    const result =
-      await getAceDataSongTask(taskId);
+    let result: Awaited<ReturnType<typeof getAceDataSongTask>>;
+
+    try {
+      result = await getAceDataSongTask(taskId);
+      transientPollFailures = 0;
+    } catch (error) {
+      if (
+        !shouldRestartAceDataTask(error) &&
+        isRestartableSongProviderError(error) &&
+        transientPollFailures < 5
+      ) {
+        transientPollFailures += 1;
+
+        console.warn(
+          "AceData Task-Abfrage vorübergehend nicht erreichbar:",
+          {
+            taskId: cleanTaskIdForLog(taskId),
+            attempt: transientPollFailures,
+            message:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          },
+        );
+
+        await new Promise<void>((resolve) => {
+          setTimeout(
+            resolve,
+            Math.min(intervalMs * transientPollFailures, 30_000),
+          );
+        });
+
+        continue;
+      }
+
+      throw error;
+    }
 
     if (result.finished) {
       const validSongs =
@@ -441,6 +489,16 @@ export async function waitForAceDataSong(
   throw new Error(
     `Zeitüberschreitung beim Warten auf AceData Task ${taskId}.`
   );
+}
+
+function cleanTaskIdForLog(taskId: string): string {
+  const clean = taskId.trim();
+
+  if (clean.length <= 12) {
+    return clean;
+  }
+
+  return `${clean.slice(0, 6)}…${clean.slice(-4)}`;
 }
 
 export async function downloadAceDataAudio(

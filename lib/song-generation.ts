@@ -16,7 +16,10 @@ import {
 } from "node:path";
 import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
-import { FatalError } from "workflow";
+import {
+  FatalError,
+  RetryableError,
+} from "workflow";
 
 import {
   buildSongPrompt,
@@ -35,6 +38,7 @@ import { isRestartableSongProviderError } from "@/lib/song-recovery";
 import {
   downloadAceDataAudio,
   downloadAceDataImage,
+  shouldRestartAceDataTask,
   startAceDataSong,
   waitForAceDataSong,
   type AceDataSongResult,
@@ -1552,6 +1556,9 @@ export async function generateAndStoreSong(
       0;
 
     if (
+      shouldRestartAceDataTask(
+        error,
+      ) &&
       isRestartableSongProviderError(
         error,
       ) &&
@@ -1589,8 +1596,29 @@ export async function generateAndStoreSong(
         }),
       );
 
-      throw new Error(
-        "Der Musikdienst hatte einen vorübergehenden internen Fehler. Der Songauftrag wird automatisch mit einer neuen Anbieter-ID wiederholt.",
+      throw new RetryableError(
+        "Vorübergehender Musikdienst-Fehler: Der Anbieterauftrag wird automatisch mit einer neuen Anbieter-ID wiederholt.",
+        {
+          retryAfter: "30s",
+        },
+      );
+    }
+
+    if (
+      isRestartableSongProviderError(
+        error,
+      )
+    ) {
+      const providerMessage =
+        error instanceof Error
+          ? error.message
+          : String(error);
+
+      throw new RetryableError(
+        `Vorübergehender Musikdienst-Fehler: ${providerMessage}`,
+        {
+          retryAfter: "30s",
+        },
       );
     }
 

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { start } from "workflow/api";
 
-import { isRestartableSongProviderError } from "@/lib/song-recovery";
+import { canAccessSong } from "@/lib/song-access";
+import {
+  isRestartableSongProviderError,
+  shouldStartFreshSongProviderTask,
+} from "@/lib/song-recovery";
 import { songStore } from "@/lib/song-store";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { renderSongWorkflow } from "@/workflows/render-song";
@@ -11,19 +15,26 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function POST(request: Request) {
-  let body: { jobId?: unknown };
+  let body: {
+    jobId?: unknown;
+    sessionId?: unknown;
+    accessToken?: unknown;
+  };
   try {
-    body = (await request.json()) as { jobId?: unknown };
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: "Ungültige Anfrage." }, { status: 400 });
   }
 
   const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+  const sessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+  const accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
   if (!jobId) return NextResponse.json({ error: "Song-ID fehlt." }, { status: 400 });
 
   const user = await getCurrentUser();
   const job = await songStore.get(jobId);
-  if (!user || !job || job.userId !== user.id) {
+  const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
+  if (!job || (!accountOwner && !canAccessSong(job, sessionId, accessToken))) {
     return NextResponse.json({ error: "Songauftrag nicht gefunden." }, { status: 404 });
   }
   if (job.paymentStatus !== "paid") {
@@ -45,23 +56,28 @@ export async function POST(request: Request) {
     );
   }
 
+  const restartProviderTask =
+    shouldStartFreshSongProviderTask(
+      job.errorMessage,
+    );
+
   await songStore.clearWorkflowStart(jobId);
   await songStore.set(jobId, {
     ...job,
     status: "processing",
     renderStage: "queued",
     progressPercent: 5,
-    providerTaskId: undefined,
-    providerTraceId: undefined,
-    providerSongId: undefined,
-    providerRestartAttempts: 0,
+    providerTaskId: restartProviderTask ? undefined : job.providerTaskId,
+    providerTraceId: restartProviderTask ? undefined : job.providerTraceId,
+    providerSongId: restartProviderTask ? undefined : job.providerSongId,
+    providerRestartAttempts: restartProviderTask ? 0 : job.providerRestartAttempts,
     recoveryAttempts: (job.recoveryAttempts ?? 0) + 1,
     workflowRunId: undefined,
     errorMessage: undefined,
   });
 
   try {
-    const claimed = await songStore.claimWorkflowStart(jobId, `account-recovery:${Date.now()}`);
+    const claimed = await songStore.claimWorkflowStart(jobId, `safe-recovery:${Date.now()}`);
     if (!claimed) {
       return NextResponse.json({ success: true, queued: true, alreadyStarting: true }, { status: 202 });
     }
