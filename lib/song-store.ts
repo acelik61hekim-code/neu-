@@ -11,6 +11,17 @@ export type SongJobStatus = "pending" | "processing" | "done" | "error";
 export type SongPaymentStatus = "unpaid" | "paid" | "failed" | "refunded";
 export type SongRenderStage = "queued" | "generating" | "quality-check" | "uploading" | "completed" | "failed";
 
+export type GeneratedSongVersion = {
+  providerSongId?: string;
+  title?: string;
+  audioUri: string;
+  audioMimeType: string;
+  imageUri?: string;
+  imageMimeType?: string;
+  generatedLyrics?: string;
+  durationSeconds?: number;
+};
+
 export type SongJob = {
   userId?: string;
   status: SongJobStatus;
@@ -33,6 +44,7 @@ export type SongJob = {
   providerRestartAttempts?: number;
   audioUri?: string;
   audioMimeType?: string;
+  songVersions?: GeneratedSongVersion[];
   generatedLyrics?: string;
   qualityScore?: number;
   qualityRetryUsed?: boolean;
@@ -55,6 +67,79 @@ export type SongJob = {
   createdAt: number;
   updatedAt: number;
 };
+
+export function getGeneratedSongVersions(
+  job: SongJob,
+): GeneratedSongVersion[] {
+  const storedVersions =
+    job.songVersions
+      ?.filter(
+        (version) =>
+          typeof version.audioUri === "string" &&
+          version.audioUri.length > 0,
+      )
+      .slice(0, 2) ?? [];
+
+  if (storedVersions.length > 0) {
+    return storedVersions;
+  }
+
+  if (!job.audioUri) {
+    return [];
+  }
+
+  return [
+    {
+      providerSongId:
+        job.providerSongId,
+      title:
+        job.title,
+      audioUri:
+        job.audioUri,
+      audioMimeType:
+        job.audioMimeType ||
+        "audio/mpeg",
+      generatedLyrics:
+        job.generatedLyrics,
+    },
+  ];
+}
+
+export function getGeneratedSongVersion(
+  job: SongJob,
+  requestedVersion?: string | null,
+): {
+  version: GeneratedSongVersion;
+  index: number;
+} | undefined {
+  const versions =
+    getGeneratedSongVersions(
+      job,
+    );
+
+  const parsed = Number.parseInt(
+    requestedVersion || "1",
+    10,
+  );
+
+  const index =
+    Number.isFinite(parsed)
+      ? parsed - 1
+      : 0;
+
+  if (
+    index < 0 ||
+    index >= versions.length
+  ) {
+    return undefined;
+  }
+
+  return {
+    version:
+      versions[index],
+    index,
+  };
+}
 
 type WorkflowState =
   | { status: "starting"; claimId: string }

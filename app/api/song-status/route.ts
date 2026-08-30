@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { songStore } from "@/lib/song-store";
+import {
+  getGeneratedSongVersions,
+  songStore,
+} from "@/lib/song-store";
 import { canAccessSong } from "@/lib/song-access";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -25,7 +28,50 @@ export async function GET(request: NextRequest) {
     : accessToken
       ? `access_token=${encodeURIComponent(accessToken)}`
       : "account=1";
-  const ready = job.status === "done" && Boolean(job.audioUri);
+  const songVersions =
+    getGeneratedSongVersions(
+      job,
+    );
+
+  const ready =
+    job.status === "done" &&
+    songVersions.length > 0;
+
+  const versions = ready
+    ? songVersions.map(
+        (version, index) => {
+          const versionNumber =
+            index + 1;
+
+          const versionQuery =
+            `${accessQuery}&version=${versionNumber}`;
+
+          return {
+            number:
+              versionNumber,
+            title:
+              version.title ||
+              job.title ||
+              `Song-Version ${versionNumber}`,
+            durationSeconds:
+              version.durationSeconds,
+            audioUrl:
+              `/api/song-download/${encodeURIComponent(jobId)}?${versionQuery}`,
+            downloadUrl:
+              `/api/song-download/${encodeURIComponent(jobId)}?${versionQuery}&download=1`,
+            imageUrl:
+              version.imageUri
+                ? `/api/song-cover/${encodeURIComponent(jobId)}?${versionQuery}`
+                : undefined,
+            studioUrl:
+              version.providerSongId
+                ? `/sound-studio?jobId=${encodeURIComponent(jobId)}&${versionQuery}`
+                : undefined,
+          };
+        },
+      )
+    : [];
+
   return NextResponse.json({
     status: job.status,
     paymentStatus: job.paymentStatus,
@@ -35,12 +81,16 @@ export async function GET(request: NextRequest) {
     length: job.length,
     lyricsMode: job.lyricsMode,
     generatedLyrics: job.generatedLyrics,
-    audioUrl: ready
-      ? `/api/song-download/${encodeURIComponent(jobId)}?${accessQuery}`
-      : undefined,
-    studioUrl: ready && job.providerSongId
-      ? `/sound-studio?jobId=${encodeURIComponent(jobId)}&${accessQuery}`
-      : undefined,
+    versions,
+    audioUrl:
+      versions[0]
+        ?.audioUrl,
+    imageUrl:
+      versions[0]
+        ?.imageUrl,
+    studioUrl:
+      versions[0]
+        ?.studioUrl,
     errorMessage: job.errorMessage,
   });
 }

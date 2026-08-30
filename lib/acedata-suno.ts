@@ -500,6 +500,84 @@ export async function downloadAceDataAudio(
   return audio;
 }
 
+export async function downloadAceDataImage(
+  imageUrl: string,
+): Promise<{
+  data: Buffer;
+  mimeType: string;
+}> {
+  const url = imageUrl.trim();
+
+  if (!url) {
+    throw new Error(
+      "Die AceData Cover-URL fehlt.",
+    );
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
+    headers: {
+      Accept:
+        "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.9,*/*;q=0.1",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Das AceData Songcover konnte nicht geladen werden (HTTP ${response.status}).`,
+    );
+  }
+
+  const reportedMimeType =
+    response.headers
+      .get("content-type")
+      ?.split(";")[0]
+      .trim()
+      .toLocaleLowerCase();
+
+  const inferredMimeType =
+    /\.png(?:$|\?)/i.test(url)
+      ? "image/png"
+      : /\.webp(?:$|\?)/i.test(url)
+        ? "image/webp"
+        : /\.avif(?:$|\?)/i.test(url)
+          ? "image/avif"
+          : "image/jpeg";
+
+  const mimeType =
+    reportedMimeType?.startsWith("image/")
+      ? reportedMimeType
+      : !reportedMimeType ||
+          reportedMimeType === "application/octet-stream"
+        ? inferredMimeType
+        : reportedMimeType;
+
+  if (!mimeType.startsWith("image/")) {
+    throw new Error(
+      `AceData Cover-URL hat einen unerwarteten Content-Type geliefert: ${mimeType}`,
+    );
+  }
+
+  const data = Buffer.from(
+    await response.arrayBuffer(),
+  );
+
+  if (
+    data.length < 1_000 ||
+    data.length > 20 * 1024 * 1024
+  ) {
+    throw new Error(
+      `Das heruntergeladene Songcover hat eine ungültige Größe (${data.length} Bytes).`,
+    );
+  }
+
+  return {
+    data,
+    mimeType,
+  };
+}
+
 export async function startAceDataReplaceSection(
   input: StartAceDataReplaceSectionInput,
 ): Promise<{ taskId: string; traceId?: string }> {

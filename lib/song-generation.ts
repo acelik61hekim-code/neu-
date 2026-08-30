@@ -34,6 +34,7 @@ import { isRestartableSongProviderError } from "@/lib/song-recovery";
 
 import {
   downloadAceDataAudio,
+  downloadAceDataImage,
   startAceDataSong,
   waitForAceDataSong,
   type AceDataSongResult,
@@ -97,8 +98,15 @@ export async function storeSongAudio(
   jobId: string,
   audio: Buffer,
   mimeType: string,
+  versionIndex = 0,
 ): Promise<string> {
-  const pathname = `songs/${jobId}.mp3`;
+  const versionSuffix =
+    versionIndex > 0
+      ? `-${versionIndex + 1}`
+      : "";
+
+  const pathname =
+    `songs/${jobId}${versionSuffix}.mp3`;
 
   const hasBlobCredentials = Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
@@ -132,6 +140,87 @@ export async function storeSongAudio(
       access: "private",
       contentType:
         mimeType || "audio/mpeg",
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    },
+  );
+
+  return `blob:${blob.pathname}`;
+}
+
+function songCoverExtension(
+  mimeType: string,
+): string {
+  if (mimeType.includes("png")) {
+    return "png";
+  }
+
+  if (mimeType.includes("webp")) {
+    return "webp";
+  }
+
+  if (mimeType.includes("avif")) {
+    return "avif";
+  }
+
+  return "jpg";
+}
+
+export async function storeSongCover(
+  jobId: string,
+  image: Buffer,
+  mimeType: string,
+  versionIndex = 0,
+): Promise<string> {
+  const versionNumber =
+    versionIndex + 1;
+
+  const extension =
+    songCoverExtension(
+      mimeType,
+    );
+
+  const pathname =
+    `song-covers/${jobId}-${versionNumber}.${extension}`;
+
+  const hasBlobCredentials = Boolean(
+    process.env.BLOB_READ_WRITE_TOKEN ||
+      (
+        process.env.VERCEL_OIDC_TOKEN &&
+        process.env.BLOB_STORE_ID
+      ),
+  );
+
+  if (
+    process.env.NODE_ENV === "development" &&
+    !hasBlobCredentials
+  ) {
+    const filename =
+      resolveLocalSongPath(
+        pathname,
+      );
+
+    await mkdir(
+      dirname(filename),
+      { recursive: true },
+    );
+
+    await writeFile(
+      filename,
+      image,
+    );
+
+    return `local-song:${pathname}`;
+  }
+
+  const blob = await put(
+    pathname,
+    image,
+    {
+      access: "private",
+      contentType:
+        mimeType ||
+        "image/jpeg",
       addRandomSuffix: false,
       allowOverwrite: true,
     },
@@ -1019,20 +1108,41 @@ async function inspectSongCandidate(
   };
 }
 
-async function chooseBestCandidate(
+type InspectedCandidateResult = {
+  candidate: InspectedSongCandidate;
+  issues: string[];
+};
+
+async function inspectSongCandidates(
   songs: AceDataSongResult[],
   job: SongJob,
   plannedLyrics?: string,
-): Promise<{
-  candidate: InspectedSongCandidate;
-  issues: string[];
-}> {
-  const inspected: Array<{
-    candidate: InspectedSongCandidate;
-    issues: string[];
-  }> = [];
+): Promise<InspectedCandidateResult[]> {
+  const inspected:
+    InspectedCandidateResult[] = [];
+  const seenCandidates =
+    new Set<string>();
 
   for (const song of songs) {
+    const candidateKey =
+      song.id?.trim() ||
+      song.audio_url?.trim();
+
+    if (
+      candidateKey &&
+      seenCandidates.has(
+        candidateKey,
+      )
+    ) {
+      continue;
+    }
+
+    if (candidateKey) {
+      seenCandidates.add(
+        candidateKey,
+      );
+    }
+
     try {
       const candidate =
         await inspectSongCandidate(
@@ -1054,18 +1164,6 @@ async function chooseBestCandidate(
         issues,
       });
 
-      /*
-       * Sobald eine Variante alle Prüfungen besteht,
-       * verwenden wir sie direkt.
-       */
-      if (
-        issues.length === 0
-      ) {
-        return {
-          candidate,
-          issues,
-        };
-      }
     } catch (error) {
       console.warn(
         "AceData candidate inspection failed:",
@@ -1109,7 +1207,7 @@ async function chooseBestCandidate(
     },
   );
 
-  return inspected[0];
+  return inspected;
 }
 
 export async function generateAndStoreSong(
@@ -1521,34 +1619,47 @@ export async function generateAndStoreSong(
   );
 
   /*
-   * AceData/Suno liefert häufig zwei Varianten.
-   *
-   * Wir prüfen beide und nehmen die erste,
-   * die unsere verbleibenden Qualitätschecks besteht.
+   * AceData/Suno liefert normalerweise zwei Varianten.
+   * Beide werden geprüft und dauerhaft gespeichert.
+   * Die beste fehlerfreie Variante bleibt aus Gründen der
+   * Rückwärtskompatibilität der primäre Song.
    *
    * DIE LÄNGE IST KEIN ABLEHNUNGSGRUND MEHR.
    */
-  const {
-    candidate,
-    issues:
-      candidateIssues,
-  } =
-    await chooseBestCandidate(
+  const inspectedCandidates =
+    await inspectSongCandidates(
       generatedSongs,
       job,
       plannedLyrics,
     );
 
+  const primaryResult =
+    inspectedCandidates[0];
+
   if (
-    candidateIssues.length >
+    primaryResult.issues.length >
     0
   ) {
     throw new FatalError(
-      `Die automatische Gesangsprüfung hat die erzeugten Versionen abgelehnt: ${candidateIssues.join(
+      `Die automatische Gesangsprüfung hat die erzeugten Versionen abgelehnt: ${primaryResult.issues.join(
         " ",
       )}`,
     );
   }
+
+  const versionCandidates =
+    inspectedCandidates
+      .filter(
+        ({ candidate }) =>
+          candidate.audioQuality
+            .sampleRate >= 44_100 &&
+          candidate.audioQuality
+            .channels >= 2,
+      )
+      .slice(0, 2);
+
+  const primaryCandidate =
+    primaryResult.candidate;
 
   /*
    * Gewählte konkrete Suno-Song-ID speichern.
@@ -1566,7 +1677,7 @@ export async function generateAndStoreSong(
       providerTraceId,
 
       providerSongId:
-        candidate.song.id,
+        primaryCandidate.song.id,
 
       renderStage:
         "uploading",
@@ -1576,27 +1687,117 @@ export async function generateAndStoreSong(
     }),
   );
 
-  /*
-   * MP3 in unserem eigenen Storage speichern.
-   */
-  const audioUri =
-    await storeSongAudio(
-      jobId,
-      candidate.audio,
-      candidate.generatedAudio
-        .mimeType,
+  const songVersions =
+    await Promise.all(
+      versionCandidates.map(
+        async (
+          { candidate },
+          versionIndex,
+        ) => {
+          const audioUri =
+            await storeSongAudio(
+              jobId,
+              candidate.audio,
+              candidate
+                .generatedAudio
+                .mimeType,
+              versionIndex,
+            );
+
+          let imageUri:
+            string | undefined;
+
+          let imageMimeType:
+            string | undefined;
+
+          const providerImageUrl =
+            candidate.song
+              .image_large_url
+              ?.trim() ||
+            candidate.song
+              .image_url
+              ?.trim();
+
+          if (providerImageUrl) {
+            try {
+              const cover =
+                await downloadAceDataImage(
+                  providerImageUrl,
+                );
+
+              imageUri =
+                await storeSongCover(
+                  jobId,
+                  cover.data,
+                  cover.mimeType,
+                  versionIndex,
+                );
+
+              imageMimeType =
+                cover.mimeType;
+            } catch (error) {
+              console.warn(
+                "AceData Songcover konnte nicht dauerhaft gespeichert werden:",
+                candidate.song.id,
+                error,
+              );
+            }
+          }
+
+          return {
+            providerSongId:
+              candidate.song.id,
+            title:
+              candidate.song.title
+                ?.trim()
+                .slice(0, 160) ||
+              job.title,
+            audioUri,
+            audioMimeType:
+              candidate
+                .generatedAudio
+                .mimeType,
+            imageUri,
+            imageMimeType,
+            generatedLyrics:
+              candidate.song.lyric
+                ?.slice(0, 30_000) ??
+              plannedLyrics ??
+              (
+                job.lyricsMode ===
+                  "custom"
+                  ? job.lyrics
+                  : undefined
+              ),
+            durationSeconds:
+              typeof candidate.song
+                .duration === "number" &&
+              Number.isFinite(
+                candidate.song
+                  .duration,
+              )
+                ? candidate.song
+                    .duration
+                : candidate
+                    .audioQuality
+                    .durationSeconds,
+          };
+        },
+      ),
     );
 
-  const generatedLyrics =
-    candidate.song.lyric
-      ?.slice(0, 30_000) ??
-    plannedLyrics ??
-    (
-      job.lyricsMode ===
-      "custom"
-        ? job.lyrics
-        : undefined
+  const primaryVersion =
+    songVersions[0];
+
+  if (!primaryVersion) {
+    throw new Error(
+      "Es konnte keine Songversion dauerhaft gespeichert werden.",
     );
+  }
+
+  const generatedLyrics =
+    primaryVersion
+      .generatedLyrics;
 
   await songStore.update(
     jobId,
@@ -1620,18 +1821,24 @@ export async function generateAndStoreSong(
       providerTraceId,
 
       providerSongId:
-        candidate.song.id,
+        primaryVersion
+          .providerSongId,
 
-      audioUri,
+      audioUri:
+        primaryVersion
+          .audioUri,
 
       audioMimeType:
-        candidate.generatedAudio
-          .mimeType,
+        primaryVersion
+          .audioMimeType,
+
+      songVersions,
 
       generatedLyrics,
 
       qualityScore:
-        candidate.lyricQuality
+        primaryCandidate
+          .lyricQuality
           .score,
 
       completedAt:

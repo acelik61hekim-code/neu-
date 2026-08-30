@@ -4,7 +4,10 @@ import { nanoid } from "nanoid";
 import { startAceDataReplaceSection } from "@/lib/acedata-suno";
 import { canAccessSong, createSongAccessToken, matchesSongAccessToken } from "@/lib/song-access";
 import { songEditStore } from "@/lib/song-edit-store";
-import { songStore } from "@/lib/song-store";
+import {
+  getGeneratedSongVersion,
+  songStore,
+} from "@/lib/song-store";
 import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { reserveSubscriptionUsage } from "@/lib/song-subscription-usage";
 import { getCurrentUser } from "@/lib/supabase/server";
@@ -29,6 +32,11 @@ export async function POST(request: NextRequest) {
   const lyrics = typeof body.lyrics === "string" ? body.lyrics.trim().slice(0, 4_000) : "";
   const startSeconds = Number(body.startSeconds);
   const endSeconds = Number(body.endSeconds);
+  const requestedVersion =
+    typeof body.sourceVersion === "number" ||
+    typeof body.sourceVersion === "string"
+      ? String(body.sourceVersion)
+      : "1";
 
   if (!jobId || !instruction) return NextResponse.json({ error: "Bitte beschreibe, wie die markierte Stelle klingen soll." }, { status: 400 });
   if (!Number.isFinite(startSeconds) || !Number.isFinite(endSeconds) || startSeconds < 0 || endSeconds <= startSeconds || endSeconds - startSeconds > 30) {
@@ -42,11 +50,20 @@ export async function POST(request: NextRequest) {
   ]);
   if (!subscription) return NextResponse.json({ error: "Für KI-Bearbeitungen brauchst du ein aktives Song-Abo." }, { status: 401 });
   const accountOwner = Boolean(job?.userId && user?.id && job.userId === user.id);
-  if (!job || (!canAccessSong(job, sessionId, sourceAccessToken) && !accountOwner) || !job.providerSongId) {
+  const selected = job
+    ? getGeneratedSongVersion(
+        job,
+        requestedVersion,
+      )
+    : undefined;
+
+  if (!job || (!canAccessSong(job, sessionId, sourceAccessToken) && !accountOwner) || !selected?.version.providerSongId) {
     return NextResponse.json({ error: "Der Ausgangssong konnte nicht sicher geöffnet werden." }, { status: 404 });
   }
 
-  let providerSongId = job.providerSongId;
+  let providerSongId =
+    selected.version
+      .providerSongId;
   if (sourceEditId || sourceEditToken) {
     const sourceEdit = sourceEditId ? await songEditStore.get(sourceEditId) : undefined;
     if (!sourceEdit || sourceEdit.subscriptionId !== subscription.subscriptionId || sourceEdit.sourceJobId !== jobId || sourceEdit.status !== "done" || !sourceEdit.providerSongId || !matchesSongAccessToken(sourceEdit.accessTokenHash, sourceEditToken)) {

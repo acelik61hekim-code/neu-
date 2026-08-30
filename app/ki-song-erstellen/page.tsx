@@ -5,12 +5,12 @@ import { STUDIO_PATHS } from "@/lib/site";
 
 const title = "KI-Song erstellen – mit eigenen Lyrics oder KI-Text";
 const description =
-  "Erstelle vollständige KI-Songs von 30 Sekunden bis vier Minuten – instrumental, mit eigenen Lyrics oder neu geschriebenem KI-Songtext auf Deutsch, Türkisch oder Englisch.";
+  "Erstelle zwei vollständige KI-Song-Versionen mit Cover – instrumental, mit eigenen Lyrics oder neu geschriebenem KI-Songtext auf Deutsch, Türkisch oder Englisch.";
 
 const faqs: SeoFaq[] = [
   {
     question: "Wie lang kann ein KI-Song werden?",
-    answer: "Zur Auswahl stehen ein 30-Sekunden-Clip sowie vollständige Songs mit zwei, drei oder vier Minuten Länge.",
+    answer: "Die passende Länge wird automatisch aus Songaufbau, Lyrics und Musikstil bestimmt. Du musst keine Minuten auswählen.",
   },
   {
     question: "Kann ich meine eigenen Lyrics verwenden?",
@@ -18,7 +18,7 @@ const faqs: SeoFaq[] = [
   },
   {
     question: "Sind auch türkische Songs möglich?",
-    answer: "Ja. Das Songstudio unterstützt Deutsch, Türkisch und Englisch. Für türkische Musik stehen unter anderem dramatischer Arabesk und moderner Arabesk-Pop beziehungsweise Fantezi zur Auswahl.",
+    answer: "Ja. Das Songstudio unterstützt Deutsch, Türkisch und Englisch. Deinen gewünschten Musikstil beschreibst du frei mit eigenen Worten.",
   },
 ];
 
@@ -37,7 +37,7 @@ const jsonLd = productJsonLd({
   lowPrice: "1.49",
   highPrice: "5.99",
   offerCount: 4,
-  features: ["Songs bis vier Minuten", "Eigene oder KI-generierte Lyrics", "Deutsch, Türkisch und Englisch", "Instrumentale Musik"],
+  features: ["Zwei Song-Versionen mit Cover", "Eigene oder KI-generierte Lyrics", "Frei beschreibbarer Musikstil", "Instrumentale Musik"],
   faqs,
 });
 
@@ -52,14 +52,14 @@ export default function SongStudioPage() {
         title="Erstelle deinen eigenen vollständigen Song mit KI"
         intro="Lege Thema, Sprache, Stimmung, Musikstil und Gesangsart fest. Du kannst eigene Lyrics verwenden, einen neuen Songtext erstellen lassen, eine Sprachidee aufnehmen oder reine Instrumentalmusik erzeugen."
         benefits={[
-          "Erzeuge Clips oder vollständige Songs mit zwei bis vier Minuten Länge.",
+          "Erhalte zwei vollständige Song-Versionen samt Cover und MP3-Download.",
           "Nutze eigene Lyrics, einen KI-Songtext oder den Instrumentalmodus.",
-          "Wähle unter anderem Pop, Rap, Arabesk, R&B, Rock und elektronische Musik.",
+          "Beschreibe deinen gewünschten Musikstil frei mit eigenen Worten.",
         ]}
         steps={[
           "Beschreibe Thema, Musikstil, Stimmung, Sprache und gewünschte Gesangsart.",
           "Gib eigene Lyrics ein oder lass einen passenden neuen Songtext durch die KI schreiben.",
-          "Wähle die Songlänge, bezahle sicher und lade das fertige Ergebnis als MP3 herunter.",
+          "Bezahle sicher und lade anschließend beide fertigen Versionen als MP3 herunter.",
         ]}
         faqs={faqs}
       />

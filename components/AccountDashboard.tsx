@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 import Header from "@/components/Header";
 import { ImageIcon, LoadingIcon, MusicIcon, SparklesIcon } from "@/components/Icons";
 
-type MediaItem = { kind: "song" | "video" | "image"; jobId: string; title: string; createdAt: number; status: "pending" | "processing" | "done" | "error"; progress?: number; ready: boolean; mediaUrl?: string; downloadUrl?: string; studioUrl?: string; retryUrl?: string; errorMessage?: string };
+type SongMediaVersion = { number: number; title: string; audioUrl: string; downloadUrl: string; imageUrl?: string; studioUrl?: string };
+type MediaItem = { kind: "song" | "video" | "image"; jobId: string; title: string; createdAt: number; status: "pending" | "processing" | "done" | "error"; progress?: number; ready: boolean; mediaUrl?: string; downloadUrl?: string; studioUrl?: string; songVersions?: SongMediaVersion[]; retryUrl?: string; errorMessage?: string };
 type AccountData = { configured: boolean; authenticated: boolean; email?: string; privateInfluencerAccess?: boolean; media?: MediaItem[]; subscription?: null | { planName: string; songsRemaining: number; editsRemaining: number; renewsAt: number; cancelAtPeriodEnd: boolean }; videoSubscription?: null | { planName: string; videoSecondsRemaining: number; studioEditsRemaining: number; renewsAt: number; cancelAtPeriodEnd: boolean } };
 
 export default function AccountDashboard() {
@@ -30,6 +32,13 @@ function MediaCard({ item }: { item: MediaItem }) {
   const working = item.status === "pending" || item.status === "processing";
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState("");
+  const songVersions = item.kind === "song"
+    ? item.songVersions?.length
+      ? item.songVersions
+      : item.mediaUrl && item.downloadUrl
+        ? [{ number: 1, title: item.title, audioUrl: item.mediaUrl, downloadUrl: item.downloadUrl, studioUrl: item.studioUrl }]
+        : []
+    : [];
 
   async function retrySong() {
     if (!item.retryUrl || retrying) return;
@@ -53,9 +62,9 @@ function MediaCard({ item }: { item: MediaItem }) {
   }
 
   return <article className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035]">
-    <div className="flex aspect-video items-center justify-center bg-black/30">{item.ready && item.kind === "image" ? <img src={item.mediaUrl} alt={item.title} className="h-full w-full object-cover" /> : item.ready && item.kind === "video" ? <video src={item.mediaUrl} controls preload="metadata" className="h-full w-full object-contain" /> : item.ready && item.kind === "song" ? <div className="w-full px-6 text-center"><MusicIcon className="mx-auto text-fuchsia-300" /><audio src={item.mediaUrl} controls preload="metadata" className="mt-4 w-full" /></div> : <div className="text-center text-zinc-500">{working ? <LoadingIcon className="mx-auto animate-spin" /> : item.kind === "image" ? <ImageIcon className="mx-auto" /> : <MusicIcon className="mx-auto" />}<p className="mt-3 text-xs">{working ? `${item.progress ?? 0} % erstellt` : "Erstellung unterbrochen"}</p></div>}</div>
+    {item.ready && item.kind === "song" && songVersions.length > 0 ? <div className={`grid gap-3 bg-black/20 p-3 ${songVersions.length > 1 ? "sm:grid-cols-2" : ""}`}>{songVersions.map((version) => <div key={version.number} className="overflow-hidden rounded-2xl border border-white/10 bg-black/25"><div className="relative aspect-square bg-gradient-to-br from-fuchsia-500/20 to-violet-500/20">{version.imageUrl ? <Image src={version.imageUrl} alt={`Cover von ${version.title}`} fill unoptimized sizes="(min-width: 1280px) 180px, (min-width: 768px) 220px, 90vw" className="object-cover" /> : <div className="absolute inset-0 flex items-center justify-center"><MusicIcon className="text-fuchsia-300" /></div>}<span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-1 text-[9px] font-semibold">Version {version.number}</span></div><div className="p-3"><p className="truncate text-xs font-semibold">{version.title}</p><audio src={version.audioUrl} controls preload="metadata" className="mt-3 h-9 w-full" /><div className="mt-3 flex flex-wrap gap-2"><a href={version.downloadUrl} className="rounded-lg border border-white/10 px-2.5 py-2 text-[10px] text-zinc-200">MP3 laden</a>{version.studioUrl && <a href={version.studioUrl} className="rounded-lg bg-fuchsia-600 px-2.5 py-2 text-[10px] font-semibold">Bearbeiten</a>}</div></div></div>)}</div> : <div className="relative flex aspect-video items-center justify-center bg-black/30">{item.ready && item.kind === "image" && item.mediaUrl ? <Image src={item.mediaUrl} alt={item.title} fill unoptimized sizes="(min-width: 1280px) 400px, (min-width: 768px) 50vw, 100vw" className="object-cover" /> : item.ready && item.kind === "video" ? <video src={item.mediaUrl} controls preload="metadata" className="h-full w-full object-contain" /> : <div className="text-center text-zinc-500">{working ? <LoadingIcon className="mx-auto animate-spin" /> : item.kind === "image" ? <ImageIcon className="mx-auto" /> : <MusicIcon className="mx-auto" />}<p className="mt-3 text-xs">{working ? `${item.progress ?? 0} % erstellt` : "Erstellung unterbrochen"}</p></div>}</div>}
     <div className="p-5"><div className="flex items-center justify-between gap-3"><span className="text-[10px] font-semibold uppercase tracking-wider text-violet-300">{item.kind === "song" ? "Song" : item.kind === "video" ? "Video" : "Bild"}</span><span className="text-[10px] text-zinc-600">{new Date(item.createdAt).toLocaleDateString("de-DE")}</span></div><h3 className="mt-2 truncate font-semibold">{item.title}</h3>{item.errorMessage && <p className="mt-3 text-xs leading-5 text-red-200/80">{item.errorMessage}</p>}
-      <div className="mt-4 flex flex-wrap gap-2">{item.downloadUrl && <a href={item.downloadUrl} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-200">Herunterladen</a>}{item.studioUrl && <a href={item.studioUrl} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.kind === "video" ? "bg-blue-600" : "bg-fuchsia-600"}`}>{item.kind === "video" ? "Video Studio" : "Sound Studio"}</a>}{item.retryUrl && <button type="button" onClick={() => void retrySong()} disabled={retrying} className="rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-semibold disabled:opacity-50">{retrying ? "Wird neu gestartet …" : "Ohne neue Berechnung wiederholen"}</button>}</div>{retryError && <p className="mt-3 text-xs text-red-300">{retryError}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">{item.kind !== "song" && item.downloadUrl && <a href={item.downloadUrl} className="rounded-lg border border-white/10 px-3 py-2 text-xs text-zinc-200">Herunterladen</a>}{item.kind !== "song" && item.studioUrl && <a href={item.studioUrl} className={`rounded-lg px-3 py-2 text-xs font-semibold ${item.kind === "video" ? "bg-blue-600" : "bg-fuchsia-600"}`}>{item.kind === "video" ? "Video Studio" : "Sound Studio"}</a>}{item.retryUrl && <button type="button" onClick={() => void retrySong()} disabled={retrying} className="rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-semibold disabled:opacity-50">{retrying ? "Wird neu gestartet …" : "Ohne neue Berechnung wiederholen"}</button>}</div>{retryError && <p className="mt-3 text-xs text-red-300">{retryError}</p>}
     </div>
   </article>;
 }

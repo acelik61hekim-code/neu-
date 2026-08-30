@@ -23,6 +23,7 @@ type StudioSource = {
   canRegenerate: boolean;
   planName: string;
   editsRemaining: number;
+  sourceVersion?: number;
   sourceKind?: "generated" | "upload";
 };
 
@@ -74,6 +75,7 @@ export default function SoundStudio() {
   const jobId = params.get("jobId") || "";
   const sessionId = params.get("session_id") || "";
   const accessToken = params.get("access_token") || "";
+  const sourceVersion = params.get("version") || "1";
   const currentVersion = versions[versionIndex];
 
   useEffect(() => {
@@ -108,7 +110,7 @@ export default function SoundStudio() {
       return;
     }
     const accessQuery = sessionId ? `session_id=${encodeURIComponent(sessionId)}` : `access_token=${encodeURIComponent(accessToken)}`;
-    void fetch(`/api/song-studio/source?jobId=${encodeURIComponent(jobId)}&${accessQuery}`, { cache: "no-store" })
+    void fetch(`/api/song-studio/source?jobId=${encodeURIComponent(jobId)}&${accessQuery}&version=${encodeURIComponent(sourceVersion)}`, { cache: "no-store" })
       .then(async (response) => {
         const data = await response.json() as StudioSource & { error?: string; needsSubscription?: boolean };
         if (!response.ok) {
@@ -125,7 +127,7 @@ export default function SoundStudio() {
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Der Song konnte nicht geöffnet werden."))
       .finally(() => setLoading(false));
-  }, [accessToken, jobId, sessionId]);
+  }, [accessToken, jobId, sessionId, sourceVersion]);
 
   useEffect(() => {
     return () => {
@@ -423,6 +425,7 @@ export default function SoundStudio() {
                   accessToken: accessToken || undefined,
                   sourceEditId: currentVersion?.editId,
                   sourceEditToken: currentVersion?.editToken,
+                  sourceVersion: source.sourceVersion || Number(sourceVersion) || 1,
                   startSeconds: selectionStart,
                   endSeconds: selectionEnd,
                   instruction,

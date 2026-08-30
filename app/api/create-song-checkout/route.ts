@@ -93,6 +93,9 @@ export async function POST(request: NextRequest) {
   if (description.length < 10 && voiceIdeaAnalysis.length < 20) {
     return NextResponse.json({ error: "Bitte beschreibe deine Songidee oder füge eine analysierte Sprachidee hinzu." }, { status: 400 });
   }
+  if (style.length < 2) {
+    return NextResponse.json({ error: "Bitte gib deinen gewünschten Musikstil ein." }, { status: 400 });
+  }
   if (!isSongLyricsMode(body.lyricsMode) ||
       !isSongLanguage(body.language) || !isSongVocalStyle(body.vocalStyle)) {
     return NextResponse.json({ error: "Bitte prüfe die Song-Einstellungen." }, { status: 400 });
@@ -167,7 +170,7 @@ export async function POST(request: NextRequest) {
     progressPercent: subscription ? 5 : 0,
     title: title || undefined,
     description: description || "Song nach der analysierten Sprachidee des Kunden",
-    style: style || "Modern und hochwertig produziert",
+    style,
     mood: mood || "Emotional und eingängig",
     length: songLength,
     lyricsMode: body.lyricsMode,

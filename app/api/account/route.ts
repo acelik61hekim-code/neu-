@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { accountLibrary, type AccountMediaRecord } from "@/lib/account-library";
 import { imageStore } from "@/lib/image-store";
-import { songStore } from "@/lib/song-store";
+import {
+  getGeneratedSongVersions,
+  songStore,
+} from "@/lib/song-store";
 import { getActiveSongSubscription } from "@/lib/song-subscription";
 import { getActiveVideoSubscription } from "@/lib/video-subscription";
 import { jobStore } from "@/lib/store";
@@ -57,16 +60,63 @@ async function resolveRecord(userId: string, record: AccountMediaRecord) {
   if (record.kind === "song") {
     const job = await songStore.get(record.jobId);
     if (!job || job.userId !== userId || job.paymentStatus !== "paid") return null;
-    const ready = job.status === "done" && Boolean(job.audioUri);
+    const generatedVersions =
+      getGeneratedSongVersions(
+        job,
+      );
+
+    const ready =
+      job.status === "done" &&
+      generatedVersions.length > 0;
+
+    const songVersions = ready
+      ? generatedVersions.map(
+          (version, index) => {
+            const number =
+              index + 1;
+
+            const accessQuery =
+              `account=1&version=${number}`;
+
+            return {
+              number,
+              title:
+                version.title ||
+                job.title ||
+                `Song-Version ${number}`,
+              audioUrl:
+                `/api/song-download/${encodeURIComponent(record.jobId)}?${accessQuery}`,
+              downloadUrl:
+                `/api/song-download/${encodeURIComponent(record.jobId)}?${accessQuery}&download=1`,
+              imageUrl:
+                version.imageUri
+                  ? `/api/song-cover/${encodeURIComponent(record.jobId)}?${accessQuery}`
+                  : undefined,
+              studioUrl:
+                version.providerSongId
+                  ? `/sound-studio?jobId=${encodeURIComponent(record.jobId)}&${accessQuery}`
+                  : undefined,
+            };
+          },
+        )
+      : [];
+
     return {
       ...record,
       title: job.title || record.title,
       status: job.status,
       progress: job.progressPercent,
       ready,
-      mediaUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}` : undefined,
-      downloadUrl: ready ? `/api/song-download/${encodeURIComponent(record.jobId)}?download=1` : undefined,
-      studioUrl: ready && job.providerSongId ? `/sound-studio?jobId=${encodeURIComponent(record.jobId)}&account=1` : undefined,
+      mediaUrl:
+        songVersions[0]
+          ?.audioUrl,
+      downloadUrl:
+        songVersions[0]
+          ?.downloadUrl,
+      studioUrl:
+        songVersions[0]
+          ?.studioUrl,
+      songVersions,
       retryUrl:
         job.status === "error" &&
         isRestartableSongProviderError(job.errorMessage) &&

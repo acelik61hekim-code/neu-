@@ -20,7 +20,6 @@ import {
   type SongVocalStyle,
 } from "@/lib/song";
 
-const styles = ["Pop", "Deutschrap / Straßenrap", "Hip-Hop / Rap", "Türkischer Arabesk", "Türkischer Arabesk-Pop / Fantezi", "R&B", "Afrobeats", "Elektronisch", "Rock", "Akustisch", "Cinematic", "Schlager", "Lo-Fi"];
 const moods = ["Energiegeladen", "Emotional", "Hüzünlü / Sehnsüchtig", "Dramatisch", "Romantisch", "Düster", "Entspannt", "Motivierend", "Fröhlich", "Episch"];
 type RevisionApproach = "character" | "new-melody" | "free";
 
@@ -31,7 +30,7 @@ export default function SongStudio({
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [style, setStyle] = useState("Pop");
+  const [style, setStyle] = useState("");
   const [mood, setMood] = useState("Energiegeladen");
   const length: SongLength = "full3";
   const [lyricsMode, setLyricsMode] = useState<SongLyricsMode>("ai");
@@ -203,6 +202,10 @@ export default function SongStudio({
       setError("Bitte beschreibe deine Songidee oder füge eine Sprachidee hinzu.");
       return;
     }
+    if (style.trim().length < 2) {
+      setError("Bitte gib deinen gewünschten Musikstil ein.");
+      return;
+    }
     if (lyricsMode === "custom" && lyrics.trim().length < 10) {
       setError("Bitte gib deine Lyrics ein.");
       return;
@@ -282,7 +285,7 @@ export default function SongStudio({
             <span className="block bg-gradient-to-r from-violet-300 via-fuchsia-300 to-blue-300 bg-clip-text text-transparent">fertigen Song</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-            Erstelle reine Musik ohne Video – instrumental, mit neu geschriebenen KI-Lyrics oder mit deinem eigenen Songtext. Als hochwertige MP3 zum Anhören und Herunterladen.
+            Erstelle reine Musik ohne Video – instrumental, mit neu geschriebenen KI-Lyrics oder mit deinem eigenen Songtext. Du erhältst zwei Song-Versionen mit Cover zum Anhören und Herunterladen.
           </p>
           <StudioChooser active="song" onChange={onStudioChange} />
           <div className="mx-auto mt-5 flex max-w-xl rounded-2xl border border-white/10 bg-black/25 p-1.5">
@@ -312,26 +315,11 @@ export default function SongStudio({
             </Field>
 
             <div className="grid gap-5 sm:grid-cols-2">
-              <SelectField label="Musikstil" value={style} onChange={(value) => {
-                setStyle(value);
-                if (value === "Deutschrap / Straßenrap") setLanguage("de");
-                if (value === "Türkischer Arabesk") {
-                  setLanguage("tr");
-                  setMood("Hüzünlü / Sehnsüchtig");
-                }
-              }} options={styles} />
+              <Field label="Musikstil" hint="frei eingeben">
+                <input value={style} onChange={(event) => setStyle(event.target.value)} maxLength={120} placeholder="Zum Beispiel: melancholischer Trap mit Piano" className={inputClass} />
+              </Field>
               <SelectField label="Stimmung" value={mood} onChange={setMood} options={moods} />
             </div>
-            {style === "Deutschrap / Straßenrap" && (
-              <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
-                Automatisch mit natürlichen deutschen Rap-Lyrics, zwei langen Strophen, sauberem Reimschema und einer zusammenhängenden Geschichte. Keine erfundene Grammatik und keine automatisch eingestreuten Klischeewörter.
-              </div>
-            )}
-            {style === "Türkischer Arabesk" && (
-              <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] px-4 py-3 text-xs leading-5 text-zinc-400">
-                Automatisch langsam, dramatisch und tief traurig mit großem Streichorchester, Piano und dezentem Bağlama – kein orientalischer Tanzklang und keine dominante Darbuka, Oud oder Kanun.
-              </div>
-            )}
 
             <Field label={revisionMode ? "Fertigen Ausgangssong hochladen" : "Sprachidee oder Melodie"} hint={revisionMode ? "MP3, WAV, M4A · bis 100 MB" : "optional · bis 12 MB"}>
               <div className="rounded-2xl border border-fuchsia-400/15 bg-fuchsia-500/[0.045] p-4">
@@ -436,6 +424,7 @@ export default function SongStudio({
             <p className="mt-2 text-xs leading-5 text-fuchsia-200/70">Suno bestimmt die natürliche Länge automatisch passend zu Aufbau, Lyrics und Musikstil.</p>
             <div className="my-6 h-px bg-white/10" />
             <ul className="space-y-3 text-sm text-zinc-300">
+              <Benefit>Zwei Song-Versionen mit Cover</Benefit>
               <Benefit>Hochwertige Stereo-MP3</Benefit>
               <Benefit>Nur Musik – kein Video nötig</Benefit>
               <Benefit>Sicherer Download nach Erstellung</Benefit>
