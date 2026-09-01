@@ -439,8 +439,6 @@ export default function Chat({
         !isViralStory &&
         editingStyle !==
           "music-video" &&
-        voiceMode ===
-          "auto" &&
         speechIntent !==
           null &&
         speechIntent !==

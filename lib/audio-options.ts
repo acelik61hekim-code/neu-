@@ -102,7 +102,13 @@ export function inferPromptSpeechIntent(
     return null;
   }
 
+  const explicitlyRejectsVoiceover =
+    /\b(?:kein(?:e|en|er|es)?|ohne|niemals|nicht)\b.{0,32}\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off)\b|\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme))\b.{0,32}\b(?:unerwünscht|verboten|weglassen|entfernen|nicht\s+(?:verwenden|benutzen|erzeugen))\b/i.test(
+      text,
+    );
+
   const explicitlyRequestsVoiceover =
+    !explicitlyRejectsVoiceover &&
     /\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off)\b/i.test(
       text,
     );

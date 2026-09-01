@@ -1,3 +1,7 @@
+import type {
+  VideoVoiceMode,
+} from "@/types/story";
+
 export function promptHasProvidedDialogue(
   prompt: string,
 ): boolean {
@@ -42,6 +46,17 @@ export function shouldUseNativeCharacterDialogue(
     voiceMode === "dialogue" &&
     nativeCharacterDialogue === true
   );
+}
+
+export function resolveProvidedDialogueVoiceMode(
+  requestedVoiceMode:
+    VideoVoiceMode,
+  hasProvidedDialogue:
+    boolean,
+): VideoVoiceMode {
+  return hasProvidedDialogue
+    ? "dialogue"
+    : requestedVoiceMode;
 }
 
 export function shouldUsePostProducedDialogue(

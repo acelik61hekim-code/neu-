@@ -8,6 +8,10 @@ import {
   normalizeVideoVoiceMode,
 } from "@/lib/audio-options";
 
+import {
+  resolveProvidedDialogueVoiceMode,
+} from "@/lib/dialogue-render-mode";
+
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
@@ -7169,13 +7173,42 @@ export async function POST(
       body.audioStyle,
     );
 
-  const voiceMode =
+  const requestedVoiceMode =
     creationMode ===
     "viral-story"
       ? "dialogue"
       : normalizeVideoVoiceMode(
           body.voiceMode,
         );
+
+  const hasProvidedDialogue =
+    Array.isArray(
+      story.providedDialogue,
+    ) &&
+    story.providedDialogue.some(
+      (line) =>
+        typeof line?.speaker ===
+          "string" &&
+        line.speaker.trim().length >
+          0 &&
+        typeof line.text ===
+          "string" &&
+        line.text.trim().length >
+          0,
+    );
+
+  /*
+   * Der Originaldialog ist die verlässlichste Quelle für die gewünschte
+   * Tonart. Selbst wenn ein veralteter Browser-State noch "voiceover"
+   * sendet, darf ein vorhandener wörtlicher Dialog nie zum Erzählertext
+   * umgedeutet werden.
+   */
+  const voiceMode:
+    VideoVoiceMode =
+    resolveProvidedDialogueVoiceMode(
+      requestedVoiceMode,
+      hasProvidedDialogue,
+    );
 
   const spokenLanguage =
     normalizeVideoSpokenLanguage(
@@ -7225,6 +7258,21 @@ export async function POST(
       creationMode,
       musicTrack,
     );
+
+  console.info(
+    "Story Architect speech mode selected",
+    {
+      creationMode,
+      requestedVoiceMode,
+      voiceMode,
+      providedDialogueCount:
+        Array.isArray(
+          story.providedDialogue,
+        )
+          ? story.providedDialogue.length
+          : 0,
+    },
+  );
 
   if (!geminiApiKey) {
     return NextResponse.json(

@@ -13,6 +13,7 @@ import {
 } from "../lib/dialogue-limits.ts";
 import {
   promptHasProvidedDialogue,
+  resolveProvidedDialogueVoiceMode,
   shouldUseNativeCharacterDialogue,
   shouldUsePostProducedDialogue,
 } from "../lib/dialogue-render-mode.ts";
@@ -249,6 +250,32 @@ test("overlapping dialogue parsers do not create artificial duplicate events", (
           "Warum bist DU noch hier?!",
       },
     ],
+  );
+});
+
+test("a rejected voiceover cannot override explicitly requested character dialogue", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      `Kein Voiceover und kein Erzähler. Die Frau sagt direkt in die Kamera: „Konsumiere.“ Die Dialoge wortwörtlich übernehmen.`,
+    ),
+    "single-speaker",
+  );
+
+  assert.equal(
+    resolveProvidedDialogueVoiceMode(
+      "voiceover",
+      true,
+    ),
+    "dialogue",
+  );
+});
+
+test("negated off-screen speech keeps a two-person dialogue in conversation mode", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      `Ohne Off-Stimme. Frau: „Bleib hier.“\nMann: „Ich gehe.“`,
+    ),
+    "conversation",
   );
 });
 

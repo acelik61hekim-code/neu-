@@ -26,6 +26,7 @@ import {
 
 import {
   promptHasProvidedDialogue,
+  resolveProvidedDialogueVoiceMode,
 } from "../../../lib/dialogue-render-mode";
 
 import {
@@ -1124,9 +1125,27 @@ export async function POST(
     body.audioStyle as
       VideoAudioStyle;
 
-  const voiceMode =
+  const requestedVoiceMode =
     body.voiceMode as
       VideoVoiceMode;
+
+  const promptContainsProvidedDialogue =
+    promptHasProvidedDialogue(
+      prompt,
+    );
+
+  /*
+   * Letzte serverseitige Sicherung vor Zahlung und Renderstart:
+   * Ein vorhandener Originaldialog darf niemals als Voice-over bestellt
+   * oder gespeichert werden, auch wenn der Browser noch einen alten
+   * Stimmenmodus mitsendet.
+   */
+  const voiceMode:
+    VideoVoiceMode =
+    resolveProvidedDialogueVoiceMode(
+      requestedVoiceMode,
+      promptContainsProvidedDialogue,
+    );
 
   const spokenLanguage =
     body.spokenLanguage as
@@ -1267,9 +1286,7 @@ export async function POST(
 
   const hasProvidedDialogue =
     voiceMode === "dialogue" &&
-    promptHasProvidedDialogue(
-      prompt,
-    );
+    promptContainsProvidedDialogue;
 
   if (
     voiceMode ===
