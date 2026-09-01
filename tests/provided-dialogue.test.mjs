@@ -9,6 +9,7 @@ import {
   splitProvidedDialogueText,
 } from "../lib/provided-dialogue.ts";
 import {
+  getExactDialogueWordCapacity,
   MAX_DIALOGUE_TURNS_PER_SECTION,
 } from "../lib/dialogue-limits.ts";
 import {
@@ -360,6 +361,28 @@ test("client and server share a dialogue-turn limit that accepts five or more ex
   assert.equal(
     MAX_DIALOGUE_TURNS_PER_SECTION,
     16,
+  );
+});
+
+test("a 76-word exact dialogue fits naturally into a 30-second video", () => {
+  const capacity =
+    getExactDialogueWordCapacity(
+      30,
+    );
+
+  assert.equal(
+    capacity,
+    78,
+  );
+
+  assert.equal(
+    76 <= capacity,
+    true,
+  );
+
+  assert.equal(
+    79 > capacity,
+    true,
   );
 });
 

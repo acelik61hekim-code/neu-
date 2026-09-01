@@ -15,6 +15,7 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
+  getExactDialogueWordCapacity,
   MAX_DIALOGUE_TURNS_PER_SECTION,
 } from "@/lib/dialogue-limits";
 import {
@@ -7553,17 +7554,13 @@ export async function POST(
       /*
        * Kurze Sprecherwechsel sind filmisch deutlich schneller als
        * lange Sätze. Deshalb entscheidet die tatsächliche Wortmenge
-       * statt einer pauschalen Zahl von Dialogzeilen. Rund 2,3 Wörter
-       * pro Sekunde lassen natürliche deutsche Sprache samt kleinen
-       * Reaktionspausen zu.
+       * statt einer pauschalen Zahl von Dialogzeilen. Rund 2,6 Wörter
+       * pro Sekunde lassen in einem emotionalen Dialog natürliche deutsche
+       * Sprache samt kurzen Reaktionspausen zu.
        */
       const dialogueWordCapacity =
-        Math.max(
-          12,
-          Math.floor(
-            targetDurationSeconds *
-              2.3,
-          ),
+        getExactDialogueWordCapacity(
+          targetDurationSeconds,
         );
 
       if (
