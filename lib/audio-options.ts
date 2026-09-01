@@ -134,9 +134,29 @@ export function inferPromptSpeechIntent(
     )
       .filter(Boolean);
 
+  const attributedSpeakerLabels =
+    Array.from(
+      value.matchAll(
+        /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,64}?)\s+(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|flüstert)(?:\s+(?:wörtlich|wortwörtlich|exakt|genau\s+so|verbatim))?\s*:/giu,
+      ),
+      (match) =>
+        match[1]
+          .trim()
+          .toLocaleLowerCase(
+            "de-DE",
+          )
+          .replace(/[^a-z0-9äöüß]+/giu, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+    )
+      .filter(Boolean);
+
   const distinctSpeakerLabelCount =
     new Set(
-      speakerLabels,
+      [
+        ...speakerLabels,
+        ...attributedSpeakerLabels,
+      ],
     ).size;
 
   const requestsSpeech =

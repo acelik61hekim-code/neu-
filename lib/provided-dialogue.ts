@@ -21,7 +21,7 @@ export type ProvidedDialogueLine = {
 };
 
 const INLINE_SPEECH_VERB_PATTERN =
-  /(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|stammelt|fleht|weint|flüstert|erklärt|gesteht|verkündet|enthüllt|says?|said|asks?|asked|answers?|answered|replies?|replied|shouts?|shouted|screams?|screamed|yells?|yelled|cries|cried|begs?|begged|stammers?|stammered|whispers?|whispered|declares?|declared|reveals?|revealed)\s*,?\s*$/iu;
+  /(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|stammelt|fleht|weint|flüstert|erklärt|gesteht|verkündet|enthüllt|says?|said|asks?|asked|answers?|answered|replies?|replied|shouts?|shouted|screams?|screamed|yells?|yelled|cries|cried|begs?|begged|stammers?|stammered|whispers?|whispered|declares?|declared|reveals?|revealed)(?:\s+(?:wörtlich|wortwörtlich|exakt|genau\s+so|verbatim))?\s*,?\s*$/iu;
 
 export function extractInlineAttributedDialogue(
   source: string,
@@ -292,6 +292,66 @@ function normalizeSpeakerKey(
     .trim();
 }
 
+const GENERIC_SPEAKER_IDENTITY_WORDS =
+  new Set([
+    "der",
+    "die",
+    "das",
+    "den",
+    "dem",
+    "ein",
+    "eine",
+    "frau",
+    "mann",
+    "mädchen",
+    "junge",
+    "figur",
+    "charakter",
+    "speaker",
+    "woman",
+    "man",
+    "girl",
+    "boy",
+  ]);
+
+function speakerIdentityStems(
+  value: string,
+): Set<string> {
+  const words =
+    normalizeSpeakerKey(
+      value,
+    )
+      .split(" ")
+      .filter(
+        (word) =>
+          word.length >= 5 &&
+          !GENERIC_SPEAKER_IDENTITY_WORDS.has(
+            word,
+          ),
+      );
+
+  return new Set(
+    words
+      .map((word) =>
+        word.endsWith(
+          "ina",
+        )
+          ? word.slice(
+              0,
+              -3,
+            )
+          : word.replace(
+              /(?:ern|er|en|es|e|n|s)$/u,
+              "",
+            ),
+      )
+      .filter(
+        (word) =>
+          word.length >= 5,
+      ),
+  );
+}
+
 function stripDialogueQuotes(
   value: string,
 ): string {
@@ -498,6 +558,10 @@ export function extractProvidedDialogue(
             character.name
               .split(",")[0],
           ),
+        identityStems:
+          speakerIdentityStems(
+            character.name,
+          ),
       }))
       .filter(
         (speaker) =>
@@ -600,6 +664,26 @@ export function extractProvidedDialogue(
             candidateKey ===
               shortKey,
         );
+      const candidateIdentityStems =
+        speakerIdentityStems(
+          speakerLabel,
+        );
+      const identityMatches =
+        knownSpeakers.filter(
+          (speaker) =>
+            Array.from(
+              candidateIdentityStems,
+            ).some(
+              (stem) =>
+                speaker.identityStems.has(
+                  stem,
+                ),
+            ),
+        );
+      const roleAliasSpeaker =
+        identityMatches.length === 1
+          ? identityMatches[0]
+          : undefined;
       const fallbackSpeaker =
         allowSingleSpeaker &&
         knownSpeakers.length === 1 &&
@@ -613,6 +697,7 @@ export function extractProvidedDialogue(
           : undefined;
       const knownSpeaker =
         exactSpeaker ??
+        roleAliasSpeaker ??
         fallbackSpeaker;
 
       if (!knownSpeaker) {
@@ -660,7 +745,7 @@ export function extractProvidedDialogue(
     };
 
     const repeatedSpeechPattern =
-      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,100}?)\s+(?:sagt|spricht)(?:\s+wörtlich)?(?:\s+den\s+satz)?\s+(?:(\d{1,2})\s*(?:mal|x)|((?:ein|zwei|drei|vier|fuenf|fünf|sechs|sieben|acht|neun|zehn)mal))\s*:?\s*[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
+      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,100}?)\s+(?:sagt|spricht)(?:\s+(?:wörtlich|wortwörtlich|exakt|genau\s+so|verbatim))?(?:\s+den\s+satz)?\s+(?:(\d{1,2})\s*(?:mal|x)|((?:ein|zwei|drei|vier|fuenf|fünf|sechs|sieben|acht|neun|zehn)mal))\s*:?\s*[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
 
     for (
       const match
@@ -687,7 +772,7 @@ export function extractProvidedDialogue(
     }
 
     const quotedSpeechPattern =
-      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,100}?)\s+(?:sagt|spricht)(?:\s+wörtlich)?\s*:\s*[\r\n\t ]*[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
+      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,100}?)\s+(?:sagt|spricht)(?:\s+(?:wörtlich|wortwörtlich|exakt|genau\s+so|verbatim))?\s*:\s*[\r\n\t ]*[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
 
     for (
       const match

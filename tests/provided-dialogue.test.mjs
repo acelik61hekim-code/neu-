@@ -130,6 +130,25 @@ WICHTIG:
 – ruhige, leicht hypnotische Atmosphäre
 – der Zuschauer soll sich beobachtet fühlen und neugierig bleiben, aber nicht direkt verstehen, worauf das Video hinausläuft`;
 
+const screenshotFruitDialoguePrompt = `SZENE 1 — 0–6 SEKUNDEN
+
+Erdbeerina läuft wütend auf den Bananen-Jungen zu.
+
+ERDBEERINA sagt exakt:
+„Sag mal, hältst du mich eigentlich für komplett bescheuert?“
+
+Der Bananen-Junge schaut überrascht.
+
+BANANEN-JUNGE sagt exakt:
+„Was ist denn jetzt schon wieder dein Problem?“
+
+SZENE 2 — 6–15 SEKUNDEN
+
+Nahaufnahme von Erdbeerina. Sie zeigt wütend auf ihn.
+
+ERDBEERINA sagt exakt:
+„Du hast gestern gesagt, ich bin die Einzige hier. Und fünf Minuten später liegst du mit einer anderen am Pool.“`;
+
 test("repeated lines from one named speaker stay in single-speaker mode", () => {
   assert.equal(
     inferPromptSpeechIntent(
@@ -248,6 +267,64 @@ test("overlapping dialogue parsers do not create artificial duplicate events", (
         speaker: "Frau",
         text:
           "Warum bist DU noch hier?!",
+      },
+    ],
+  );
+});
+
+test("screenshot-style exact fruit dialogue maps role aliases to the selected characters", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      screenshotFruitDialoguePrompt,
+    ),
+    "conversation",
+  );
+
+  assert.deepEqual(
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            screenshotFruitDialoguePrompt,
+        },
+      ],
+      [
+        {
+          name:
+            "Ruby, die Erdbeere",
+        },
+        {
+          name:
+            "Bano, die Banane",
+        },
+      ],
+      false,
+    ),
+    [
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Sag mal, hältst du mich eigentlich für komplett bescheuert?",
+      },
+      {
+        speaker:
+          "Bano, die Banane",
+        text:
+          "Was ist denn jetzt schon wieder dein Problem?",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Du hast gestern gesagt, ich bin die Einzige hier.",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Und fünf Minuten später liegst du mit einer anderen am Pool.",
       },
     ],
   );
