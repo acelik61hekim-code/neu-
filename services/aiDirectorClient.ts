@@ -28,6 +28,7 @@ type ApiStoryDraft = {
   summary?: unknown;
   characters?: unknown;
   providedDialogue?: unknown;
+  singleSpeakerMode?: unknown;
 };
 
 type ApiProvidedDialogueLine = {
@@ -105,6 +106,11 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
     providedDialogue:
       providedDialogue.length > 0
         ? providedDialogue
+        : undefined,
+    singleSpeakerMode:
+      story.singleSpeakerMode ===
+        true
+        ? true
         : undefined,
   };
 }

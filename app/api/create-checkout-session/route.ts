@@ -399,6 +399,14 @@ function hasValidDialoguePlan(
         creationMode?:
           unknown;
 
+        singleSpeakerMode?:
+          unknown;
+
+        providedDialogue?:
+          Array<{
+            speaker?: unknown;
+          }>;
+
         characters?:
           Array<{
             name?: unknown;
@@ -610,16 +618,55 @@ function hasValidDialoguePlan(
           Boolean,
         );
 
-    const expectedSpeakers =
-      (
-        bibleSpeakers.length >=
-        2
-          ? bibleSpeakers
-          : storySpeakers
-      ).slice(
-        0,
-        3,
+    const providedSpeakers =
+      Array.from(
+        new Map(
+          (
+            story.providedDialogue ??
+            []
+          )
+            .map((line) =>
+              typeof line.speaker ===
+                "string"
+                ? line.speaker.trim()
+                : "",
+            )
+            .filter(Boolean)
+            .map((speaker) => [
+              speaker.toLocaleLowerCase(
+                "de-DE",
+              ),
+              speaker,
+            ]),
+        ).values(),
       );
+
+    const singleSpeakerMode =
+      story.singleSpeakerMode ===
+        true ||
+      providedSpeakers.length === 1;
+
+    const expectedSpeakers =
+      singleSpeakerMode
+        ? [
+            providedSpeakers[0] ??
+              storySpeakers[0] ??
+              bibleSpeakers[0],
+          ].filter(
+            (
+              speaker,
+            ): speaker is string =>
+              Boolean(speaker),
+          )
+        : (
+            bibleSpeakers.length >=
+            2
+              ? bibleSpeakers
+              : storySpeakers
+          ).slice(
+            0,
+            3,
+          );
 
     const requiresConversation =
       requireViralStory ||

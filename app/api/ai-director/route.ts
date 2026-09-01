@@ -15,7 +15,7 @@ import {
 import { getViralCharacters } from "@/lib/viral-characters";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
-  extractInlineAttributedDialogue,
+  extractProvidedDialogue,
 } from "@/lib/provided-dialogue";
 
 import type {
@@ -58,6 +58,7 @@ type StoryDraft = {
   characters: StoryCharacter[];
   summary: string;
   providedDialogue?: ProvidedDialogueLine[];
+  singleSpeakerMode?: boolean;
 };
 
 type AiDirectorResult = {
@@ -617,311 +618,6 @@ function isRetryableGeminiError(
   );
 }
 
-function normalizeSpeakerKey(
-  value: string,
-): string {
-  return value
-    .trim()
-    .toLocaleLowerCase("de-DE")
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\s+sagt(?:e)?\s*$/i, "")
-    .replace(/[^a-z0-9äöüß]+/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function stripDialogueQuotes(
-  value: string,
-): string {
-  const trimmed =
-    value.trim();
-
-  const quotePairs: Array<[
-    string,
-    string,
-  ]> = [
-    ["„", "“"],
-    ['"', '"'],
-    ["'", "'"],
-  ];
-
-  for (const [opening, closing] of quotePairs) {
-    if (
-      trimmed.startsWith(opening) &&
-      trimmed.endsWith(closing) &&
-      trimmed.length > 2
-    ) {
-      return trimmed
-        .slice(1, -1)
-        .trim();
-    }
-  }
-
-  return trimmed;
-}
-
-/*
- * Explicit dialogue wins over the automatic writer. Fourteen words still fit
- * comfortably into a short spoken beat, but avoid breaking a supplied quote
- * into an unnatural orphan such as a final one-word line.
- */
-const PROVIDED_DIALOGUE_WORDS_PER_LINE = 14;
-const PROVIDED_DIALOGUE_MAX_CHARACTERS = 4_000;
-
-function splitProvidedDialogueText(
-  value: string,
-): string[] {
-  const text =
-    stripDialogueQuotes(
-      value,
-    )
-      .replace(/\s+/g, " ")
-      .trim();
-
-  if (
-    !text ||
-    text.length >
-      PROVIDED_DIALOGUE_MAX_CHARACTERS
-  ) {
-    return [];
-  }
-
-  const words =
-    text
-      .split(/\s+/)
-      .filter(Boolean);
-
-  const chunks:
-    string[] = [];
-
-  for (
-    let index = 0;
-    index < words.length;
-    index +=
-      PROVIDED_DIALOGUE_WORDS_PER_LINE
-  ) {
-    chunks.push(
-      words
-        .slice(
-          index,
-          index +
-            PROVIDED_DIALOGUE_WORDS_PER_LINE,
-        )
-        .join(" "),
-    );
-  }
-
-  return chunks;
-}
-
-function extractProvidedDialogue(
-  messages: readonly ConversationMessage[],
-  characters: readonly StoryCharacter[],
-  allowSingleSpeaker = false,
-): ProvidedDialogueLine[] {
-  const knownSpeakers =
-    characters.map(
-      (character) => ({
-        fullName:
-          character.name.trim(),
-        fullKey:
-          normalizeSpeakerKey(
-            character.name,
-          ),
-        shortKey:
-          normalizeSpeakerKey(
-            character.name
-              .split(",")[0],
-          ),
-      }),
-    );
-
-  if (
-    knownSpeakers.length <
-      (
-        allowSingleSpeaker
-          ? 1
-          : 2
-      )
-  ) {
-    return [];
-  }
-
-  const dialogue:
-    ProvidedDialogueLine[] = [];
-
-  const seenDialogue =
-    new Set<string>();
-
-  const addDialogue = (
-    speakerLabel: string,
-    rawText: string,
-  ) => {
-    const candidateKey =
-      normalizeSpeakerKey(
-        speakerLabel,
-      );
-
-    const knownSpeaker =
-      knownSpeakers.find(
-        ({
-          fullKey,
-          shortKey,
-        }) =>
-          candidateKey ===
-            fullKey ||
-          candidateKey ===
-            shortKey,
-      );
-
-    if (!knownSpeaker) {
-      return;
-    }
-
-    for (
-      const text
-      of splitProvidedDialogueText(
-        rawText,
-      )
-    ) {
-      const dialogueKey =
-        `${knownSpeaker.fullKey}\u0000${text}`;
-
-      if (
-        seenDialogue.has(
-          dialogueKey,
-        )
-      ) {
-        continue;
-      }
-
-      seenDialogue.add(
-        dialogueKey,
-      );
-
-      dialogue.push({
-        speaker:
-          knownSpeaker.fullName,
-        text,
-      });
-    }
-  };
-
-  for (const message of messages) {
-    if (message.role !== "user") {
-      continue;
-    }
-
-    const dialogueSource =
-      message.dialogueContent ??
-      message.content;
-
-    /*
-     * Ready-to-use prompts commonly format an exact monologue as:
-     *
-     * Ruby sagt wörtlich:
-     *
-     * „Der vollständige Text …“
-     *
-     * Capture that block before processing ordinary one-line dialogue.
-     */
-    const quotedSpeechPattern =
-      /(?:^|\n)\s*(?:[-*•]\s*)?(.{1,64}?)\s+(?:sagt|spricht)(?:\s+wörtlich)?\s*:\s*[\r\n\t ]*[„"']([\s\S]{1,4000}?)[“"']/gimu;
-
-    for (
-      const match
-      of dialogueSource.matchAll(
-        quotedSpeechPattern,
-      )
-    ) {
-      addDialogue(
-        match[1],
-        match[2],
-      );
-    }
-
-    /*
-     * Ready-made prompts often embed dialogue inside prose instead of using
-     * "Speaker: line" formatting. Only quotes attributed to known visible
-     * characters are accepted; screen text and unknown off-screen voices stay
-     * outside the spoken dialogue plan.
-     */
-    for (
-      const line
-      of extractInlineAttributedDialogue(
-        dialogueSource,
-        knownSpeakers.map(
-          (speaker) =>
-            speaker.fullName,
-        ),
-      )
-    ) {
-      addDialogue(
-        line.speaker,
-        line.text,
-      );
-    }
-
-    const lines =
-      dialogueSource
-        .replace(/\r\n?/g, "\n")
-        .split("\n");
-
-    for (const rawLine of lines) {
-      const line =
-        rawLine.trim();
-
-      if (!line) {
-        continue;
-      }
-
-      const colonMatch =
-        line.match(
-          /^(?:[-*•]\s*)?(?:\d{1,2}[.)]\s*)?(.{1,64}?)\s*:\s*(.+)$/,
-        );
-
-      const spokenMatch =
-        colonMatch ??
-        line.match(
-          /^(?:[-*•]\s*)?(.{1,64}?)\s+sagt(?:e)?\s+[„"'](.+)[“"']$/i,
-        );
-
-      if (!spokenMatch) {
-        continue;
-      }
-
-      addDialogue(
-        spokenMatch[1],
-        spokenMatch[2],
-      );
-    }
-  }
-
-  const distinctSpeakers =
-    new Set(
-      dialogue.map(
-        (line) =>
-          line.speaker,
-      ),
-    );
-
-  return (
-    dialogue.length >=
-      (
-        allowSingleSpeaker
-          ? 1
-          : 2
-      ) &&
-    (
-      allowSingleSpeaker ||
-      distinctSpeakers.size >=
-        2
-    )
-  )
-    ? dialogue.slice(0, 48)
-    : [];
-}
-
 function isUnavailableGeminiModel(
   error: unknown,
 ): boolean {
@@ -1382,25 +1078,66 @@ export async function POST(
       ? enforceStudioAdvertisement(result)
       : result;
 
-    const finalResult =
+    const characterResult =
       characterMode === "general"
         ? enforceGeneralCharacters(brandedResult, viralCharacterIds)
         : enforceViralStory(brandedResult, viralCharacterIds);
 
-    const providedDialogue =
-      extractProvidedDialogue(
-        messages,
-        finalResult.story.characters,
-        singleSpeakerMode,
-      );
+    const preliminaryProvidedDialogue =
+      singleSpeakerMode
+        ? extractProvidedDialogue(
+            messages,
+            characterResult.story.characters,
+            true,
+          )
+        : [];
+    const providedSpeakerName =
+      preliminaryProvidedDialogue[0]
+        ?.speaker;
+    const providedSpeakerCharacter =
+      providedSpeakerName
+        ? characterResult.story.characters.find(
+            (character) =>
+              character.name ===
+              providedSpeakerName,
+          )
+        : undefined;
 
-    const finalStory =
-      providedDialogue.length > 0
+    const finalResult =
+      singleSpeakerMode &&
+      characterResult.story.characters.length > 1
         ? {
-            ...finalResult.story,
-            providedDialogue,
+            ...characterResult,
+            story: {
+              ...characterResult.story,
+              characters:
+                [
+                  providedSpeakerCharacter ??
+                    characterResult.story.characters[0],
+                ],
+            },
           }
-        : finalResult.story;
+        : characterResult;
+
+    const providedDialogue =
+      preliminaryProvidedDialogue.length > 0
+        ? preliminaryProvidedDialogue
+        : extractProvidedDialogue(
+            messages,
+            finalResult.story.characters,
+            singleSpeakerMode,
+          );
+
+    const finalStory = {
+      ...finalResult.story,
+      singleSpeakerMode:
+        singleSpeakerMode ||
+        undefined,
+      providedDialogue:
+        providedDialogue.length > 0
+          ? providedDialogue
+          : undefined,
+    };
 
     return NextResponse.json({
       success: true,

@@ -1331,15 +1331,61 @@ async function prepareRenderJobStep(
           .filter(Boolean)
       : [];
 
-  const standardDialogueSpeakers =
-    (
-      bibleCharacterNames.length > 0
-        ? bibleCharacterNames
-        : storyCharacterNames
-    ).slice(
-      0,
-      3,
+  const providedDialogueSpeakerNames =
+    Array.from(
+      new Map(
+        (
+          Array.isArray(
+            story.providedDialogue,
+          )
+            ? story.providedDialogue
+            : []
+        )
+          .map(
+            asRecord,
+          )
+          .map((line) =>
+            typeof line.speaker ===
+              "string"
+              ? line.speaker.trim()
+              : "",
+          )
+          .filter(Boolean)
+          .map((speaker) => [
+            speaker.toLocaleLowerCase(
+              "de-DE",
+            ),
+            speaker,
+          ] as const),
+      ).values(),
     );
+
+  const singleSpeakerMode =
+    story.singleSpeakerMode ===
+      true ||
+    providedDialogueSpeakerNames.length ===
+      1;
+
+  const standardDialogueSpeakers =
+    singleSpeakerMode
+      ? [
+          providedDialogueSpeakerNames[0] ??
+            storyCharacterNames[0] ??
+            bibleCharacterNames[0],
+        ].filter(
+          (
+            speaker,
+          ): speaker is string =>
+            Boolean(speaker),
+        )
+      : (
+          bibleCharacterNames.length > 0
+            ? bibleCharacterNames
+            : storyCharacterNames
+        ).slice(
+          0,
+          3,
+        );
 
   const requiredStandardSpeakerCount =
     Math.min(

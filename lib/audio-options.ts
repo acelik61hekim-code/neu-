@@ -111,13 +111,27 @@ export function inferPromptSpeechIntent(
     return "voiceover";
   }
 
-  const speakerLabelCount =
-    (
-      value.match(
-        /(?:^|\n)\s*(?:[-*•]\s*)?[^:\n]{1,48}:\s*[^\n]+/g,
-      ) ??
-      []
-    ).length;
+  const speakerLabels =
+    Array.from(
+      value.matchAll(
+        /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,48}):\s*[^\n]+/gu,
+      ),
+      (match) =>
+        match[1]
+          .trim()
+          .toLocaleLowerCase(
+            "de-DE",
+          )
+          .replace(/[^a-z0-9äöüß]+/giu, " ")
+          .replace(/\s+/g, " ")
+          .trim(),
+    )
+      .filter(Boolean);
+
+  const distinctSpeakerLabelCount =
+    new Set(
+      speakerLabels,
+    ).size;
 
   const requestsSpeech =
     /\b(?:spricht|sprechen|redet|reden|sagt|sagen|dialog|gespräch|monolog|ansprache|moderiert|präsentiert)\b/i.test(
@@ -126,7 +140,7 @@ export function inferPromptSpeechIntent(
     /\b(?:soll|muss|wird|möchte)\b.{0,60}\b(?:erklären|erzählen|präsentieren|vorstellen|bewerben)\b/i.test(
       text,
     ) ||
-    speakerLabelCount >
+    distinctSpeakerLabelCount >
       0;
 
   if (!requestsSpeech) {
@@ -134,7 +148,7 @@ export function inferPromptSpeechIntent(
   }
 
   const requestsConversation =
-    speakerLabelCount >=
+    distinctSpeakerLabelCount >=
       2 ||
     /\b(?:miteinander|abwechselnd|unterhalten\s+sich|gespräch\s+zwischen|dialog\s+zwischen|beide\s+(?:sprechen|reden)|zwei\s+(?:personen|figuren|menschen).{0,40}(?:sprechen|reden))\b/i.test(
       text,

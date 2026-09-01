@@ -91,6 +91,7 @@ export default function StoryPreview(
   let storyGenre = "";
   let storyMood = "";
   let storyDialogues: Array<{ speaker: string; text: string }> = [];
+  let hasProvidedDialogue = false;
   let hasMoviePlan = false;
   let hasStructuredStory = false;
 
@@ -102,6 +103,7 @@ export default function StoryPreview(
       summary?: string;
       genre?: string;
       mood?: string;
+      providedDialogue?: unknown[];
       moviePlan?: {
         targetDurationSeconds?: number;
         generatedDurationSeconds?: number;
@@ -130,6 +132,12 @@ export default function StoryPreview(
       typeof parsed.mood === "string"
         ? parsed.mood
         : "";
+
+    hasProvidedDialogue =
+      Array.isArray(
+        parsed.providedDialogue,
+      ) &&
+      parsed.providedDialogue.length > 0;
 
     const dialogueValues = [
       parsed.moviePlan?.opening?.dialogue,
@@ -276,7 +284,9 @@ export default function StoryPreview(
                   {storyDialogues.length > 0 && (
                     <div className="mt-4 rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] p-3">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fuchsia-200">
-                        Automatische Figurendialoge
+                        {hasProvidedDialogue
+                          ? "Wörtlich übernommener Sprechertext"
+                          : "Automatische Figurendialoge"}
                       </p>
                       <div className="mt-2 space-y-2">
                         {storyDialogues.map((dialogue, index) => (

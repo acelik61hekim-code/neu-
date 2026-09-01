@@ -445,7 +445,81 @@ function normalizeDialogueTurns(
       (turn) =>
         turn.enabled,
     )
-    .slice(0, 3);
+    .slice(0, 16);
+}
+
+function normalizeDialogueSpeakerKey(
+  value: string,
+): string {
+  return value
+    .trim()
+    .toLocaleLowerCase("de-DE")
+    .replace(/[^a-z0-9äöüß]+/giu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function providedDialogueSpeakers(
+  story: StoryDraft,
+): string[] {
+  if (
+    !Array.isArray(
+      story.providedDialogue,
+    )
+  ) {
+    return [];
+  }
+
+  const speakers =
+    new Map<string, string>();
+
+  for (const line of story.providedDialogue) {
+    if (
+      typeof line !== "object" ||
+      line === null ||
+      typeof line.speaker !== "string"
+    ) {
+      continue;
+    }
+
+    const speaker =
+      line.speaker.trim();
+    const key =
+      normalizeDialogueSpeakerKey(
+        speaker,
+      );
+
+    if (
+      speaker &&
+      key &&
+      !speakers.has(key)
+    ) {
+      speakers.set(
+        key,
+        speaker,
+      );
+    }
+  }
+
+  return Array.from(
+    speakers.values(),
+  );
+}
+
+function hasSingleSpeakerDialogueMode(
+  story: StoryDraft,
+  voiceMode: VideoVoiceMode,
+): boolean {
+  return (
+    voiceMode === "dialogue" &&
+    (
+      story.singleSpeakerMode ===
+        true ||
+      providedDialogueSpeakers(
+        story,
+      ).length === 1
+    )
+  );
 }
 
 function normalizeProductionBible(
@@ -465,9 +539,57 @@ function normalizeProductionBible(
       ? root.characterBible
       : [];
 
+  const singleSpeakerMode =
+    hasSingleSpeakerDialogueMode(
+      story,
+      voiceMode,
+    );
+  const suppliedSpeaker =
+    providedDialogueSpeakers(
+      story,
+    )[0];
+  const suppliedSpeakerKey =
+    suppliedSpeaker
+      ? normalizeDialogueSpeakerKey(
+          suppliedSpeaker,
+        )
+      : "";
+  const suppliedCharacter =
+    suppliedSpeakerKey
+      ? story.characters.find(
+          (character) => {
+            const fullKey =
+              normalizeDialogueSpeakerKey(
+                character.name,
+              );
+            const shortKey =
+              normalizeDialogueSpeakerKey(
+                character.name
+                  .split(",")[0],
+              );
+
+            return (
+              suppliedSpeakerKey ===
+                fullKey ||
+              suppliedSpeakerKey ===
+                shortKey
+            );
+          },
+        )
+      : undefined;
+  const effectiveSingleCharacter =
+    suppliedCharacter ??
+    story.characters[0];
+  const effectiveStoryCharacters =
+    singleSpeakerMode
+      ? effectiveSingleCharacter
+        ? [effectiveSingleCharacter]
+        : []
+      : story.characters;
+
   const fallbackCharacters =
-    story.characters.length > 0
-      ? story.characters
+    effectiveStoryCharacters.length > 0
+      ? effectiveStoryCharacters
       : [
           {
             id: "main-subject",
@@ -479,16 +601,15 @@ function normalizeProductionBible(
 
   const requiredCharacterCount =
     voiceMode === "dialogue"
-      ? story.characters.length ===
-          1
+      ? singleSpeakerMode
         ? 1
         : 2
       : 1;
 
   const maximumCharacterCount =
-    story.characters.length >
+    effectiveStoryCharacters.length >
       0
-      ? story.characters.length
+      ? effectiveStoryCharacters.length
       : 8;
 
   const characterCount =
@@ -1784,25 +1905,16 @@ function normalizeProvidedDialogueLines(
     return [];
   }
 
-  const normalizeSpeaker =
-    (value: string) =>
-      value
-        .trim()
-        .toLocaleLowerCase("de-DE")
-        .replace(/[^a-z0-9äöüß]+/gi, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-
   const canonicalSpeakers =
     expectedSpeakers.map(
       (speaker) => ({
         speaker,
         fullKey:
-          normalizeSpeaker(
+          normalizeDialogueSpeakerKey(
             speaker,
           ),
         shortKey:
-          normalizeSpeaker(
+          normalizeDialogueSpeakerKey(
             speaker.split(",")[0],
           ),
       }),
@@ -1821,7 +1933,7 @@ function normalizeProvidedDialogueLines(
         }
 
         const speakerKey =
-          normalizeSpeaker(
+          normalizeDialogueSpeakerKey(
             line.speaker,
           );
 
@@ -1833,14 +1945,22 @@ function normalizeProvidedDialogueLines(
             }) =>
               speakerKey === fullKey ||
               speakerKey === shortKey,
+          ) ??
+          (
+            story.singleSpeakerMode ===
+              true &&
+            canonicalSpeakers.length ===
+              1
+              ? canonicalSpeakers[0]
+              : undefined
           );
 
         const text =
-          line.text.trim();
+          line.text;
 
         if (
           !canonical ||
-          !text ||
+          !text.trim() ||
           text.length > 180
         ) {
           return [];
@@ -1856,18 +1976,29 @@ function normalizeProvidedDialogueLines(
       },
     );
 
-  return new Set(
-    normalized.map(
-      (line) =>
-        line.speaker,
-    ),
-  ).size >=
-      (
-        expectedSpeakers.length ===
-          1
-          ? 1
-          : 2
-      )
+  const expectedDistinctSpeakerCount =
+    Math.min(
+      2,
+      providedDialogueSpeakers(
+        story,
+      ).length,
+    );
+  const normalizedDistinctSpeakerCount =
+    new Set(
+      normalized.map(
+        (line) =>
+          normalizeDialogueSpeakerKey(
+            line.speaker,
+          ),
+      ),
+    ).size;
+
+  return (
+    normalized.length ===
+      story.providedDialogue.length &&
+    normalizedDistinctSpeakerCount >=
+      expectedDistinctSpeakerCount
+  )
     ? normalized
     : [];
 }
@@ -2674,7 +2805,7 @@ function validateDialogueTurns(
     value === undefined ||
     (
       Array.isArray(value) &&
-      value.length <= 3 &&
+      value.length <= 16 &&
       value.every(
         validateDialogue,
       )
@@ -6130,12 +6261,12 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
     targetDurationSeconds;
 
   const isSingleSpeakerDialogue =
-    voiceMode ===
-      "dialogue" &&
     creationMode ===
       "standard" &&
-    story.characters.length ===
-      1;
+    hasSingleSpeakerDialogueMode(
+      story,
+      voiceMode,
+    );
 
   const musicTrackSection =
     activeMusicTrack
@@ -7109,24 +7240,33 @@ export async function POST(
   }
 
   try {
+    const submittedDialogueSpeakers =
+      providedDialogueSpeakers(
+        story,
+      );
+    const isSingleSpeakerDialogue =
+      creationMode ===
+        "standard" &&
+      hasSingleSpeakerDialogueMode(
+        story,
+        voiceMode,
+      );
     const expectedDialogueSpeakers =
       voiceMode ===
       "dialogue"
-        ? story.characters
-            .slice(0, 3)
-            .map(
-              (character) =>
-                character.name,
-            )
+        ? isSingleSpeakerDialogue
+          ? [
+              submittedDialogueSpeakers[0] ??
+                story.characters[0]?.name ??
+                "Visible speaker",
+            ]
+          : story.characters
+              .slice(0, 3)
+              .map(
+                (character) =>
+                  character.name,
+              )
         : [];
-
-    const isSingleSpeakerDialogue =
-      voiceMode ===
-        "dialogue" &&
-      creationMode ===
-        "standard" &&
-      expectedDialogueSpeakers.length ===
-        1;
 
     const providedDialogue =
       voiceMode === "dialogue"
@@ -7135,6 +7275,27 @@ export async function POST(
             expectedDialogueSpeakers,
           )
         : [];
+
+    if (
+      voiceMode === "dialogue" &&
+      Array.isArray(
+        story.providedDialogue,
+      ) &&
+      story.providedDialogue.length > 0 &&
+      providedDialogue.length !==
+        story.providedDialogue.length
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Der vorgegebene Originaldialog ist ungültig und wird nicht durch automatisch erzeugten Dialog ersetzt.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const validateDialogueCandidate =
       (

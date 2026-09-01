@@ -647,6 +647,8 @@ export type Story = {
 
   providedDialogue?: ProvidedDialogueLine[];
 
+  singleSpeakerMode?: boolean;
+
   productionBible: ProductionBible;
 
   productionMemory?: ProductionMemory;
@@ -678,6 +680,8 @@ export type StoryDraft = {
   characters: Character[];
 
   providedDialogue?: ProvidedDialogueLine[];
+
+  singleSpeakerMode?: boolean;
 };
 
 /*
