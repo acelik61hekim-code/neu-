@@ -8,12 +8,121 @@ import {
   extractProvidedDialogue,
   splitProvidedDialogueText,
 } from "../lib/provided-dialogue.ts";
+import {
+  MAX_DIALOGUE_TURNS_PER_SECTION,
+} from "../lib/dialogue-limits.ts";
 
 const repeatedConsumption =
   Array.from(
     { length: 5 },
     () => "Frau: Konsumiere.",
   ).join("\n");
+
+const realFifteenSecondConsumptionPrompt = `Erstelle ein 15 Sekunden langes, fotorealistisches, cineastisches vertikales Video im Format 9:16 für TikTok.
+
+Eine attraktive Frau, etwa 25–30 Jahre alt, sitzt frontal vor der Kamera. Sie befindet sich in einem modernen, sehr reduzierten Raum. Der Hintergrund ist dunkel, weich unscharf und fast vollkommen reizlos. Keine auffälligen Gegenstände, keine anderen Personen.
+
+Die Kamera befindet sich exakt auf Augenhöhe und zeigt eine enge Nahaufnahme ihres Gesichts und ihrer Schultern.
+
+Die Frau schaut während des gesamten Videos direkt in die Kameralinse, als würde sie den Zuschauer persönlich ansehen.
+
+Ihr Gesichtsausdruck ist ruhig, neutral und selbstbewusst. Sie lächelt nicht. Sie wirkt nicht aggressiv und nicht wie in einem Horrorfilm. Die Situation soll vielmehr leicht unangenehm und hypnotisch wirken, weil sie den Blickkontakt niemals unterbricht.
+
+Keine Hintergrundmusik.
+
+Nur sehr dezenter Raumklang.
+
+Ihre Stimme ist ruhig, weich, langsam und vollkommen kontrolliert.
+
+0–2 Sekunden:
+
+Die Frau schaut schweigend direkt in die Kamera.
+
+Keine Bewegung.
+
+Dann sagt sie ruhig:
+
+„Konsumiere.“
+
+2–5 Sekunden:
+
+Kurze Stille.
+
+Sie hält weiterhin perfekten Blickkontakt.
+
+Die Kamera beginnt mit einem extrem langsamen, fast unbemerkbaren Zoom auf ihr Gesicht.
+
+Sie sagt erneut:
+
+„Konsumiere.“
+
+5–8 Sekunden:
+
+Wieder eine unangenehm lange Pause.
+
+Die Frau blinzelt einmal langsam.
+
+Dann sagt sie etwas leiser:
+
+„Konsumiere.“
+
+8–11 Sekunden:
+
+Der Zoom ist inzwischen etwas näher.
+
+Die Beleuchtung verändert sich ganz subtil. Der Hintergrund wird minimal dunkler.
+
+Die Frau sagt erneut:
+
+„Konsumiere.“
+
+11–13,5 Sekunden:
+
+Komplette Stille.
+
+Die Frau schaut einfach nur direkt in die Kamera.
+
+Keine Bewegung.
+
+Kein Lächeln.
+
+Dann flüstert sie sehr leise:
+
+„Konsumiere.“
+
+13,5–15 Sekunden:
+
+Harter Schnitt auf komplett schwarzen Hintergrund.
+
+Weiße, minimalistische Schrift erscheint mittig:
+
+„Du hast gerade 15 Sekunden KI konsumiert.“
+
+Darunter deutlich kleiner:
+
+„kivideostudio.de“
+
+Das Video endet ohne Musik und ohne zusätzlichen Soundeffekt.
+
+WICHTIG:
+
+– fotorealistisches menschliches Gesicht
+– perfekte Lippen-Synchronisation beim deutschen Wort „Konsumiere“
+– natürliche Augenbewegungen und natürliches Blinzeln
+– keine übertriebene Mimik
+– keine Horror-Effekte
+– keine deformierten Gesichtszüge
+– keine zusätzlichen Personen
+– keine Untertitel während die Frau spricht
+– keine sichtbaren Logos oder Marken im Raum
+– keine hektischen Kamerabewegungen
+– keine schnellen Schnitte
+– extrem langsamer subtiler Kamera-Zoom
+– hochwertiger cineastischer Look
+– geringe Tiefenschärfe
+– authentische Hautstruktur
+– ruhige, leicht hypnotische Atmosphäre
+– der Zuschauer soll sich beobachtet fühlen und neugierig bleiben, aber nicht direkt verstehen, worauf das Video hinausläuft`;
 
 test("repeated lines from one named speaker stay in single-speaker mode", () => {
   assert.equal(
@@ -134,6 +243,135 @@ test("overlapping dialogue parsers do not create artificial duplicate events", (
         text:
           "Warum bist DU noch hier?!",
       },
+    ],
+  );
+});
+
+test("client and server share a dialogue-turn limit that accepts five or more exact events", () => {
+  assert.equal(
+    MAX_DIALOGUE_TURNS_PER_SECTION,
+    16,
+  );
+});
+
+test("the real 15-second Konsumiere prompt stays one exact five-event monologue", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      realFifteenSecondConsumptionPrompt,
+    ),
+    "single-speaker",
+  );
+
+  const dialogue =
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            realFifteenSecondConsumptionPrompt,
+        },
+      ],
+      [
+        {
+          name:
+            "Attraktive Frau",
+        },
+      ],
+      true,
+    );
+
+  assert.deepEqual(
+    dialogue,
+    Array.from(
+      { length: 5 },
+      () => ({
+        speaker:
+          "Attraktive Frau",
+        text:
+          "Konsumiere.",
+      }),
+    ),
+  );
+
+  assert.equal(
+    new Set(
+      dialogue.map(
+        ({ speaker }) =>
+          speaker,
+      ),
+    ).size,
+    1,
+  );
+});
+
+test("generic pronouns and visible-role labels resolve in both German word orders", () => {
+  const dialogue =
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content: `Dann sagt die Frau ruhig: „Eins.“
+Sie sagt erneut: „Zwei.“
+Dann flüstert sie sehr leise: „Drei.“`,
+        },
+      ],
+      [
+        {
+          name:
+            "Einzige sichtbare Sprecherin",
+        },
+      ],
+      true,
+    );
+
+  assert.deepEqual(
+    dialogue,
+    [
+      {
+        speaker:
+          "Einzige sichtbare Sprecherin",
+        text: "Eins.",
+      },
+      {
+        speaker:
+          "Einzige sichtbare Sprecherin",
+        text: "Zwei.",
+      },
+      {
+        speaker:
+          "Einzige sichtbare Sprecherin",
+        text: "Drei.",
+      },
+    ],
+  );
+});
+
+test("generic male pronouns and roles map to the only visible man", () => {
+  const dialogue =
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            "Er sagt ruhig: „Eins.“\nDann sagt der Mann erneut: „Zwei.“",
+        },
+      ],
+      [
+        {
+          name:
+            "Einziger sichtbarer Sprecher",
+        },
+      ],
+      true,
+    );
+
+  assert.deepEqual(
+    dialogue.map(
+      ({ text }) => text,
+    ),
+    [
+      "Eins.",
+      "Zwei.",
     ],
   );
 });

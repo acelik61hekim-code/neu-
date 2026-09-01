@@ -114,7 +114,7 @@ export function inferPromptSpeechIntent(
   const speakerLabels =
     Array.from(
       value.matchAll(
-        /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,48}):\s*[^\n]+/gu,
+        /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,48}):[^\S\r\n]*[^\r\n]+/gu,
       ),
       (match) =>
         match[1]

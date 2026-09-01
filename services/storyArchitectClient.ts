@@ -33,6 +33,10 @@ import {
   isVideoVoiceMode,
 } from "@/lib/audio-options";
 
+import {
+  MAX_DIALOGUE_TURNS_PER_SECTION,
+} from "@/lib/dialogue-limits";
+
 const SEEDANCE_CLIP_DURATION_SECONDS = 15;
 
 /*
@@ -315,7 +319,8 @@ function isDialogueTurns(
     value === undefined ||
     (
       Array.isArray(value) &&
-      value.length <= 3 &&
+      value.length <=
+        MAX_DIALOGUE_TURNS_PER_SECTION &&
       value.every(
         isSceneDialogue,
       )

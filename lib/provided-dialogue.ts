@@ -532,6 +532,36 @@ export function extractProvidedDialogue(
         start: number;
         end: number;
       }> = [];
+    const candidates:
+      Array<{
+        speakerLabel: string;
+        rawText: string;
+        sourceStart: number;
+        sourceEnd: number;
+        repeatCount: number;
+        allowGenericAlias: boolean;
+        priority: number;
+      }> = [];
+
+    const collectDialogue = (
+      speakerLabel: string,
+      rawText: string,
+      sourceStart: number,
+      sourceEnd: number,
+      repeatCount = 1,
+      allowGenericAlias = false,
+      priority = 2,
+    ) => {
+      candidates.push({
+        speakerLabel,
+        rawText,
+        sourceStart,
+        sourceEnd,
+        repeatCount,
+        allowGenericAlias,
+        priority,
+      });
+    };
 
     const addDialogue = (
       speakerLabel: string,
@@ -641,7 +671,7 @@ export function extractProvidedDialogue(
       const start =
         match.index ?? 0;
 
-      addDialogue(
+      collectDialogue(
         match[1],
         match[4],
         start,
@@ -652,6 +682,7 @@ export function extractProvidedDialogue(
           match[3],
         ),
         true,
+        0,
       );
     }
 
@@ -667,7 +698,7 @@ export function extractProvidedDialogue(
       const start =
         match.index ?? 0;
 
-      addDialogue(
+      collectDialogue(
         match[1],
         match[2],
         start,
@@ -675,6 +706,39 @@ export function extractProvidedDialogue(
           match[0].length,
         1,
         true,
+        1,
+      );
+    }
+
+    /*
+     * In an explicit single-speaker request, the user often describes the
+     * only visible person with a pronoun or a generic role. Support both
+     * German word orders immediately before a quote:
+     *
+     *   "Sie sagt erneut: ..." / "Die Frau flüstert: ..."
+     *   "Dann sagt sie ruhig: ..." / "Dann sagt die Frau: ..."
+     */
+    const genericSingleSpeakerPattern =
+      /(?:^|[\r\n]|[.!?]\s+)\s*(?:[-*•]\s*)?(?:(sie|er|die\s+frau|der\s+mann|das\s+mädchen|der\s+junge|die\s+sprecherin|der\s+sprecher|die\s+hauptfigur)\s+(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|stammelt|fleht|weint|flüstert|erklärt|gesteht|verkündet|enthüllt)|(?:dann\s+)?(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|stammelt|fleht|weint|flüstert|erklärt|gesteht|verkündet|enthüllt)\s+(sie|er|die\s+frau|der\s+mann|das\s+mädchen|der\s+junge|die\s+sprecherin|der\s+sprecher|die\s+hauptfigur))(?:\s+[^:\r\n„“"']{0,80})?\s*:?\s*[\r\n\t ]*[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
+
+    for (
+      const match
+      of source.matchAll(
+        genericSingleSpeakerPattern,
+      )
+    ) {
+      const start =
+        match.index ?? 0;
+
+      collectDialogue(
+        match[1] ?? match[2],
+        match[3],
+        start,
+        start +
+          match[0].length,
+        1,
+        true,
+        1,
       );
     }
 
@@ -688,11 +752,14 @@ export function extractProvidedDialogue(
         ),
       )
     ) {
-      addDialogue(
+      collectDialogue(
         line.speaker,
         line.text,
         line.sourceStart ?? 0,
         line.sourceEnd ?? source.length,
+        1,
+        false,
+        2,
       );
     }
 
@@ -733,7 +800,7 @@ export function extractProvidedDialogue(
       const start =
         lineMatch.index ?? 0;
 
-      addDialogue(
+      collectDialogue(
         matched[1],
         matched[2],
         start,
@@ -743,8 +810,31 @@ export function extractProvidedDialogue(
         Boolean(
           spokenMatch,
         ),
+        3,
       );
     }
+
+    candidates
+      .sort(
+        (left, right) =>
+          left.sourceStart -
+            right.sourceStart ||
+          left.priority -
+            right.priority ||
+          right.sourceEnd -
+            left.sourceEnd,
+      )
+      .forEach(
+        (candidate) =>
+          addDialogue(
+            candidate.speakerLabel,
+            candidate.rawText,
+            candidate.sourceStart,
+            candidate.sourceEnd,
+            candidate.repeatCount,
+            candidate.allowGenericAlias,
+          ),
+      );
   }
 
   const distinctSpeakers =

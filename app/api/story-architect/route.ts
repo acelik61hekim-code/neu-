@@ -11,6 +11,9 @@ import {
 import { checkRateLimit } from "@/lib/rate-limit";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
+  MAX_DIALOGUE_TURNS_PER_SECTION,
+} from "@/lib/dialogue-limits";
+import {
   DIALOGUE_WRITER_MODEL,
   generateStructuredDialoguePlan,
 } from "@/lib/openai-dialogue";
@@ -2805,7 +2808,8 @@ function validateDialogueTurns(
     value === undefined ||
     (
       Array.isArray(value) &&
-      value.length <= 16 &&
+      value.length <=
+        MAX_DIALOGUE_TURNS_PER_SECTION &&
       value.every(
         validateDialogue,
       )

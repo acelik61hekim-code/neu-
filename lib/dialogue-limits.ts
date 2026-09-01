@@ -1,0 +1,2 @@
+export const MAX_DIALOGUE_TURNS_PER_SECTION =
+  16;
