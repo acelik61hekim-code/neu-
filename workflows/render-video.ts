@@ -17,6 +17,10 @@ import {
   shouldUsePostProducedDialogue,
 } from "@/lib/dialogue-render-mode";
 
+import {
+  partitionDialogueCuesForAudioReference,
+} from "@/lib/native-dialogue-audio";
+
 import type {
   VideoAspectRatio,
   VideoDurationSeconds,
@@ -63,6 +67,7 @@ type PreparedRender = {
     voiceoverText?: string;
     voiceoverVoiceName?: "Charon" | "Kore";
     dialogueCues?: DialogueCue[];
+    dialogueReferenceAudioUris?: string[];
     closingText?: string;
     spokenLanguage?: "auto" | "de" | "en";
     musicTrackUri?: string;
@@ -179,6 +184,20 @@ export async function renderVideoWorkflow(
       };
     }
 
+    const nativeDialogueAudioReferenceUris =
+      await prepareNativeDialogueAudioReferencesStep(
+        jobId,
+        prepared.duration,
+        prepared.videoModel,
+      );
+
+    if (
+      nativeDialogueAudioReferenceUris.length > 0
+    ) {
+      prepared.finishing.dialogueReferenceAudioUris =
+        nativeDialogueAudioReferenceUris;
+    }
+
     const chapterUris:
       string[] = [
       ...prepared
@@ -192,6 +211,9 @@ export async function renderVideoWorkflow(
 
     let completedExtensions =
       0;
+
+    let seedanceClipIndex =
+      chapterUris.length;
 
     for (
       const segment
@@ -280,11 +302,17 @@ export async function renderVideoWorkflow(
           seedanceOpeningClipDurationFor(
             segment.targetSeconds,
           ),
+          nativeDialogueAudioReferenceUris[
+            seedanceClipIndex
+          ],
         );
 
       chapterUris.push(
         currentUri,
       );
+
+      seedanceClipIndex +=
+        1;
 
       for (
         let index = 0;
@@ -312,6 +340,9 @@ export async function renderVideoWorkflow(
             segment.chapterNumber,
             globalExtensionNumber,
             prepared.totalExtensions,
+            nativeDialogueAudioReferenceUris[
+              seedanceClipIndex
+            ],
           );
 
         completedExtensions =
@@ -320,6 +351,9 @@ export async function renderVideoWorkflow(
         chapterUris.push(
           currentUri,
         );
+
+        seedanceClipIndex +=
+          1;
       }
 
       await recordChapterStep(
@@ -448,6 +482,7 @@ async function startOpeningWithProviderRetry(
   chapterNumber: number,
   clipDurationSeconds: number,
   webhookUrl: string,
+  audioReferenceUri?: string,
 ): Promise<StartedProviderOperation> {
   for (
     let attempt = 0;
@@ -469,6 +504,7 @@ async function startOpeningWithProviderRetry(
         clipDurationSeconds,
         webhookUrl,
         plannedRetryDelayMs,
+        audioReferenceUri,
       );
 
     if (
@@ -506,6 +542,7 @@ async function startExtensionWithProviderRetry(
   chapterNumber: number,
   extensionNumber: number,
   webhookUrl: string,
+  audioReferenceUri?: string,
 ): Promise<StartedProviderOperation> {
   for (
     let attempt = 0;
@@ -528,6 +565,7 @@ async function startExtensionWithProviderRetry(
         extensionNumber,
         webhookUrl,
         plannedRetryDelayMs,
+        audioReferenceUri,
       );
 
     if (
@@ -652,6 +690,7 @@ async function completeOpeningWithOperationRecovery(
   completedExtensions: number,
   totalExtensions: number,
   clipDurationSeconds: number,
+  audioReferenceUri?: string,
 ): Promise<string> {
   for (
     let attempt = 0;
@@ -670,6 +709,7 @@ async function completeOpeningWithOperationRecovery(
         chapterNumber,
         clipDurationSeconds,
         webhook.url,
+        audioReferenceUri,
       );
 
     let result:
@@ -775,6 +815,7 @@ async function completeExtensionWithOperationRecovery(
   chapterNumber: number,
   extensionNumber: number,
   totalExtensions: number,
+  audioReferenceUri?: string,
 ): Promise<string> {
   for (
     let attempt = 0;
@@ -794,6 +835,7 @@ async function completeExtensionWithOperationRecovery(
         chapterNumber,
         extensionNumber,
         webhook.url,
+        audioReferenceUri,
       );
 
     let result:
@@ -1081,6 +1123,12 @@ async function prepareRecoveryFinalizationStep(
       dialogueCues:
         recoveryDialogueCues,
 
+      dialogueReferenceAudioUris:
+        job.nativeCharacterDialogue ===
+          true
+          ? job.nativeDialogueAudioReferenceUris
+          : undefined,
+
       closingText:
         job.closingText,
 
@@ -1094,6 +1142,202 @@ async function prepareRecoveryFinalizationStep(
         job.musicVideoAudioDurationSeconds,
     },
   };
+}
+
+async function prepareNativeDialogueAudioReferencesStep(
+  jobId: string,
+  targetDurationSeconds: VideoDurationSeconds,
+  videoModel: VideoModelId,
+): Promise<string[]> {
+  "use step";
+
+  if (
+    videoModel === "google-veo" ||
+    videoModel === "google-veo-fast"
+  ) {
+    return [];
+  }
+
+  const {
+    jobStore,
+  } =
+    await import(
+      "@/lib/store"
+    );
+
+  const job =
+    await jobStore.get(
+      jobId,
+    );
+
+  if (
+    !job ||
+    job.paymentStatus !== "paid" ||
+    job.voiceMode !== "dialogue" ||
+    job.nativeCharacterDialogue !== true ||
+    job.nativeDialogueAudioRetry === true
+  ) {
+    return [];
+  }
+
+  let story:
+    Record<string, unknown> = {};
+
+  try {
+    story =
+      JSON.parse(
+        job.prompt,
+      ) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+
+  const hasOpeningVisualReference =
+    story.creationMode === "viral-story"
+      ? Array.isArray(story.characters) &&
+        story.characters.length > 0
+      : Boolean(job.referenceImageUrl);
+
+  /*
+   * Seedance 2.0 benötigt bei einer Audio-Referenz zusätzlich mindestens
+   * ein Bild oder Video. Ohne Startbild darf die finale Studio-Spur nicht
+   * verwendet werden, weil der erste Clip sonst nicht darauf synchronisiert
+   * werden könnte.
+   */
+  if (
+    !hasOpeningVisualReference
+  ) {
+    return [];
+  }
+
+  const clipCount =
+    Math.ceil(
+      targetDurationSeconds /
+        SEEDANCE_CLIP_DURATION_SECONDS,
+    );
+
+  const storedReferences =
+    job.nativeDialogueAudioReferenceUris ??
+    [];
+
+  if (
+    storedReferences.length ===
+      clipCount &&
+    storedReferences.every(Boolean)
+  ) {
+    return storedReferences;
+  }
+
+  /*
+   * Eine schon laufende Provider-Operation wurde noch ohne diese Spur
+   * gestartet. In diesem Sonderfall mischen wir nicht nachträglich eine
+   * unbekannte Tonspur darüber.
+   */
+  if (
+    job.currentOperationName
+  ) {
+    return [];
+  }
+
+  const cues =
+    buildDialogueCuesFromStoredPrompt(
+      job.prompt,
+      targetDurationSeconds,
+      videoModel,
+      job.voiceoverVoiceName,
+    );
+
+  if (
+    cues.length === 0
+  ) {
+    return [];
+  }
+
+  const {
+    createAndStoreDialogueReferenceAudio,
+  } =
+    await import(
+      "@/lib/video-backend/media"
+    );
+
+  const references:
+    string[] = [];
+
+  const cueClips =
+    partitionDialogueCuesForAudioReference(
+      cues,
+      targetDurationSeconds,
+      SEEDANCE_CLIP_DURATION_SECONDS,
+    );
+
+  for (
+    let clipIndex = 0;
+    clipIndex < cueClips.length;
+    clipIndex += 1
+  ) {
+    const clipStartSeconds =
+      clipIndex *
+      SEEDANCE_CLIP_DURATION_SECONDS;
+
+    const clipDurationSeconds =
+      Math.min(
+        SEEDANCE_CLIP_DURATION_SECONDS,
+        targetDurationSeconds -
+          clipStartSeconds,
+      );
+
+    const clipCues =
+      cueClips[clipIndex];
+
+    const stored =
+      await createAndStoreDialogueReferenceAudio(
+        `dialogue-references/${jobId}/clip-${clipIndex + 1}.wav`,
+        clipCues,
+        clipDurationSeconds,
+        job.spokenLanguage,
+      );
+
+    references.push(
+      stored.pathname.startsWith(
+        "local:",
+      )
+        ? stored.pathname
+        : `blob:${stored.pathname}`,
+    );
+  }
+
+  const latest =
+    await jobStore.get(
+      jobId,
+    );
+
+  if (!latest) {
+    throw new Error(
+      "Render-Job ist beim Vorbereiten der Dialogspur verschwunden.",
+    );
+  }
+
+  await jobStore.set(
+    jobId,
+    {
+      ...latest,
+      nativeDialogueAudioReferenceUris:
+        references,
+    },
+  );
+
+  console.info(
+    "Prepared exact dialogue audio references",
+    {
+      jobId,
+      cueCount:
+        cues.length,
+      clipCount:
+        references.length,
+    },
+  );
+
+  return references;
 }
 
 async function providerRenderEnabledStep(
@@ -1285,6 +1529,16 @@ async function prepareRenderJobStep(
     job.nativeDialogueAudioRetry ===
       true;
 
+  const nativeDialogueAudioReferencePlanned =
+    nativeCharacterDialogue &&
+    !nativeDialogueAudioRetry &&
+    videoModel !== "google-veo" &&
+    videoModel !== "google-veo-fast" &&
+    (
+      viralStoryMode ||
+      Boolean(job.referenceImageUrl)
+    );
+
   const trashTvReactionBoost =
     viralStoryMode &&
     job.trashTvReactionBoost ===
@@ -1390,6 +1644,8 @@ async function prepareRenderJobStep(
           ? story.providedDialogue.length
           : 0,
       nativeCharacterDialogue,
+      referenceSynchronizedDialogue:
+        nativeDialogueAudioReferencePlanned,
       postProducedDialogue,
     },
   );
@@ -1449,8 +1705,10 @@ async function prepareRenderJobStep(
       ? "ORIGINAL SONG WILL BE ADDED IN POST-PRODUCTION (highest priority): Generate visuals only with silent, non-vocal background audio. Do not create music, singing, lyrics, dialogue, narration, voice-over or prominent sound effects. Cut the visible action, performance, camera movement and internal shot changes to the supplied music-video beat and section plan. The complete uploaded customer song replaces all generated audio during finishing."
       : nativeDialogueAudioRetry
       ? "AUDIO-FILTER-SAFE NATIVE CHARACTER DIALOGUE (highest priority): Use clear, emotionally tense but controlled German conversational speech from the visible assigned character with synchronized lips. The physical acting may be extremely dramatic even while the spoken delivery remains controlled. Use quiet neutral room ambience and simple Foley only. No music, narrator, voice-over, off-screen voice, shouting, screaming, crying, whispering, breathy vocalizations, singing, profanity or threats."
+      : nativeDialogueAudioReferencePlanned
+        ? "REFERENCE-SYNCHRONIZED ON-SCREEN CHARACTER DIALOGUE (highest priority): The attached audio is the exact finished Standard German dialogue track. The visible active character performs the assigned exact line with mouth, jaw, face and body synchronized precisely to that track. Only the currently visible assigned character may speak. Never rerecord, reinterpret, paraphrase or translate the supplied speech. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
       : nativeCharacterDialogue
-        ? "NATIVE ON-SCREEN CHARACTER DIALOGUE (highest priority): The visible active character speaks the assigned exact line audibly and naturally in German. Synchronize the voice with that character's mouth, face, emotion and body performance. Only the currently visible assigned character may speak. Voice consistency between separate shots is less important than clear in-scene speech. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
+        ? "NATIVE ON-SCREEN CHARACTER DIALOGUE (highest priority): The visible active character speaks the assigned exact line audibly and naturally in clear Standard German. Treat every quoted word as German orthography, never with English pronunciation. Synchronize the voice with that character's mouth, face, emotion and body performance. Only the currently visible assigned character may speak. Never use a narrator, voice-over, off-screen voice, studio commentary, singing or subtitles. Keep ambience and effects quiet underneath the dialogue."
         : audioRecoveryFallback
           ? "RECOVERY AUDIO FALLBACK (highest priority): Generate only clean visual footage with quiet, neutral, non-vocal ambience and simple Foley. Do not generate dialogue, narration, singing, humming, vocalizations or music. Ignore every earlier audio or speech instruction. Exact voices are added during final post-production."
           : viralStoryMode
@@ -2760,6 +3018,7 @@ async function startOpeningVideoStep(
   clipDurationSeconds: number,
   webhookUrl: string,
   plannedRetryDelayMs: number,
+  audioReferenceUri?: string,
 ): Promise<ProviderStartResult> {
   "use step";
 
@@ -2907,6 +3166,19 @@ async function startOpeningVideoStep(
   let operationName:
     string;
 
+  const referenceAudios =
+    audioReferenceUri
+      ? [
+          await (
+            await import(
+              "@/lib/video-backend/media"
+            )
+          ).loadStoredAudioReference(
+            audioReferenceUri,
+          ),
+        ]
+      : undefined;
+
   try {
     operationName =
       await startVideoGeneration(
@@ -2923,6 +3195,8 @@ async function startOpeningVideoStep(
           referenceImage,
 
           referenceImages,
+
+          referenceAudios,
 
           maxAttempts:
             1,
@@ -3132,6 +3406,7 @@ async function startExtensionVideoStep(
   extensionNumber: number,
   webhookUrl: string,
   plannedRetryDelayMs: number,
+  audioReferenceUri?: string,
 ): Promise<ProviderStartResult> {
   "use step";
 
@@ -3202,6 +3477,19 @@ async function startExtensionVideoStep(
   let operationName:
     string;
 
+  const referenceAudios =
+    audioReferenceUri
+      ? [
+          await (
+            await import(
+              "@/lib/video-backend/media"
+            )
+          ).loadStoredAudioReference(
+            audioReferenceUri,
+          ),
+        ]
+      : undefined;
+
   try {
     operationName =
       await startVideoExtension(
@@ -3222,6 +3510,8 @@ async function startExtensionVideoStep(
             1,
 
           webhookUrl,
+
+          referenceAudios,
 
           /*
            * Neue Seedance-Fortsetzungen

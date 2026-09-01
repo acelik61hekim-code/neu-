@@ -1,6 +1,9 @@
 import { fal } from "@fal-ai/client";
 
 import type { VideoAspectRatio } from "@/types/story";
+import {
+  buildNativeDialogueAudioInstruction,
+} from "@/lib/native-dialogue-audio";
 
 export type SeedanceModelTier =
   | "fast"
@@ -69,11 +72,19 @@ type SeedanceImageReference = {
   label?: string;
 };
 
+export type SeedanceAudioReference = {
+  data: string;
+  mimeType:
+    | "audio/wav"
+    | "audio/mpeg";
+};
+
 export type SeedanceGenerationOptions = {
   modelTier?: SeedanceModelTier;
   aspectRatio?: VideoAspectRatio;
   referenceImage?: SeedanceImageReference;
   referenceImages?: SeedanceImageReference[];
+  referenceAudios?: SeedanceAudioReference[];
   maxAttempts?: number;
 
   /*
@@ -102,6 +113,8 @@ export type SeedanceExtensionOptions = {
    * Standard ist ebenfalls 15 Sekunden.
    */
   durationSeconds?: number;
+
+  referenceAudios?: SeedanceAudioReference[];
 
   /**
    * Wird von fal.ai aufgerufen, sobald die Fortsetzung
@@ -306,6 +319,12 @@ function getBytePlusApiKey(): string {
 
 function toDataUri(
   reference: SeedanceImageReference,
+): string {
+  return `data:${reference.mimeType};base64,${reference.data}`;
+}
+
+function audioToDataUri(
+  reference: SeedanceAudioReference,
 ): string {
   return `data:${reference.mimeType};base64,${reference.data}`;
 }
@@ -635,6 +654,22 @@ async function submitSeedance(
       });
     }
 
+    const audioUrls = Array.isArray(input.audio_urls)
+      ? input.audio_urls
+      : [];
+
+    for (const audioUrl of audioUrls) {
+      if (typeof audioUrl !== "string") continue;
+
+      content.push({
+        type: "audio_url",
+        audio_url: {
+          url: audioUrl,
+        },
+        role: "reference_audio",
+      });
+    }
+
     try {
       const response = await fetch(
         `${BYTEPLUS_BASE_URL}/api/v3/contents/generations/tasks`,
@@ -826,6 +861,16 @@ export async function startVideoGeneration(
     generate_audio: true,
   };
 
+  const audioUrls =
+    options.referenceAudios
+      ?.slice(0, 3)
+      .map(audioToDataUri) ?? [];
+
+  const dialogueAudioInstruction =
+    audioUrls.length > 0
+      ? buildNativeDialogueAudioInstruction()
+      : "";
+
   if (
     options.referenceImages &&
     options.referenceImages.length > 0
@@ -868,14 +913,19 @@ export async function startVideoGeneration(
 
             prompt: [
               identityInstructions,
+              dialogueAudioInstruction,
               "",
               cleanedPrompt,
-            ].join("\n"),
+            ].filter(Boolean).join("\n"),
 
             image_urls:
               acceptedReferences.map(
                 toDataUri,
               ),
+
+            ...(audioUrls.length > 0
+              ? { audio_urls: audioUrls }
+              : {}),
           },
           options.webhookUrl,
         );
@@ -887,6 +937,12 @@ export async function startVideoGeneration(
 
         if (rejectedIndex === null) {
           throw error;
+        }
+
+        if (audioUrls.length > 0) {
+          throw new Error(
+            "Seedance hat die notwendige Bildreferenz für den lippensynchronen Originaldialog abgelehnt. Der Auftrag wurde gestoppt, bevor eine unsynchronisierte Fassung entstehen konnte.",
+          );
         }
 
         if (
@@ -928,25 +984,48 @@ export async function startVideoGeneration(
       return await submitSeedance(
         seedanceModelId(
           modelTier,
-          "image-to-video",
+          audioUrls.length > 0
+            ? "reference-to-video"
+            : "image-to-video",
         ),
         {
           ...commonInput,
-          prompt: cleanedPrompt,
+          prompt: [
+            dialogueAudioInstruction,
+            cleanedPrompt,
+          ].filter(Boolean).join("\n\n"),
 
-          image_url: toDataUri(
-            options.referenceImage,
-          ),
+          ...(audioUrls.length > 0
+            ? {
+                image_urls: [
+                  toDataUri(
+                    options.referenceImage,
+                  ),
+                ],
+                audio_urls: audioUrls,
+              }
+            : {
+                image_url: toDataUri(
+                  options.referenceImage,
+                ),
+              }),
         },
         options.webhookUrl,
       );
     } catch (error) {
-      if (
+      const rejectedIndex =
         readRejectedBytePlusReferenceIndex(
           error,
-        ) === null
-      ) {
+        );
+
+      if (rejectedIndex === null) {
         throw error;
+      }
+
+      if (audioUrls.length > 0) {
+        throw new Error(
+          "Seedance hat das notwendige Startbild für den lippensynchronen Originaldialog abgelehnt. Der Auftrag wurde gestoppt, bevor eine unsynchronisierte Fassung entstehen konnte.",
+        );
       }
 
       return submitSeedance(
@@ -1007,6 +1086,11 @@ export async function startVideoExtension(
       options.durationSeconds,
     );
 
+  const audioUrls =
+    options.referenceAudios
+      ?.slice(0, 3)
+      .map(audioToDataUri) ?? [];
+
   return submitSeedance(
     seedanceModelId(
       options.modelTier ?? "fast",
@@ -1015,6 +1099,11 @@ export async function startVideoExtension(
     {
       prompt: [
         "@Video1 is the immediately preceding shot.",
+        ...(audioUrls.length > 0
+          ? [
+              buildNativeDialogueAudioInstruction(),
+            ]
+          : []),
         "Continue directly from its final visible moment.",
         "Preserve the exact same characters, identities, wardrobe, environment, lighting, visual style and camera continuity.",
         "Do not restart the scene.",
@@ -1026,6 +1115,10 @@ export async function startVideoExtension(
       video_urls: [
         previousVideo,
       ],
+
+      ...(audioUrls.length > 0
+        ? { audio_urls: audioUrls }
+        : {}),
 
       resolution: "720p",
 

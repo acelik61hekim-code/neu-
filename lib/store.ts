@@ -286,6 +286,15 @@ export type VideoJob = {
   nativeCharacterDialogue?:
     boolean;
 
+  /*
+   * Bei wortgetreuem Seedance-Dialog wird dieselbe vorab erzeugte
+   * Studio-Tonspur sowohl als Lippenbewegungs-Referenz als auch für den
+   * finalen Ton verwendet. Die privaten Blob-Pfade bleiben am Auftrag,
+   * damit Workflow-Retries keine neue, leicht abweichende Stimme erzeugen.
+   */
+  nativeDialogueAudioReferenceUris?:
+    string[];
+
   nativeDialogueAudioRetry?:
     boolean;
 

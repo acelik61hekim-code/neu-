@@ -18,6 +18,10 @@ import {
   shouldUseNativeCharacterDialogue,
   shouldUsePostProducedDialogue,
 } from "../lib/dialogue-render-mode.ts";
+import {
+  buildNativeDialogueAudioInstruction,
+  partitionDialogueCuesForAudioReference,
+} from "../lib/native-dialogue-audio.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -509,6 +513,61 @@ test("automatic standard dialogue keeps the existing post-produced mode", () => 
       false,
     ),
     true,
+  );
+});
+
+test("exact dialogue audio references preserve every ordered speech event", () => {
+  const repeated =
+    Array.from(
+      { length: 5 },
+      (_, index) => ({
+        startSeconds:
+          0.45 + index * 2.7,
+        maximumDurationSeconds:
+          2.5,
+        speaker:
+          "Attraktive Frau",
+        text:
+          "Konsumiere.",
+        voiceName:
+          "Kore",
+        voiceDirection:
+          "ruhig und kontrolliert",
+      }),
+    );
+
+  const clips =
+    partitionDialogueCuesForAudioReference(
+      repeated,
+      15,
+    );
+
+  assert.equal(
+    clips.length,
+    1,
+  );
+  assert.equal(
+    clips[0].length,
+    5,
+  );
+  assert.deepEqual(
+    clips[0].map(({ text }) => text),
+    Array.from(
+      { length: 5 },
+      () => "Konsumiere.",
+    ),
+  );
+
+  const instruction =
+    buildNativeDialogueAudioInstruction();
+
+  assert.match(
+    instruction,
+    /exact German words, voices, pauses, timing and pronunciation/,
+  );
+  assert.match(
+    instruction,
+    /synchronize .* lips precisely/i,
   );
 });
 

@@ -16,6 +16,7 @@ export type VideoFinishingOptions = {
   voiceoverText?: string;
   voiceoverVoiceName?: "Charon" | "Kore";
   dialogueCues?: DialogueCue[];
+  dialogueReferenceAudioUris?: string[];
   closingText?: string;
   spokenLanguage?: "auto" | "de" | "en";
   musicTrackUri?: string;
@@ -206,6 +207,7 @@ async function download(
 async function upload(
   pathname: string,
   filename: string,
+  contentType = "video/mp4",
 ) {
   const hasBlobCredentials = Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
@@ -253,7 +255,7 @@ async function upload(
     body,
     {
       access: "private",
-      contentType: "video/mp4",
+      contentType,
       multipart: true,
       addRandomSuffix: false,
       allowOverwrite: true,
@@ -439,7 +441,7 @@ async function generateNarration(
   const maximumSeconds =
     Math.max(
       1.8,
-      seconds - 0.5,
+      seconds - 0.15,
     );
 
   const voiceName =
@@ -646,6 +648,245 @@ async function generateNarration(
   };
 }
 
+export async function createAndStoreDialogueReferenceAudio(
+  pathname: string,
+  cues: DialogueCue[],
+  seconds: number,
+  spokenLanguage:
+    VideoFinishingOptions["spokenLanguage"],
+): Promise<{
+  pathname: string;
+  url: string;
+}> {
+  const binary =
+    ffmpegPath;
+
+  if (!binary) {
+    throw new Error(
+      "ffmpeg-static ist auf dieser Plattform nicht verfügbar.",
+    );
+  }
+
+  const durationSeconds =
+    Math.max(
+      2,
+      Math.min(15, seconds),
+    );
+
+  const safeCues =
+    cues
+      .filter(
+        (cue) =>
+          Number.isFinite(cue.startSeconds) &&
+          Number.isFinite(cue.maximumDurationSeconds) &&
+          cue.startSeconds >= 0 &&
+          cue.startSeconds < durationSeconds &&
+          cue.maximumDurationSeconds >= 1 &&
+          Boolean(cue.speaker.trim()) &&
+          Boolean(cue.text.trim()) &&
+          Boolean(cue.voiceName.trim()),
+      )
+      .slice(0, 16);
+
+  return withTemp(
+    async (dir) => {
+      const output =
+        join(
+          dir,
+          "dialogue-reference.wav",
+        );
+
+      if (safeCues.length === 0) {
+        await exec(
+          binary,
+          [
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            `anullsrc=r=48000:cl=mono:d=${durationSeconds}`,
+            "-t",
+            String(durationSeconds),
+            "-c:a",
+            "pcm_s16le",
+            output,
+          ],
+          {
+            maxBuffer:
+              8 * 1024 * 1024,
+          },
+        );
+      } else {
+        const generated:
+          GeneratedNarration[] = [];
+
+        for (
+          let index = 0;
+          index < safeCues.length;
+          index += 1
+        ) {
+          const cue =
+            safeCues[index];
+
+          generated.push(
+            await generateNarration(
+              dir,
+              cue.text,
+              cue.maximumDurationSeconds,
+              spokenLanguage,
+              {
+                filename:
+                  `reference-dialogue-${index + 1}`,
+                voiceName:
+                  cue.voiceName,
+                deliveryDirection:
+                  [
+                    `The visible character ${cue.speaker} is speaking directly in the scene.`,
+                    cue.voiceDirection,
+                    "Use native, clear Standard German pronunciation and keep this character's vocal identity stable.",
+                  ].join(" "),
+              },
+            ),
+          );
+        }
+
+        const args: string[] = [
+          "-y",
+        ];
+
+        generated.forEach(
+          (audio) => {
+            if (
+              audio.mimeType.includes("l16") ||
+              audio.pathname.endsWith(".pcm")
+            ) {
+              args.push(
+                "-f",
+                "s16le",
+                "-ar",
+                String(audio.sampleRate),
+                "-ac",
+                String(audio.channels),
+              );
+            }
+
+            args.push(
+              "-i",
+              audio.pathname,
+            );
+          },
+        );
+
+        const filters: string[] = [];
+        const mixInputs: string[] = [];
+
+        generated.forEach(
+          (audio, index) => {
+            const cue =
+              safeCues[index];
+            const tempo =
+              Math.max(
+                1,
+                audio.durationSeconds /
+                  cue.maximumDurationSeconds,
+              );
+            const label =
+              `reference${index}`;
+
+            filters.push(
+              `[${index}:a]${[
+                ...buildAtempoFilters(tempo),
+                "volume=1.36",
+                "highpass=f=80",
+                `bandreject=f=${NARRATION_WHISTLE_HZ}:t=h:w=${NARRATION_WHISTLE_WIDTH_HZ}`,
+                `lowpass=f=${NARRATION_LOWPASS_HZ}:p=2`,
+                `adelay=${Math.round(cue.startSeconds * 1000)}:all=1`,
+              ].join(",")}[${label}]`,
+            );
+
+            mixInputs.push(
+              `[${label}]`,
+            );
+          },
+        );
+
+        const mixed =
+          mixInputs.length === 1
+            ? mixInputs[0]
+            : `${mixInputs.join("")}amix=inputs=${mixInputs.length}:duration=longest:dropout_transition=0,`;
+
+        filters.push(
+          `${mixed}apad=pad_dur=${durationSeconds},atrim=duration=${durationSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
+        );
+
+        args.push(
+          "-filter_complex",
+          filters.join(";"),
+          "-map",
+          "[a]",
+          "-t",
+          String(durationSeconds),
+          "-ar",
+          "48000",
+          "-ac",
+          "1",
+          "-c:a",
+          "pcm_s16le",
+          output,
+        );
+
+        await exec(
+          binary,
+          args,
+          {
+            maxBuffer:
+              8 * 1024 * 1024,
+          },
+        );
+      }
+
+      return upload(
+        pathname,
+        output,
+        "audio/wav",
+      );
+    },
+  );
+}
+
+export async function loadStoredAudioReference(
+  source: string,
+): Promise<{
+  data: string;
+  mimeType: "audio/wav";
+}> {
+  return withTemp(
+    async (dir) => {
+      const pathname =
+        join(
+          dir,
+          "dialogue-reference.wav",
+        );
+
+      await download(
+        source,
+        pathname,
+      );
+
+      return {
+        data:
+          (
+            await readFile(
+              pathname,
+            )
+          ).toString("base64"),
+        mimeType:
+          "audio/wav" as const,
+      };
+    },
+  );
+}
+
 async function finishVideo(
   input: string,
   output: string,
@@ -676,6 +917,8 @@ async function finishVideo(
   const dialogueCues =
     musicTrackUri
       ? []
+      : options.dialogueReferenceAudioUris?.length
+        ? []
       : (
       options.dialogueCues ??
       []
@@ -704,6 +947,17 @@ async function finishVideo(
         0,
         24,
       );
+
+  const dialogueReferenceAudioUris =
+    musicTrackUri
+      ? []
+      : (
+          options.dialogueReferenceAudioUris ??
+          []
+        )
+          .map((value) => value.trim())
+          .filter(Boolean)
+          .slice(0, 20);
 
   const closingText =
     options.closingText?.trim() ??
@@ -798,6 +1052,37 @@ async function finishVideo(
     undefined
       ? 1
       : 2;
+
+  const dialogueReferenceInputIndices:
+    number[] = [];
+
+  for (
+    let index = 0;
+    index < dialogueReferenceAudioUris.length;
+    index += 1
+  ) {
+    const referenceInput =
+      join(
+        dir,
+        `dialogue-reference-${index + 1}.wav`,
+      );
+
+    await download(
+      dialogueReferenceAudioUris[index],
+      referenceInput,
+    );
+
+    dialogueReferenceInputIndices.push(
+      nextInputIndex,
+    );
+
+    nextInputIndex += 1;
+
+    args.push(
+      "-i",
+      referenceInput,
+    );
+  }
 
   function appendAudioInput(
     audio: GeneratedNarration,
@@ -1067,6 +1352,34 @@ async function finishVideo(
   }
 
   if (
+    dialogueReferenceInputIndices.length > 0
+  ) {
+    const referenceLabels =
+      dialogueReferenceInputIndices.map(
+        (inputIndex, index) => {
+          const label =
+            `dialoguereference${index}`;
+
+          filters.push(
+            `[${inputIndex}:a]asetpts=PTS-STARTPTS[${label}]`,
+          );
+
+          return `[${label}]`;
+        },
+      );
+
+    const exactReferenceTrack =
+      referenceLabels.length === 1
+        ? referenceLabels[0]
+        : `${referenceLabels.join("")}concat=n=${referenceLabels.length}:v=0:a=1,`;
+
+    filters.push(
+      `${exactReferenceTrack}apad=pad_dur=${outputSeconds},atrim=duration=${outputSeconds},loudnorm=I=-15:TP=-1.5:LRA=9[a]`,
+    );
+
+    audioMap =
+      "[a]";
+  } else if (
     narration ||
     generatedDialogue.length >
       0
@@ -1278,6 +1591,7 @@ export async function trimAndStore(
     ) &&
     !finishing.voiceoverText &&
     !finishing.dialogueCues?.length &&
+    !finishing.dialogueReferenceAudioUris?.length &&
     !finishing.closingText &&
     !finishing.musicTrackUri;
 
