@@ -25,6 +25,10 @@ import {
 } from "../../../lib/audio-options";
 
 import {
+  promptHasProvidedDialogue,
+} from "../../../lib/dialogue-render-mode";
+
+import {
   loadStoredPreview,
 } from "../../../lib/video-backend/images";
 
@@ -1261,6 +1265,12 @@ export async function POST(
       targetDurationSeconds,
     );
 
+  const hasProvidedDialogue =
+    voiceMode === "dialogue" &&
+    promptHasProvidedDialogue(
+      prompt,
+    );
+
   if (
     voiceMode ===
       "dialogue" &&
@@ -1641,12 +1651,12 @@ export async function POST(
 
       nativeCharacterDialogue:
         /*
-         * Viral-Dialoge werden standardmäßig mit festen deutschen
-         * Studio-Stimmen finalisiert. Seedance erzeugt Bild, Mimik,
-         * Musik und Ambience, aber keine fehleranfälligen deutschen
-         * Wörter. Bestehende native Jobs bleiben weiterhin lesbar.
+         * Wortwörtlich vorgegebene Dialoge müssen von der sichtbaren
+         * Figur direkt im Provider-Video gesprochen werden. Nur so
+         * stammen Stimme und Mundbewegung aus demselben Render-Pass.
+         * Automatisch erzeugte Dialoge behalten die Studio-Nachvertonung.
          */
-        false,
+        hasProvidedDialogue,
 
       voiceoverText:
         voiceoverText ||

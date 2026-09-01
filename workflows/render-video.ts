@@ -12,6 +12,11 @@ import {
   MUSIC_VIDEO_MAX_DURATION_SECONDS,
 } from "@/lib/music-video";
 
+import {
+  shouldUseNativeCharacterDialogue,
+  shouldUsePostProducedDialogue,
+} from "@/lib/dialogue-render-mode";
+
 import type {
   VideoAspectRatio,
   VideoDurationSeconds,
@@ -1270,9 +1275,10 @@ async function prepareRenderJobStep(
     "viral-story";
 
   const nativeCharacterDialogue =
-    viralStoryMode &&
-    job.nativeCharacterDialogue ===
-      true;
+    shouldUseNativeCharacterDialogue(
+      job.voiceMode,
+      job.nativeCharacterDialogue,
+    );
 
   const nativeDialogueAudioRetry =
     nativeCharacterDialogue &&
@@ -1285,9 +1291,15 @@ async function prepareRenderJobStep(
       true;
 
   const postProducedDialogue =
-    !viralStoryMode &&
-    job.voiceMode ===
-    "dialogue";
+    shouldUsePostProducedDialogue(
+      story.creationMode,
+      job.voiceMode,
+      nativeCharacterDialogue,
+    );
+
+  const visibleCharacterDialogue =
+    nativeCharacterDialogue ||
+    postProducedDialogue;
 
   const productionBible =
     asRecord(
@@ -1359,6 +1371,28 @@ async function prepareRenderJobStep(
           ] as const),
       ).values(),
     );
+
+  console.info(
+    "Video dialogue render mode selected",
+    {
+      jobId,
+      creationMode:
+        viralStoryMode
+          ? "viral-story"
+          : "standard",
+      voiceMode:
+        job.voiceMode ??
+        "auto",
+      providedDialogueCount:
+        Array.isArray(
+          story.providedDialogue,
+        )
+          ? story.providedDialogue.length
+          : 0,
+      nativeCharacterDialogue,
+      postProducedDialogue,
+    },
+  );
 
   const singleSpeakerMode =
     story.singleSpeakerMode ===
@@ -1841,9 +1875,11 @@ async function prepareRenderJobStep(
         selectedAudioDirection,
       ),
 
-      postProducedDialogue
+      visibleCharacterDialogue
         ? buildViralVisualDialogueDirection(
             openingDialogues,
+            nativeCharacterDialogue,
+            nativeDialogueAudioRetry,
           )
         : "",
     ]
@@ -1969,9 +2005,11 @@ async function prepareRenderJobStep(
               ],
             }),
 
-            postProducedDialogue
+            visibleCharacterDialogue
               ? buildViralVisualDialogueDirection(
                   dialogues,
+                  nativeCharacterDialogue,
+                  nativeDialogueAudioRetry,
                 )
               : "",
 
@@ -2289,7 +2327,8 @@ async function prepareRenderJobStep(
 
     finishing: {
       voiceoverText:
-        viralStoryMode
+        viralStoryMode ||
+        nativeCharacterDialogue
           ? undefined
           : job.voiceoverText,
 
@@ -5689,7 +5728,7 @@ function buildViralVisualDialogueDirection(
     ),
 
     nativeCharacterDialogue
-      ? "The named visible characters themselves must say these exact words audibly, in this order, one at a time. Show each active speaker's face and mouth clearly and synchronize natural mouth, jaw and facial movement to their own voice. Never turn these lines into narration, voice-over, off-screen speech or speech by another character."
+      ? "The named visible characters themselves must say every listed line audibly, exactly once and in the listed order. Preserve repeated identical lines as separate speech events. Do not omit, merge, paraphrase, translate, reorder or add words. Show each active speaker's face and mouth clearly and synchronize natural mouth, jaw and facial movement to their own voice. This is direct in-scene character speech, never a documentary: no narrator, commentary, interview format, voice-over, off-screen speech or speech by another character."
       : "Show the currently active character's face and mouth clearly, then shift focus naturally to the next speaker. Create natural mouth, jaw and facial movement paced to each short sentence, but do not synthesize audible words inside the provider clip. The fixed studio voices are added later.",
   ].join(
     "\n",

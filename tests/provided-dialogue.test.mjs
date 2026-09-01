@@ -11,6 +11,11 @@ import {
 import {
   MAX_DIALOGUE_TURNS_PER_SECTION,
 } from "../lib/dialogue-limits.ts";
+import {
+  promptHasProvidedDialogue,
+  shouldUseNativeCharacterDialogue,
+  shouldUsePostProducedDialogue,
+} from "../lib/dialogue-render-mode.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -301,6 +306,82 @@ test("the real 15-second Konsumiere prompt stays one exact five-event monologue"
       ),
     ).size,
     1,
+  );
+});
+
+test("exact provided dialogue uses direct character audio instead of documentary post-dubbing", () => {
+  const prompt =
+    JSON.stringify({
+      creationMode:
+        "standard",
+      singleSpeakerMode:
+        true,
+      providedDialogue:
+        Array.from(
+          { length: 5 },
+          () => ({
+            speaker:
+              "Attraktive Frau",
+            text:
+              "Konsumiere.",
+          }),
+        ),
+    });
+
+  assert.equal(
+    promptHasProvidedDialogue(
+      prompt,
+    ),
+    true,
+  );
+
+  const nativeCharacterDialogue =
+    shouldUseNativeCharacterDialogue(
+      "dialogue",
+      true,
+    );
+
+  assert.equal(
+    nativeCharacterDialogue,
+    true,
+  );
+
+  assert.equal(
+    shouldUsePostProducedDialogue(
+      "standard",
+      "dialogue",
+      nativeCharacterDialogue,
+    ),
+    false,
+  );
+});
+
+test("automatic standard dialogue keeps the existing post-produced mode", () => {
+  assert.equal(
+    promptHasProvidedDialogue(
+      JSON.stringify({
+        creationMode:
+          "standard",
+      }),
+    ),
+    false,
+  );
+
+  assert.equal(
+    shouldUseNativeCharacterDialogue(
+      "dialogue",
+      false,
+    ),
+    false,
+  );
+
+  assert.equal(
+    shouldUsePostProducedDialogue(
+      "standard",
+      "dialogue",
+      false,
+    ),
+    true,
   );
 });
 
