@@ -26,6 +26,24 @@ const examples = [
     video: "/viral-templates/caught-in-the-act.mp4",
     poster: "/viral-templates/caught-in-the-act.webp",
   },
+  {
+    title: "Neue Figur betritt die Szene",
+    description: "Vertikale Inszenierung mit erkennbarem Auftritt und Reaktion.",
+    video: "/viral-templates/bombshell-arrival.mp4",
+    poster: "/viral-templates/bombshell-arrival.webp",
+  },
+  {
+    title: "Entscheidung mit Konsequenz",
+    description: "Ein klarer Wendepunkt, der als nächster Storybeat weitergeführt werden kann.",
+    video: "/viral-templates/recoupling-betrayal.mp4",
+    poster: "/viral-templates/recoupling-betrayal.webp",
+  },
+  {
+    title: "Koffer-Cliffhanger",
+    description: "Ein sichtbares Handlungsobjekt trägt den Schlussmoment der Szene.",
+    video: "/viral-templates/suitcase-cliffhanger.mp4",
+    poster: "/viral-templates/suitcase-cliffhanger.webp",
+  },
 ] as const;
 
 const benefits = [
@@ -143,9 +161,10 @@ export default function VideoLandingPage() {
 
         <section id="beispiele" className="mx-auto max-w-7xl scroll-mt-8 px-5 py-20 sm:px-8 sm:py-28">
           <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-300">Echte Bewegung statt Werbeversprechen</p>
-            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight sm:text-5xl">Sieh dir den Stil an, bevor du selbst startest.</h2>
-            <p className="mt-5 text-base leading-7 text-zinc-400">Diese kurzen Vorschauclips zeigen den visuellen Stil der Story-Vorlagen. Dein eigenes Video wird aus deiner Beschreibung und deinen gewählten Figuren geplant.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-300">Unbearbeitete visuelle Modellclips</p>
+            <h2 className="mt-4 text-balance text-3xl font-semibold tracking-tight sm:text-5xl">Sechs echte Clips – mit klaren Grenzen.</h2>
+            <p className="mt-5 text-base leading-7 text-zinc-400">Diese Dateien sind unveränderte fünfsekündige 9:16-Modellclips in 720 × 1280 Pixeln. Sie zeigen Bewegung und Bildstil, enthalten aber keine Tonspur. Deshalb behaupten wir hier ausdrücklich keine Dialog- oder Lipsync-Qualität.</p>
+            <p className="mt-3 text-sm leading-6 text-amber-200/75">Fertige Beispiele mit hörbarem Dialog veröffentlichen wir erst, wenn dafür echte, zur öffentlichen Nutzung freigegebene Produktionen vorliegen.</p>
           </div>
 
           <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -162,6 +181,11 @@ export default function VideoLandingPage() {
                   className="aspect-[9/16] w-full bg-black object-cover"
                 />
                 <div className="p-5">
+                  <div className="mb-3 flex flex-wrap gap-2 text-[10px] font-semibold">
+                    <span className="rounded-full bg-violet-400/10 px-2.5 py-1 text-violet-200">Originalclip</span>
+                    <span className="rounded-full bg-white/[0.06] px-2.5 py-1 text-zinc-400">5 Sek. · 720 × 1280 · 9:16</span>
+                    <span className="rounded-full bg-amber-400/10 px-2.5 py-1 text-amber-200">Ohne Ton</span>
+                  </div>
                   <h3 className="font-semibold">{example.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-zinc-400">{example.description}</p>
                 </div>

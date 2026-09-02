@@ -5,8 +5,8 @@ import {
 } from "@/lib/pricing";
 
 import {
-  VIRAL_CHARACTERS,
-} from "@/lib/viral-characters";
+  assignDialogueVoice,
+} from "@/lib/dialogue-voices";
 
 import {
   MUSIC_VIDEO_MAX_DURATION_SECONDS,
@@ -20,11 +20,19 @@ import {
 import {
   partitionDialogueCuesForAudioReference,
 } from "@/lib/native-dialogue-audio";
+import {
+  inspectDialogueQuality,
+} from "@/lib/dialogue-quality";
+import {
+  applyProvidedDialoguePronunciations,
+  buildProvidedPronunciationDirection,
+} from "@/lib/dialogue-pronunciation";
 
 import type {
   VideoAspectRatio,
   VideoDurationSeconds,
   VideoModelId,
+  Story,
 } from "@/types/story";
 
 type DialogueCue = {
@@ -1502,6 +1510,45 @@ async function prepareRenderJobStep(
     );
   }
 
+  const dialogueQuality =
+    inspectDialogueQuality(
+      story as unknown as Story,
+      {
+        voiceMode:
+          job.voiceMode ?? "auto",
+        voiceoverText:
+          job.voiceoverText,
+        targetDurationSeconds:
+          job.targetDurationSeconds,
+        videoModel:
+          job.videoModel ??
+          "seedance-2-fast",
+      },
+    );
+
+  if (
+    dialogueQuality.required &&
+    !dialogueQuality.ready
+  ) {
+    console.error(
+      "Render blocked by exact-dialogue quality gate",
+      {
+        jobId,
+        issueCodes:
+          dialogueQuality.issues.map(
+            (issue) => issue.code,
+          ),
+        dialogueCount:
+          dialogueQuality.dialogueCount,
+      },
+    );
+
+    throw new Error(
+      dialogueQuality.issues[0]?.message ??
+        "Der Originaldialog hat die technische Freigabeprüfung nicht bestanden.",
+    );
+  }
+
   const durationPlan =
     buildVideoDurationPlan(
       job.targetDurationSeconds,
@@ -1700,7 +1747,7 @@ async function prepareRenderJobStep(
       0
     ) >= 2;
 
-  const selectedAudioDirection =
+  const baseAudioDirection =
     musicVideoMode
       ? "ORIGINAL SONG WILL BE ADDED IN POST-PRODUCTION (highest priority): Generate visuals only with silent, non-vocal background audio. Do not create music, singing, lyrics, dialogue, narration, voice-over or prominent sound effects. Cut the visible action, performance, camera movement and internal shot changes to the supplied music-video beat and section plan. The complete uploaded customer song replaces all generated audio during finishing."
       : nativeDialogueAudioRetry
@@ -1733,6 +1780,19 @@ async function prepareRenderJobStep(
 
                   job.targetDurationSeconds,
                 );
+
+  const pronunciationDirection =
+    buildProvidedPronunciationDirection(
+      story.providedDialogue,
+    );
+
+  const selectedAudioDirection =
+    [
+      baseAudioDirection,
+      pronunciationDirection,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
 
   let dialogueCues:
     DialogueCue[] = [];
@@ -1959,9 +2019,12 @@ async function prepareRenderJobStep(
     );
 
     dialogueCues =
-      buildViralDialogueCues(
-        selectedShots,
-        job.targetDurationSeconds,
+      applyProvidedDialoguePronunciations(
+        buildViralDialogueCues(
+          selectedShots,
+          job.targetDurationSeconds,
+        ),
+        story.providedDialogue,
       );
 
     const requiredSpeakers =
@@ -2300,15 +2363,21 @@ async function prepareRenderJobStep(
       postProducedDialogue
     ) {
       dialogueCues =
-        buildExtensionDialogueCues(
-          [
-            openingDialogues,
-            ...continuationDialogueShots,
-          ],
+        applyProvidedDialoguePronunciations(
+          buildExtensionDialogueCues(
+            [
+              openingDialogues,
+              ...continuationDialogueShots,
+            ],
 
-          job.targetDurationSeconds,
+            job.targetDurationSeconds,
 
-          job.voiceoverVoiceName,
+            story.dialogueSourceMode ===
+              "provided"
+              ? undefined
+              : job.voiceoverVoiceName,
+          ),
+          story.providedDialogue,
         );
 
       const dialogueSpeakers =
@@ -4996,17 +5065,6 @@ function readViralDialogue(
   };
 }
 
-const DIALOGUE_VOICES = [
-  "Kore",
-  "Puck",
-  "Aoede",
-  "Charon",
-  "Orus",
-  "Leda",
-  "Fenrir",
-  "Zephyr",
-] as const;
-
 function getFixedVoiceName(
   speaker: string,
   assignments:
@@ -5015,86 +5073,10 @@ function getFixedVoiceName(
       string
     >,
 ): string {
-  const normalized =
-    speaker
-      .toLocaleLowerCase(
-        "de-DE",
-      );
-
-  const existing =
-    assignments.get(
-      normalized,
-    );
-
-  if (existing) {
-    return existing;
-  }
-
-  const character =
-    VIRAL_CHARACTERS.find(
-      (candidate) =>
-        candidate.name
-          .toLocaleLowerCase(
-            "de-DE",
-          ) ===
-          normalized ||
-        candidate.shortName
-          .toLocaleLowerCase(
-            "de-DE",
-          ) ===
-          normalized,
-    );
-
-  if (character) {
-    assignments.set(
-      normalized,
-      character.voiceName,
-    );
-
-    return character.voiceName;
-  }
-
-  const usedVoices =
-    new Set(
-      assignments.values(),
-    );
-
-  const unusedVoice =
-    DIALOGUE_VOICES.find(
-      (voice) =>
-        !usedVoices.has(
-          voice,
-        ),
-    );
-
-  const hash = [
-    ...normalized,
-  ].reduce(
-    (
-      sum,
-      characterValue,
-    ) =>
-      sum +
-      characterValue.charCodeAt(
-        0,
-      ),
-
-    0,
+  return assignDialogueVoice(
+    speaker,
+    assignments,
   );
-
-  const voiceName =
-    unusedVoice ??
-    DIALOGUE_VOICES[
-      hash %
-        DIALOGUE_VOICES.length
-    ];
-
-  assignments.set(
-    normalized,
-    voiceName,
-  );
-
-  return voiceName;
 }
 
 /*
@@ -5993,16 +5975,25 @@ function buildDialogueCuesFromStoredPrompt(
         },
       );
 
-      return buildViralDialogueCues(
-        preparedShots,
-        targetDurationSeconds,
+      return applyProvidedDialoguePronunciations(
+        buildViralDialogueCues(
+          preparedShots,
+          targetDurationSeconds,
+        ),
+        story.providedDialogue,
       );
     }
 
-    return buildExtensionDialogueCues(
-      dialogueShots,
-      targetDurationSeconds,
-      preferredSingleSpeakerVoice,
+    return applyProvidedDialoguePronunciations(
+      buildExtensionDialogueCues(
+        dialogueShots,
+        targetDurationSeconds,
+        story.dialogueSourceMode ===
+          "provided"
+          ? undefined
+          : preferredSingleSpeakerVoice,
+      ),
+      story.providedDialogue,
     );
   } catch {
     return [];

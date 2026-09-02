@@ -284,12 +284,43 @@ function normalizeSpeakerKey(
 ): string {
   return value
     .trim()
+    .replace(
+      /^(?:\*{1,3}|_{1,3}|`)+|(?:\*{1,3}|_{1,3}|`)+$/gu,
+      "",
+    )
     .toLocaleLowerCase("de-DE")
     .replace(/\([^)]*\)/g, " ")
     .replace(/\s+sagt(?:e)?\s*$/iu, "")
     .replace(/[^a-z0-9äöüß]+/giu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function stripOuterMarkdown(
+  value: string,
+): string {
+  let result = value.trim();
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    const next = result
+      .replace(
+        /^(?:\*{1,3}|_{1,3}|`)+\s*/u,
+        "",
+      )
+      .replace(
+        /\s*(?:\*{1,3}|_{1,3}|`)+$/u,
+        "",
+      )
+      .trim();
+
+    if (next === result) {
+      break;
+    }
+
+    result = next;
+  }
+
+  return result;
 }
 
 const GENERIC_SPEAKER_IDENTITY_WORDS =
@@ -362,7 +393,9 @@ function stripDialogueQuotes(
   value: string,
 ): string {
   const trimmed =
-    value.trim();
+    stripOuterMarkdown(
+      value,
+    );
 
   const quotePairs: Array<[
     string,
@@ -540,6 +573,72 @@ function isGenericVisibleSpeakerLabel(
   );
 }
 
+function hasSingleEditDistance(
+  first: string,
+  second: string,
+): boolean {
+  if (first === second) {
+    return true;
+  }
+
+  if (
+    first.length < 5 ||
+    second.length < 5 ||
+    Math.abs(
+      first.length - second.length,
+    ) > 1
+  ) {
+    return false;
+  }
+
+  const shorter =
+    first.length <= second.length
+      ? first
+      : second;
+  const longer =
+    first.length <= second.length
+      ? second
+      : first;
+
+  let shorterIndex = 0;
+  let longerIndex = 0;
+  let edits = 0;
+
+  while (
+    shorterIndex < shorter.length &&
+    longerIndex < longer.length
+  ) {
+    if (
+      shorter[shorterIndex] ===
+      longer[longerIndex]
+    ) {
+      shorterIndex += 1;
+      longerIndex += 1;
+      continue;
+    }
+
+    edits += 1;
+
+    if (edits > 1) {
+      return false;
+    }
+
+    if (
+      shorter.length === longer.length
+    ) {
+      shorterIndex += 1;
+    }
+
+    longerIndex += 1;
+  }
+
+  if (longerIndex < longer.length) {
+    edits += 1;
+  }
+
+  return edits <= 1;
+}
+
 function createMultilineLabeledSpeechPattern(): RegExp {
   return /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?([^:\r\n]{1,120}?)[^\S\r\n]*:[^\S\r\n]*(?:\*{1,2}[^\S\r\n]*)?(?:\r?\n)[\r\n\t ]*(?:[-*•]\s*)?[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
 }
@@ -608,13 +707,120 @@ export function countExplicitMultilineDialogueBlocks(
   ).length;
 }
 
+function collectExplicitDialogueRanges(
+  source: string,
+): Array<{
+  start: number;
+  end: number;
+  eventCount: number;
+}> {
+  const ranges: Array<{
+    start: number;
+    end: number;
+    eventCount: number;
+  }> = [];
+
+  for (const match of source.matchAll(
+    createMultilineLabeledSpeechPattern(),
+  )) {
+    if (
+      !isLikelyMultilineSpeakerLabel(
+        match[1],
+      )
+    ) {
+      continue;
+    }
+
+    const start = match.index ?? 0;
+    ranges.push({
+      start,
+      end: start + match[0].length,
+      eventCount:
+        Math.max(
+          1,
+          splitProvidedDialogueText(
+            match[2],
+          ).length,
+        ),
+    });
+  }
+
+  const inlineScriptPattern =
+    /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\*{1,3}|_{1,3})?([^:\r\n]{1,120}?)[^\S\r\n]*:[^\S\r\n]*(?:\*{1,3}|_{1,3})?[^\S\r\n]*[„“"']([^\r\n„“"']{1,2000})[“”"']/gimu;
+
+  for (const match of source.matchAll(
+    inlineScriptPattern,
+  )) {
+    if (
+      !isLikelyMultilineSpeakerLabel(
+        stripOuterMarkdown(
+          match[1],
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+
+    if (
+      ranges.some((range) =>
+        rangesOverlap(
+          start,
+          end,
+          range.start,
+          range.end,
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    ranges.push({
+      start,
+      end,
+      eventCount:
+        Math.max(
+          1,
+          splitProvidedDialogueText(
+            match[2],
+          ).length,
+        ),
+    });
+  }
+
+  return ranges;
+}
+
+export function countExplicitDialogueBlocks(
+  source: string,
+): number {
+  return collectExplicitDialogueRanges(
+    source,
+  ).length;
+}
+
+export function countExplicitDialogueEvents(
+  source: string,
+): number {
+  return collectExplicitDialogueRanges(
+    source,
+  ).reduce(
+    (total, range) =>
+      total + range.eventCount,
+    0,
+  );
+}
+
 export function shouldBlockAutomaticDialogueReplacement(
   explicitDialogueBlockCount: number,
   providedDialogueCount: number,
 ): boolean {
   return (
     explicitDialogueBlockCount > 0 &&
-    providedDialogueCount === 0
+    providedDialogueCount <
+      explicitDialogueBlockCount
   );
 }
 
@@ -768,6 +974,30 @@ export function extractProvidedDialogue(
         identityMatches.length === 1
           ? identityMatches[0]
           : undefined;
+      const fuzzyIdentityMatches =
+        roleAliasSpeaker
+          ? []
+          : knownSpeakers.filter(
+              (speaker) =>
+                Array.from(
+                  candidateIdentityStems,
+                ).some(
+                  (candidateStem) =>
+                    Array.from(
+                      speaker.identityStems,
+                    ).some(
+                      (speakerStem) =>
+                        hasSingleEditDistance(
+                          candidateStem,
+                          speakerStem,
+                        ),
+                    ),
+                ),
+            );
+      const fuzzyRoleAliasSpeaker =
+        fuzzyIdentityMatches.length === 1
+          ? fuzzyIdentityMatches[0]
+          : undefined;
       const fallbackSpeaker =
         allowSingleSpeaker &&
         knownSpeakers.length === 1 &&
@@ -782,6 +1012,7 @@ export function extractProvidedDialogue(
       const knownSpeaker =
         exactSpeaker ??
         roleAliasSpeaker ??
+        fuzzyRoleAliasSpeaker ??
         fallbackSpeaker;
 
       if (!knownSpeaker) {

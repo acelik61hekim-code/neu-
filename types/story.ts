@@ -7,6 +7,17 @@ export type Character = {
 export type ProvidedDialogueLine = {
   speaker: string;
   text: string;
+  pronunciation?: string;
+};
+
+export type DialogueSourceMode =
+  | "automatic"
+  | "provided";
+
+export type DialogueReviewConfirmation = {
+  status: "approved";
+  fingerprint: string;
+  approvedAt: string;
 };
 
 /*
@@ -647,6 +658,10 @@ export type Story = {
 
   providedDialogue?: ProvidedDialogueLine[];
 
+  dialogueSourceMode?: DialogueSourceMode;
+
+  dialogueReview?: DialogueReviewConfirmation;
+
   singleSpeakerMode?: boolean;
 
   productionBible: ProductionBible;
@@ -680,6 +695,10 @@ export type StoryDraft = {
   characters: Character[];
 
   providedDialogue?: ProvidedDialogueLine[];
+
+  dialogueSourceMode?: DialogueSourceMode;
+
+  dialogueReview?: DialogueReviewConfirmation;
 
   singleSpeakerMode?: boolean;
 };

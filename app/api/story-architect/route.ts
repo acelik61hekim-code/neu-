@@ -7175,7 +7175,10 @@ export async function POST(
     );
 
   const requestedVoiceMode =
-    creationMode ===
+    story.dialogueSourceMode ===
+      "provided"
+      ? "dialogue"
+      : creationMode ===
     "viral-story"
       ? "dialogue"
       : normalizeVideoVoiceMode(
@@ -7197,6 +7200,23 @@ export async function POST(
         line.text.trim().length >
           0,
     );
+
+  if (
+    story.dialogueSourceMode ===
+      "provided" &&
+    !hasProvidedDialogue
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "Der Modus „Originaldialog exakt“ ist aktiv, aber es wurde kein vollständig zugeordneter Originaldialog übermittelt. Automatischer Ersatzdialog bleibt gesperrt.",
+      },
+      {
+        status: 400,
+      },
+    );
+  }
 
   /*
    * Der Originaldialog ist die verlässlichste Quelle für die gewünschte
@@ -7272,6 +7292,9 @@ export async function POST(
         )
           ? story.providedDialogue.length
           : 0,
+      dialogueSourceMode:
+        story.dialogueSourceMode ??
+        "automatic",
     },
   );
 

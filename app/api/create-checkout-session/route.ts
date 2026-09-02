@@ -28,6 +28,9 @@ import {
   promptHasProvidedDialogue,
   resolveProvidedDialogueVoiceMode,
 } from "../../../lib/dialogue-render-mode";
+import {
+  inspectDialogueQuality,
+} from "../../../lib/dialogue-quality";
 
 import {
   loadStoredPreview,
@@ -67,6 +70,7 @@ import type {
   VideoModelId,
   VideoSpokenLanguage,
   VideoVoiceMode,
+  Story,
 } from "@/types/story";
 
 /*
@@ -1315,6 +1319,57 @@ export async function POST(
       ? body.voiceoverText
           .trim()
       : "";
+
+  let submittedStory:
+    Story | null = null;
+
+  try {
+    submittedStory =
+      JSON.parse(prompt) as Story;
+  } catch {
+    submittedStory = null;
+  }
+
+  if (submittedStory) {
+    const dialogueQuality =
+      inspectDialogueQuality(
+        submittedStory,
+        {
+          voiceMode,
+          voiceoverText,
+          targetDurationSeconds,
+          videoModel,
+        },
+      );
+
+    if (
+      dialogueQuality.required &&
+      !dialogueQuality.ready
+    ) {
+      console.warn(
+        "Checkout blocked by exact-dialogue quality gate",
+        {
+          issueCodes:
+            dialogueQuality.issues.map(
+              (issue) => issue.code,
+            ),
+          dialogueCount:
+            dialogueQuality.dialogueCount,
+        },
+      );
+
+      return NextResponse.json(
+        {
+          error:
+            dialogueQuality.issues[0]?.message ??
+            "Der Originaldialog hat die technische Freigabeprüfung nicht bestanden. Es wurde nichts berechnet.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+  }
 
   const voiceoverVoiceName =
     isVoiceoverVoiceName(

@@ -15,6 +15,12 @@ test("the public homepage is a focused landing page instead of the full studio",
   assert.match(landingPage, /\/ki-video-erstellen#ai-director/);
   assert.match(landingPage, /Vorschau kostenlos/);
   assert.match(landingPage, /Wörtlich übernommener Sprechertext/);
+  assert.match(landingPage, /Unbearbeitete visuelle Modellclips/);
+  assert.match(landingPage, /keine Dialog- oder Lipsync-Qualität/);
+  assert.equal(
+    landingPage.match(/\/viral-templates\/[^"']+\.mp4/g)?.length,
+    7,
+  );
 });
 
 test("the studio starts with the AI Director while advanced settings stay optional", async () => {
@@ -60,4 +66,18 @@ test("real-user performance monitoring is enabled", async () => {
 
   assert.match(layout, /@vercel\/speed-insights\/next/);
   assert.match(layout, /<SpeedInsights \/>/);
+});
+
+test("exact dialogue is previewed, approved, and server-gated before payment and render", async () => {
+  const studio = await readSource("../components/StudioHome.tsx");
+  const review = await readSource("../components/DialogueReview.tsx");
+  const checkout = await readSource("../app/api/create-checkout-session/route.ts");
+  const workflow = await readSource("../workflows/render-video.ts");
+
+  assert.match(studio, /<DialogueReview/);
+  assert.match(review, /Aussprache anhören/);
+  assert.match(review, /Dialog, Sprecher und Aussprache bestätigen/);
+  assert.match(checkout, /inspectDialogueQuality/);
+  assert.match(workflow, /Render blocked by exact-dialogue quality gate/);
+  assert.match(workflow, /applyProvidedDialoguePronunciations/);
 });

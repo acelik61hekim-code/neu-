@@ -16,6 +16,7 @@ import type {
 } from "react";
 
 import Chat from "@/components/Chat";
+import DialogueReview from "@/components/DialogueReview";
 import Header from "@/components/Header";
 import StoryPreview from "@/components/StoryPreview";
 import SongStudio from "@/components/SongStudio";
@@ -41,6 +42,9 @@ import {
 import {
   STUDIO_PATHS,
 } from "@/lib/site";
+import {
+  inspectDialogueQuality,
+} from "@/lib/dialogue-quality";
 
 import {
   formatTrackDuration,
@@ -70,6 +74,7 @@ import type {
   VideoEditingStyle,
   VideoModelId,
   MusicVideoTrackContext,
+  Story,
   VideoSpokenLanguage,
   VideoVoiceMode,
 } from "@/types/story";
@@ -544,6 +549,20 @@ function hasCompleteMoviePlan(
   }
 }
 
+function readCompleteStory(
+  value: string,
+): Story | null {
+  if (!hasCompleteMoviePlan(value)) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(value) as Story;
+  } catch {
+    return null;
+  }
+}
+
 export default function StudioHome({
   initialStudio = "video",
 }: {
@@ -931,9 +950,27 @@ export default function StudioHome({
       null,
     );
 
+  const completeStory =
+    readCompleteStory(story);
+  const dialogueQuality =
+    completeStory
+      ? inspectDialogueQuality(
+          completeStory,
+          {
+            voiceMode,
+            voiceoverText,
+            targetDurationSeconds,
+            videoModel,
+          },
+        )
+      : null;
   const storyReadyForPreview =
-    hasCompleteMoviePlan(
-      story,
+    Boolean(
+      completeStory &&
+      (
+        !dialogueQuality?.required ||
+        dialogueQuality.ready
+      ),
     );
 
   const musicTrackContext:
@@ -1888,7 +1925,10 @@ setEditingStyle(
       !storyReadyForPreview
     ) {
       setError(
-        "Warte bitte, bis der AI Director den Filmplan vollständig erstellt hat.",
+        dialogueQuality?.required
+          ? dialogueQuality.issues[0]?.message ??
+              "Bestätige zuerst Originaldialog, Sprecher und Aussprache."
+          : "Warte bitte, bis der AI Director den Filmplan vollständig erstellt hat.",
       );
 
       return;
@@ -2071,6 +2111,18 @@ setEditingStyle(
     ) {
       setError(
         "Beantworte zuerst die Fragen des AI Directors.",
+      );
+
+      return;
+    }
+
+    if (
+      dialogueQuality?.required &&
+      !dialogueQuality.ready
+    ) {
+      setError(
+        dialogueQuality.issues[0]?.message ??
+          "Der Originaldialog hat die technische Freigabeprüfung noch nicht bestanden.",
       );
 
       return;
@@ -3300,6 +3352,30 @@ setEditingStyle(
               }
             />
 
+            {completeStory && (
+              <DialogueReview
+                story={completeStory}
+                voiceMode={voiceMode}
+                voiceoverText={voiceoverText}
+                targetDurationSeconds={targetDurationSeconds}
+                videoModel={videoModel}
+                spokenLanguage={spokenLanguage}
+                disabled={
+                  loading ||
+                  previewLoading
+                }
+                onStoryChange={(updatedStory) =>
+                  handleStoryChange(
+                    JSON.stringify(
+                      updatedStory,
+                      null,
+                      2,
+                    ),
+                  )
+                }
+              />
+            )}
+
             <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/30 backdrop-blur-xl">
               <div className="border-b border-white/10 px-5 py-4 sm:px-6">
                 <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
@@ -3505,9 +3581,12 @@ setEditingStyle(
                   >
                     {previewLoading
                       ? "Vorschau wird erstellt ..."
-                      : story.trim() &&
-                          !storyReadyForPreview
-                        ? "Filmplan wird vorbereitet ..."
+                      : dialogueQuality?.required &&
+                          !dialogueQuality.ready
+                        ? "Dialog zuerst bestätigen"
+                        : story.trim() &&
+                            !storyReadyForPreview
+                          ? "Filmplan wird vorbereitet ..."
                         : "🖼 Vorschau erstellen"}
                   </button>
                 )}

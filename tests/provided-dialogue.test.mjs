@@ -5,6 +5,8 @@ import {
   inferPromptSpeechIntent,
 } from "../lib/audio-options.ts";
 import {
+  countExplicitDialogueBlocks,
+  countExplicitDialogueEvents,
   countExplicitMultilineDialogueBlocks,
   extractProvidedDialogue,
   shouldBlockAutomaticDialogueReplacement,
@@ -24,6 +26,14 @@ import {
   buildNativeDialogueAudioInstruction,
   partitionDialogueCuesForAudioReference,
 } from "../lib/native-dialogue-audio.ts";
+import {
+  applyProvidedDialoguePronunciations,
+} from "../lib/dialogue-pronunciation.ts";
+import {
+  approveDialogueReview,
+  hasApprovedDialogueReview,
+  inspectDialogueQuality,
+} from "../lib/dialogue-quality.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -172,6 +182,29 @@ Das Erdbeer-Kopf-Mädchen hebt beschwichtigend die Hände.
 
 ERDBEER-KOPF-MÄDCHEN, defensiv:
 „Ava, lass mich erklären.“`;
+
+const markdownTypoDialoguePrompt = `**6–12 Sekunden:**
+Erbeerina bleibt vor ihm stehen und schaut ihn verletzt an.
+
+**ERBEERINA:** „Warum hast du dich heute die ganze Zeit so komisch verhalten?“
+
+Bano schaut kurz weg.
+
+**BANO:** „Ich wusste nicht, wie ich es dir sagen soll.“
+
+**12–20 Sekunden:**
+Nahaufnahme auf Erbeerina. Ihre Augen werden traurig.
+
+**ERBEERINA:** „Dann sag es jetzt.“
+
+Bano atmet tief ein.
+
+**BANO:** „Ich hab Angst, dich zu verlieren.“
+
+**20–26 Sekunden:**
+Kurze Stille.
+
+**ERBEERINA:** „Dann sei ehrlich zu mir. Das ist alles, was ich will.“`;
 
 test("repeated lines from one named speaker stay in single-speaker mode", () => {
   assert.equal(
@@ -430,6 +463,275 @@ test("multiline fruit speaker labels with emotion preserve the submitted dialogu
       3,
     ),
     false,
+  );
+});
+
+test("bold markdown dialogue with a one-letter fruit typo stays exact", () => {
+  assert.equal(
+    countExplicitDialogueBlocks(
+      markdownTypoDialoguePrompt,
+    ),
+    5,
+  );
+
+  assert.equal(
+    countExplicitDialogueEvents(
+      markdownTypoDialoguePrompt,
+    ),
+    6,
+  );
+
+  assert.equal(
+    inferPromptSpeechIntent(
+      markdownTypoDialoguePrompt,
+    ),
+    "conversation",
+  );
+
+  const dialogue =
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            markdownTypoDialoguePrompt,
+        },
+      ],
+      [
+        {
+          name:
+            "Ruby, die Erdbeere",
+        },
+        {
+          name:
+            "Bano, die Banane",
+        },
+      ],
+      false,
+    );
+
+  assert.deepEqual(
+    dialogue,
+    [
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Warum hast du dich heute die ganze Zeit so komisch verhalten?",
+      },
+      {
+        speaker:
+          "Bano, die Banane",
+        text:
+          "Ich wusste nicht, wie ich es dir sagen soll.",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Dann sag es jetzt.",
+      },
+      {
+        speaker:
+          "Bano, die Banane",
+        text:
+          "Ich hab Angst, dich zu verlieren.",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Dann sei ehrlich zu mir.",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Das ist alles, was ich will.",
+      },
+    ],
+  );
+});
+
+test("exact dialogue requires a matching technical approval before render", () => {
+  const story = {
+    characters: [
+      {
+        id: "ruby",
+        name: "Ruby",
+        description: "sichtbare Sprecherin",
+      },
+    ],
+    dialogueSourceMode: "provided",
+    providedDialogue: [
+      {
+        speaker: "Ruby",
+        text: "Konsumiere.",
+      },
+      {
+        speaker: "Ruby",
+        text: "Konsumiere.",
+      },
+    ],
+    moviePlan: {
+      opening: {
+        dialogue: {
+          enabled: true,
+          speaker: "Ruby",
+          text: "Konsumiere.",
+        },
+        dialogueTurns: [
+          {
+            enabled: true,
+            speaker: "Ruby",
+            text: "Konsumiere.",
+          },
+        ],
+      },
+      continuations: [],
+    },
+  };
+
+  const beforeApproval = inspectDialogueQuality(
+    story,
+    {
+      voiceMode: "dialogue",
+      targetDurationSeconds: 15,
+    },
+  );
+
+  assert.equal(beforeApproval.ready, false);
+  assert.ok(
+    beforeApproval.issues.some(
+      (issue) => issue.code === "review-required",
+    ),
+  );
+
+  const approvedStory = approveDialogueReview(story);
+
+  assert.equal(
+    hasApprovedDialogueReview(approvedStory),
+    true,
+  );
+  assert.equal(
+    inspectDialogueQuality(
+      approvedStory,
+      {
+        voiceMode: "dialogue",
+        targetDurationSeconds: 15,
+      },
+    ).ready,
+    true,
+  );
+
+  const changedPronunciation = {
+    ...approvedStory,
+    providedDialogue:
+      approvedStory.providedDialogue.map(
+        (line, index) =>
+          index === 0
+            ? {
+                ...line,
+                pronunciation: "Kon-su-mie-re.",
+              }
+            : line,
+      ),
+  };
+
+  assert.equal(
+    hasApprovedDialogueReview(
+      changedPronunciation,
+    ),
+    false,
+  );
+});
+
+test("exact dialogue gate rejects voiceover and changed screenplay lines", () => {
+  const story = {
+    characters: [
+      {
+        id: "ruby",
+        name: "Ruby",
+        description: "sichtbare Sprecherin",
+      },
+    ],
+    dialogueSourceMode: "provided",
+    providedDialogue: [
+      {
+        speaker: "Ruby",
+        text: "Bleib hier.",
+      },
+    ],
+    moviePlan: {
+      opening: {
+        dialogue: {
+          enabled: true,
+          speaker: "Ruby",
+          text: "Geh weg.",
+        },
+        dialogueTurns: [],
+      },
+      continuations: [],
+    },
+  };
+
+  const report = inspectDialogueQuality(
+    story,
+    {
+      voiceMode: "voiceover",
+      voiceoverText: "Eine Erzählerin spricht.",
+      targetDurationSeconds: 15,
+      requireApproval: false,
+    },
+  );
+
+  assert.equal(report.ready, false);
+  assert.deepEqual(
+    new Set(
+      report.issues.map((issue) => issue.code),
+    ),
+    new Set([
+      "wrong-voice-mode",
+      "voiceover-conflict",
+      "dialogue-plan-mismatch",
+    ]),
+  );
+});
+
+test("pronunciation overrides keep duplicate speech events in exact order", () => {
+  const cues = Array.from(
+    { length: 5 },
+    (_, index) => ({
+      speaker: "Frau",
+      text: "Konsumiere.",
+      marker: index + 1,
+    }),
+  );
+  const providedDialogue = cues.map(
+    (cue, index) => ({
+      speaker: cue.speaker,
+      text: cue.text,
+      ...(index === 4
+        ? {
+            pronunciation:
+              "Kon-su-mie-re.",
+          }
+        : {}),
+    }),
+  );
+
+  assert.deepEqual(
+    applyProvidedDialoguePronunciations(
+      cues,
+      providedDialogue,
+    ).map((cue) => cue.text),
+    [
+      "Konsumiere.",
+      "Konsumiere.",
+      "Konsumiere.",
+      "Konsumiere.",
+      "Kon-su-mie-re.",
+    ],
   );
 });
 

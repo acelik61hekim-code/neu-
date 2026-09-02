@@ -15,7 +15,7 @@ import {
 import { getViralCharacters } from "@/lib/viral-characters";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
-  countExplicitMultilineDialogueBlocks,
+  countExplicitDialogueEvents,
   extractProvidedDialogue,
   shouldBlockAutomaticDialogueReplacement,
 } from "@/lib/provided-dialogue";
@@ -38,6 +38,7 @@ type RequestBody = {
   viralCharacterIds?: unknown;
   characterMode?: unknown;
   dialogueMode?: unknown;
+  dialogueSourceMode?: unknown;
   singleSpeakerMode?: unknown;
   musicTrack?: unknown;
 };
@@ -60,6 +61,7 @@ type StoryDraft = {
   characters: StoryCharacter[];
   summary: string;
   providedDialogue?: ProvidedDialogueLine[];
+  dialogueSourceMode?: "automatic" | "provided";
   singleSpeakerMode?: boolean;
 };
 
@@ -973,8 +975,30 @@ export async function POST(
           ? "viral"
           : undefined;
 
+    const explicitDialogueEventCount =
+      messages
+        .filter(
+          (message) =>
+            message.role === "user",
+        )
+        .reduce(
+          (count, message) =>
+            count +
+            countExplicitDialogueEvents(
+              message.dialogueContent ??
+                message.content,
+            ),
+          0,
+        );
+
+    const providedDialogueRequested =
+      body.dialogueSourceMode ===
+        "provided" ||
+      explicitDialogueEventCount > 0;
+
     const dialogueMode =
-      body.dialogueMode === true;
+      body.dialogueMode === true ||
+      providedDialogueRequested;
 
     const singleSpeakerMode =
       dialogueMode &&
@@ -1130,32 +1154,22 @@ export async function POST(
             singleSpeakerMode,
           );
 
-    const explicitMultilineDialogueBlockCount =
-      messages
-        .filter(
-          (message) =>
-            message.role === "user",
-        )
-        .reduce(
-          (count, message) =>
-            count +
-            countExplicitMultilineDialogueBlocks(
-              message.dialogueContent ??
-                message.content,
-            ),
-          0,
-        );
-
     if (
-      shouldBlockAutomaticDialogueReplacement(
-        explicitMultilineDialogueBlockCount,
-        providedDialogue.length,
+      providedDialogueRequested &&
+      (
+        providedDialogue.length === 0 ||
+        shouldBlockAutomaticDialogueReplacement(
+          explicitDialogueEventCount,
+          providedDialogue.length,
+        )
       )
     ) {
       console.warn(
         "AI Director blockiert automatischen Dialogersatz, weil beschriftete Originaldialoge keiner sichtbaren Figur zugeordnet werden konnten.",
         {
-          explicitMultilineDialogueBlockCount,
+          explicitDialogueEventCount,
+          providedDialogueCount:
+            providedDialogue.length,
           characterCount:
             finalResult.story.characters.length,
         },
@@ -1165,7 +1179,7 @@ export async function POST(
         {
           success: false,
           error:
-            "Deine beschrifteten Originaldialoge konnten den ausgewählten Figuren nicht sicher zugeordnet werden. Verwende bitte die Figurennamen aus der Auswahl; es wird kein automatischer Ersatzdialog erzeugt.",
+            "Der Modus „Originaldialog exakt“ ist aktiv, aber nicht alle Sprechertexte konnten sicher zugeordnet werden. Prüfe die Sprecherbezeichnungen; es wird kein automatischer Ersatzdialog erzeugt.",
         },
         {
           status: 400,
@@ -1182,6 +1196,10 @@ export async function POST(
         providedDialogue.length > 0
           ? providedDialogue
           : undefined,
+      dialogueSourceMode:
+        providedDialogueRequested
+          ? "provided"
+          : "automatic",
     };
 
     return NextResponse.json({

@@ -1,4 +1,5 @@
 import type {
+  DialogueSourceMode,
   MusicVideoTrackContext,
   StoryDraft,
 } from "@/types/story";
@@ -29,6 +30,7 @@ type ApiStoryDraft = {
   characters?: unknown;
   providedDialogue?: unknown;
   singleSpeakerMode?: unknown;
+  dialogueSourceMode?: unknown;
 };
 
 type ApiProvidedDialogueLine = {
@@ -112,6 +114,11 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
         true
         ? true
         : undefined,
+    dialogueSourceMode:
+      story.dialogueSourceMode ===
+        "provided"
+        ? "provided"
+        : "automatic",
   };
 }
 
@@ -122,6 +129,9 @@ export async function requestAiDirector(
   musicTrack?: MusicVideoTrackContext,
   characterMode?: "general" | "viral",
   singleSpeakerMode = false,
+  dialogueSourceMode:
+    DialogueSourceMode =
+      "automatic",
 ): Promise<AiDirectorResponse> {
   const response = await fetch("/api/ai-director", {
     method: "POST",
@@ -135,6 +145,7 @@ export async function requestAiDirector(
       musicTrack,
       characterMode,
       singleSpeakerMode,
+      dialogueSourceMode,
     }),
   });
 

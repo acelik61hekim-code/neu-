@@ -8,6 +8,9 @@ import {
   inferPromptVoiceoverVoiceName,
   type VoiceoverVoiceName,
 } from "@/lib/audio-options";
+import {
+  countExplicitDialogueEvents,
+} from "@/lib/provided-dialogue";
 
 import {
   requestAiDirector,
@@ -24,6 +27,7 @@ import {
 } from "@/lib/viral-characters";
 
 import type {
+  DialogueSourceMode,
   Story,
   MusicVideoTrackContext,
   VideoAspectRatio,
@@ -216,6 +220,13 @@ export default function Chat({
     >(
       null,
     );
+
+  const [
+    dialogueSourceMode,
+    setDialogueSourceMode,
+  ] = useState<DialogueSourceMode>(
+    "automatic",
+  );
 
   function createStoryNotes(
     conversation: Message[],
@@ -428,6 +439,13 @@ export default function Chat({
           speechRequestText,
         );
 
+      const providedDialogueRequested =
+        dialogueSourceMode ===
+          "provided" ||
+        countExplicitDialogueEvents(
+          speechRequestText,
+        ) > 0;
+
       const inferredVoiceoverMode =
         !isViralStory &&
         editingStyle !==
@@ -444,9 +462,17 @@ export default function Chat({
         speechIntent !==
           "voiceover";
 
+      if (providedDialogueRequested) {
+        setDialogueSourceMode(
+          "provided",
+        );
+      }
+
       const effectiveVoiceMode:
         VideoVoiceMode =
-        isViralStory
+        providedDialogueRequested
+          ? "dialogue"
+          : isViralStory
           ? "dialogue"
           : inferredVoiceoverMode
             ? "voiceover"
@@ -469,7 +495,10 @@ export default function Chat({
           )
         );
 
-      if (inferredVoiceoverMode) {
+      if (
+        inferredVoiceoverMode &&
+        !providedDialogueRequested
+      ) {
         onVoiceModeChange?.(
           "voiceover",
         );
@@ -484,7 +513,10 @@ export default function Chat({
             inferredVoiceName,
           );
         }
-      } else if (inferredDialogueMode) {
+      } else if (
+        inferredDialogueMode ||
+        providedDialogueRequested
+      ) {
         onVoiceModeChange?.(
           "dialogue",
         );
@@ -506,6 +538,10 @@ export default function Chat({
           characterMode,
 
           singleSpeakerMode,
+
+          providedDialogueRequested
+            ? "provided"
+            : "automatic",
         );
 
       const assistantMessage:
@@ -711,6 +747,10 @@ export default function Chat({
       null,
     );
 
+    setDialogueSourceMode(
+      "automatic",
+    );
+
     try {
       await onViralStoryStart?.(
         characters,
@@ -821,6 +861,10 @@ export default function Chat({
 
     setLocalError(
       null,
+    );
+
+    setDialogueSourceMode(
+      "automatic",
     );
 
     onStoryChange(
@@ -1277,6 +1321,84 @@ export default function Chat({
             </div>
           ) : (
             <>
+              {editingStyle !==
+                "music-video" && (
+                <div className="mb-4 rounded-2xl border border-white/10 bg-black/20 p-3">
+                  <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
+                    Gesprochener Text
+                  </p>
+
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDialogueSourceMode(
+                          "provided",
+                        )
+                      }
+                      disabled={
+                        isProcessing ||
+                        loading
+                      }
+                      aria-pressed={
+                        dialogueSourceMode ===
+                        "provided"
+                      }
+                      className={`rounded-xl border px-3 py-2.5 text-left text-xs transition disabled:opacity-50 ${
+                        dialogueSourceMode ===
+                        "provided"
+                          ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
+                          : "border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20"
+                      }`}
+                    >
+                      <span className="block font-semibold">
+                        Originaldialog exakt
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 opacity-70">
+                        Keine neuen Sätze, kein Voice-over
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setDialogueSourceMode(
+                          "automatic",
+                        )
+                      }
+                      disabled={
+                        isProcessing ||
+                        loading
+                      }
+                      aria-pressed={
+                        dialogueSourceMode ===
+                        "automatic"
+                      }
+                      className={`rounded-xl border px-3 py-2.5 text-left text-xs transition disabled:opacity-50 ${
+                        dialogueSourceMode ===
+                        "automatic"
+                          ? "border-violet-400/40 bg-violet-400/10 text-violet-100"
+                          : "border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20"
+                      }`}
+                    >
+                      <span className="block font-semibold">
+                        Dialog automatisch
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 opacity-70">
+                        Die KI darf passende Sätze schreiben
+                      </span>
+                    </button>
+                  </div>
+
+                  {dialogueSourceMode ===
+                    "provided" && (
+                    <p className="mt-2 px-1 text-[11px] leading-5 text-emerald-300/80">
+                      Verbindlich: Deine Zeilen werden vor Vorschau und Zahlung einzeln bestätigt.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div
                 className={`rounded-2xl border bg-black/30 transition ${
                   displayedError
@@ -1291,9 +1413,22 @@ export default function Chat({
                   onChange={(
                     event,
                   ) => {
+                    const nextInput =
+                      event.target.value;
+
                     setInput(
-                      event.target.value,
+                      nextInput,
                     );
+
+                    if (
+                      countExplicitDialogueEvents(
+                        nextInput,
+                      ) > 0
+                    ) {
+                      setDialogueSourceMode(
+                        "provided",
+                      );
+                    }
 
                     if (
                       localError
@@ -1313,7 +1448,12 @@ export default function Chat({
                   maxLength={
                     AI_DIRECTOR_MESSAGE_MAX_CHARACTERS
                   }
-                  placeholder="Beschreibe deine Idee oder beantworte die Frage des AI Directors ..."
+                  placeholder={
+                    dialogueSourceMode ===
+                    "provided"
+                      ? "Beschreibe die Szene und schreibe jede Zeile z. B. als: RUBY: „Dein exakter Dialog.“"
+                      : "Beschreibe deine Idee oder beantworte die Frage des AI Directors ..."
+                  }
                   className="min-h-28 w-full resize-none border-0 bg-transparent px-4 py-4 text-sm leading-6 text-white outline-none placeholder:text-zinc-600 disabled:cursor-not-allowed disabled:opacity-60"
                 />
 
