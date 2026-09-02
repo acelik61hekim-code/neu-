@@ -52,6 +52,7 @@ import {
 } from "../../../lib/store";
 
 import { accountLibrary } from "@/lib/account-library";
+import { prepareInstagramDiscountCheckout } from "@/lib/instagram-discount-account";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getActiveVideoSubscription } from "@/lib/video-subscription";
 import { releaseVideoSubscriptionUsage, reserveVideoSubscriptionUsage } from "@/lib/video-subscription-usage";
@@ -1848,10 +1849,22 @@ export async function POST(
     process.env.APP_URL ??
     "http://localhost:3000";
 
+  const instagramDiscount =
+    await prepareInstagramDiscountCheckout(
+      stripe,
+      user,
+    );
+
   const session =
     await stripe.checkout.sessions.create({
       mode:
         "payment",
+
+      client_reference_id:
+        user?.id,
+
+      customer:
+        instagramDiscount?.customerId,
 
       allow_promotion_codes:
         true,
@@ -1884,6 +1897,9 @@ export async function POST(
 
         userId:
           user?.id || "",
+
+        instagramCampaignId:
+          instagramDiscount?.campaign.id || "",
 
         targetDurationSeconds:
           String(

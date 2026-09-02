@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { prepareInstagramDiscountCheckout } from "@/lib/instagram-discount-account";
 import { stripe } from "@/lib/stripe";
 import { getVideoPlan, isVideoPlanId } from "@/lib/video-plans";
 import { getActiveVideoSubscription } from "@/lib/video-subscription";
@@ -30,9 +31,11 @@ export async function POST(request: NextRequest) {
   const plan = getVideoPlan(body.planId);
   const appUrl = process.env.APP_URL?.trim() || request.nextUrl.origin;
   try {
+    const instagramDiscount = await prepareInstagramDiscountCheckout(stripe, user);
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       client_reference_id: user.id,
+      customer: instagramDiscount?.customerId,
       allow_promotion_codes: true,
       billing_address_collection: "auto",
       line_items: [{
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
         },
         quantity: 1,
       }],
-      metadata: { productType: "video-subscription", videoPlanId: plan.id, userId: user.id },
+      metadata: { productType: "video-subscription", videoPlanId: plan.id, userId: user.id, instagramCampaignId: instagramDiscount?.campaign.id || "" },
       subscription_data: { metadata: { productType: "video-subscription", videoPlanId: plan.id, userId: user.id } },
       success_url: `${appUrl}/video-pro-success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/ki-video-erstellen?abo=abgebrochen#video-abos`,

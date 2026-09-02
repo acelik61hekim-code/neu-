@@ -21,6 +21,7 @@ import { reserveSubscriptionUsage } from "@/lib/song-subscription-usage";
 import { stripe } from "@/lib/stripe";
 import { renderSongWorkflow } from "@/workflows/render-song";
 import { accountLibrary } from "@/lib/account-library";
+import { prepareInstagramDiscountCheckout } from "@/lib/instagram-discount-account";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -206,8 +207,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const instagramDiscount = await prepareInstagramDiscountCheckout(stripe, user);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      client_reference_id: user?.id,
+      customer: instagramDiscount?.customerId,
       allow_promotion_codes: true,
       line_items: [{
         price_data: {
@@ -230,6 +234,7 @@ export async function POST(request: NextRequest) {
         productType: "song",
         jobId,
         userId: user?.id || "",
+        instagramCampaignId: instagramDiscount?.campaign.id || "",
         songLength,
         lyricsMode: body.lyricsMode,
         language: body.language,

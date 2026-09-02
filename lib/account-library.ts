@@ -15,16 +15,23 @@ export type AccountSubscriptionLink = {
   updatedAt: number;
 };
 
+export type AccountBillingCustomerLink = {
+  customerId: string;
+  updatedAt: number;
+};
+
 const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
   ? new Redis({ url: process.env.UPSTASH_REDIS_REST_URL, token: process.env.UPSTASH_REDIS_REST_TOKEN })
   : null;
 const memoryMedia = new Map<string, AccountMediaRecord[]>();
 const memorySubscriptions = new Map<string, AccountSubscriptionLink>();
 const memoryVideoSubscriptions = new Map<string, AccountSubscriptionLink>();
+const memoryBillingCustomers = new Map<string, AccountBillingCustomerLink>();
 const mediaKey = (userId: string) => `account:${userId}:media`;
 const mediaIdsKey = (userId: string) => `account:${userId}:media-ids`;
 const subscriptionKey = (userId: string) => `account:${userId}:song-subscription`;
 const videoSubscriptionKey = (userId: string) => `account:${userId}:video-subscription`;
+const billingCustomerKey = (userId: string) => `account:${userId}:billing-customer`;
 
 export const accountLibrary = {
   async addMedia(userId: string, record: AccountMediaRecord): Promise<void> {
@@ -68,5 +75,21 @@ export const accountLibrary = {
   async getVideoSubscription(userId: string): Promise<AccountSubscriptionLink | undefined> {
     if (redis) return (await redis.get<AccountSubscriptionLink>(videoSubscriptionKey(userId))) ?? undefined;
     return memoryVideoSubscriptions.get(userId);
+  },
+
+  async setBillingCustomer(userId: string, customerId: string): Promise<void> {
+    const cleanUserId = userId.trim();
+    const cleanCustomerId = customerId.trim();
+    if (!cleanUserId || !cleanCustomerId.startsWith("cus_")) return;
+    const value = { customerId: cleanCustomerId, updatedAt: Date.now() };
+    if (redis) await redis.set(billingCustomerKey(cleanUserId), value);
+    else memoryBillingCustomers.set(cleanUserId, value);
+  },
+
+  async getBillingCustomer(userId: string): Promise<AccountBillingCustomerLink | undefined> {
+    const cleanUserId = userId.trim();
+    if (!cleanUserId) return undefined;
+    if (redis) return (await redis.get<AccountBillingCustomerLink>(billingCustomerKey(cleanUserId))) ?? undefined;
+    return memoryBillingCustomers.get(cleanUserId);
   },
 };

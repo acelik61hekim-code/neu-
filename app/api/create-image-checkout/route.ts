@@ -6,6 +6,7 @@ import { IMAGE_PRICE_CENTS, imageQualityLabel, isImageAspectRatio, isImageQualit
 import { imageStore } from "@/lib/image-store";
 import { stripe } from "@/lib/stripe";
 import { accountLibrary } from "@/lib/account-library";
+import { prepareInstagramDiscountCheckout } from "@/lib/instagram-discount-account";
 import { getCurrentUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -53,11 +54,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+    const instagramDiscount = await prepareInstagramDiscountCheckout(stripe, user);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      client_reference_id: user?.id,
+      customer: instagramDiscount?.customerId,
       allow_promotion_codes: true,
       line_items: [{ price_data: { currency: "eur", product_data: { name: `Professionelles KI-Bild · ${imageQualityLabel(body.quality)}`, description: `Ein individuelles Bild im Format ${body.aspectRatio}` }, unit_amount: IMAGE_PRICE_CENTS[body.quality] }, quantity: 1 }],
-      metadata: { productType: "image", jobId, userId: user?.id || "", quality: body.quality, aspectRatio: body.aspectRatio, style: body.style },
+      metadata: { productType: "image", jobId, userId: user?.id || "", instagramCampaignId: instagramDiscount?.campaign.id || "", quality: body.quality, aspectRatio: body.aspectRatio, style: body.style },
       success_url: `${appUrl}/image-success?jobId=${encodeURIComponent(jobId)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/?studio=image&canceled=1`,
     });
