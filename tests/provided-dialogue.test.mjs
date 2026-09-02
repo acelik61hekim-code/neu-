@@ -5,7 +5,9 @@ import {
   inferPromptSpeechIntent,
 } from "../lib/audio-options.ts";
 import {
+  countExplicitMultilineDialogueBlocks,
   extractProvidedDialogue,
+  shouldBlockAutomaticDialogueReplacement,
   splitProvidedDialogueText,
 } from "../lib/provided-dialogue.ts";
 import {
@@ -153,6 +155,23 @@ Nahaufnahme von Erdbeerina. Sie zeigt wütend auf ihn.
 
 ERDBEERINA sagt exakt:
 „Du hast gestern gesagt, ich bin die Einzige hier. Und fünf Minuten später liegst du mit einer anderen am Pool.“`;
+
+const screenshotEmotionLabelDialoguePrompt = `**5–10 Sekunden**
+
+Das Avocado-Kopf-Mädchen geht entschlossen auf die beiden zu.
+
+AVOCADO-KOPF-MÄDCHEN, verletzt und wütend:
+„Was läuft hier zwischen euch?“
+
+Der Bananen-Kopf-Junge dreht sich erschrocken um.
+
+BANANEN-KOPF-JUNGE, nervös:
+„Es ist nicht so, wie es aussieht.“
+
+Das Erdbeer-Kopf-Mädchen hebt beschwichtigend die Hände.
+
+ERDBEER-KOPF-MÄDCHEN, defensiv:
+„Ava, lass mich erklären.“`;
 
 test("repeated lines from one named speaker stay in single-speaker mode", () => {
   assert.equal(
@@ -335,6 +354,85 @@ test("screenshot-style exact fruit dialogue maps role aliases to the selected ch
   );
 });
 
+test("multiline fruit speaker labels with emotion preserve the submitted dialogue", () => {
+  assert.equal(
+    countExplicitMultilineDialogueBlocks(
+      screenshotEmotionLabelDialoguePrompt,
+    ),
+    3,
+  );
+
+  assert.equal(
+    shouldBlockAutomaticDialogueReplacement(
+      3,
+      0,
+    ),
+    true,
+  );
+
+  assert.equal(
+    inferPromptSpeechIntent(
+      screenshotEmotionLabelDialoguePrompt,
+    ),
+    "conversation",
+  );
+
+  assert.deepEqual(
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            screenshotEmotionLabelDialoguePrompt,
+        },
+      ],
+      [
+        {
+          name:
+            "Ava, die Avocado",
+        },
+        {
+          name:
+            "Bano, die Banane",
+        },
+        {
+          name:
+            "Ruby, die Erdbeere",
+        },
+      ],
+      false,
+    ),
+    [
+      {
+        speaker:
+          "Ava, die Avocado",
+        text:
+          "Was läuft hier zwischen euch?",
+      },
+      {
+        speaker:
+          "Bano, die Banane",
+        text:
+          "Es ist nicht so, wie es aussieht.",
+      },
+      {
+        speaker:
+          "Ruby, die Erdbeere",
+        text:
+          "Ava, lass mich erklären.",
+      },
+    ],
+  );
+
+  assert.equal(
+    shouldBlockAutomaticDialogueReplacement(
+      3,
+      3,
+    ),
+    false,
+  );
+});
+
 test("a rejected voiceover cannot override explicitly requested character dialogue", () => {
   assert.equal(
     inferPromptSpeechIntent(
@@ -391,6 +489,13 @@ test("a 76-word exact dialogue fits naturally into a 30-second video", () => {
 });
 
 test("the real 15-second Konsumiere prompt stays one exact five-event monologue", () => {
+  assert.equal(
+    countExplicitMultilineDialogueBlocks(
+      realFifteenSecondConsumptionPrompt,
+    ),
+    5,
+  );
+
   assert.equal(
     inferPromptSpeechIntent(
       realFifteenSecondConsumptionPrompt,

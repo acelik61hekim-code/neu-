@@ -332,19 +332,25 @@ function speakerIdentityStems(
 
   return new Set(
     words
-      .map((word) =>
-        word.endsWith(
-          "ina",
-        )
-          ? word.slice(
-              0,
-              -3,
-            )
-          : word.replace(
-              /(?:ern|er|en|es|e|n|s)$/u,
-              "",
-            ),
-      )
+      .flatMap((word) => {
+        const inflectionStem =
+          word.endsWith(
+            "ina",
+          )
+            ? word.slice(
+                0,
+                -3,
+              )
+            : word.replace(
+                /(?:ern|er|en|es|e|n|s)$/u,
+                "",
+              );
+
+        return [
+          word,
+          inflectionStem,
+        ];
+      })
       .filter(
         (word) =>
           word.length >= 5,
@@ -531,6 +537,84 @@ function isGenericVisibleSpeakerLabel(
 ): boolean {
   return /\b(?:frau|mann|mädchen|junge|person|sprecher(?:in)?|figur|charakter|moderator(?:in)?|presenter|protagonist(?:in)?|hauptfigur|sie|er|woman|man|girl|boy|speaker|character)\b/iu.test(
     value,
+  );
+}
+
+function createMultilineLabeledSpeechPattern(): RegExp {
+  return /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?([^:\r\n]{1,120}?)[^\S\r\n]*:[^\S\r\n]*(?:\*{1,2}[^\S\r\n]*)?(?:\r?\n)[\r\n\t ]*(?:[-*•]\s*)?[„“"']([\s\S]{1,4000}?)[“”"']/gimu;
+}
+
+function isLikelyMultilineSpeakerLabel(
+  value: string,
+): boolean {
+  const normalized =
+    normalizeSpeakerKey(
+      value,
+    );
+
+  if (
+    !normalized ||
+    /\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    /\b(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|stammelt|fleht|weint|flüstert|erklärt|gesteht|verkündet|enthüllt)\b/iu.test(
+      normalized,
+    ) ||
+    isGenericVisibleSpeakerLabel(
+      normalized,
+    )
+  ) {
+    return true;
+  }
+
+  const identityLabel =
+    value
+      .split(",")[0]
+      .replace(/[^\p{L}\p{N}-]+/gu, "")
+      .trim();
+  const identityLetters =
+    identityLabel
+      .replace(/[^\p{L}]+/gu, "");
+
+  return (
+    identityLetters.length >= 2 &&
+    identityLetters ===
+      identityLetters.toLocaleUpperCase(
+        "de-DE",
+      )
+  ) ||
+    /^\p{Lu}\p{Ll}{1,30}$/u.test(
+      identityLabel,
+    );
+}
+
+export function countExplicitMultilineDialogueBlocks(
+  source: string,
+): number {
+  return Array.from(
+    source.matchAll(
+      createMultilineLabeledSpeechPattern(),
+    ),
+  ).filter(
+    (match) =>
+      isLikelyMultilineSpeakerLabel(
+        match[1],
+      ),
+  ).length;
+}
+
+export function shouldBlockAutomaticDialogueReplacement(
+  explicitDialogueBlockCount: number,
+  providedDialogueCount: number,
+): boolean {
+  return (
+    explicitDialogueBlockCount > 0 &&
+    providedDialogueCount === 0
   );
 }
 
@@ -792,6 +876,48 @@ export function extractProvidedDialogue(
         1,
         true,
         1,
+      );
+    }
+
+    /*
+     * Storyboard prompts often put acting direction on the speaker line and
+     * the exact quote on the next line:
+     *
+     *   AVOCADO-KOPF-MÄDCHEN, verletzt und wütend:
+     *   „Was läuft hier zwischen euch?“
+     *
+     * Keep the full label for fruit-role identity matching; emotion words do
+     * not replace the stable character stem (for example "avocado").
+     */
+    const multilineLabeledSpeechPattern =
+      createMultilineLabeledSpeechPattern();
+
+    for (
+      const match
+      of source.matchAll(
+        multilineLabeledSpeechPattern,
+      )
+    ) {
+      if (
+        !isLikelyMultilineSpeakerLabel(
+          match[1],
+        )
+      ) {
+        continue;
+      }
+
+      const start =
+        match.index ?? 0;
+
+      collectDialogue(
+        match[1],
+        match[2],
+        start,
+        start +
+          match[0].length,
+        1,
+        false,
+        2,
       );
     }
 

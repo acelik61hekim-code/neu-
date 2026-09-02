@@ -117,22 +117,96 @@ export function inferPromptSpeechIntent(
     return "voiceover";
   }
 
+  const normalizeDetectedSpeakerLabel =
+    (label: string) =>
+      label
+        .split(",")[0]
+        .replace(/\([^)]*\)/gu, " ")
+        .trim()
+        .toLocaleLowerCase(
+          "de-DE",
+        )
+        .replace(/[^a-z0-9äöüß]+/giu, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
   const speakerLabels =
     Array.from(
       value.matchAll(
         /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,48}):[^\S\r\n]*[^\r\n]+/gu,
       ),
       (match) =>
-        match[1]
-          .trim()
-          .toLocaleLowerCase(
-            "de-DE",
-          )
-          .replace(/[^a-z0-9äöüß]+/giu, " ")
-          .replace(/\s+/g, " ")
-          .trim(),
+        normalizeDetectedSpeakerLabel(
+          match[1],
+        ),
     )
       .filter(Boolean);
+
+  const multilineQuotedSpeakerLabels =
+    Array.from(
+      value.matchAll(
+        /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?([^:\r\n]{1,120}?)[^\S\r\n]*:[^\S\r\n]*(?:\*{1,2}[^\S\r\n]*)?(?:\r?\n)[\r\n\t ]*(?:[-*•]\s*)?[„“"']/gu,
+      ),
+      (match) => ({
+        rawLabel:
+          match[1].trim(),
+        normalizedLabel:
+          normalizeDetectedSpeakerLabel(
+            match[1],
+          ),
+      }),
+    )
+      .filter(
+        ({
+          rawLabel,
+          normalizedLabel,
+        }) => {
+          if (
+            !normalizedLabel ||
+            /\b(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|flüstert|erklärt|gesteht|verkündet|enthüllt)\b/iu.test(
+              normalizedLabel,
+            ) ||
+            /\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
+              normalizedLabel,
+            )
+          ) {
+            return false;
+          }
+
+          const identityLabel =
+            rawLabel
+              .split(",")[0]
+              .replace(/[^\p{L}\p{N}-]+/gu, "")
+              .trim();
+          const identityLetters =
+            identityLabel
+              .replace(/[^\p{L}]+/gu, "");
+          const isUppercaseIdentity =
+            identityLetters.length >= 2 &&
+            identityLetters ===
+              identityLetters.toLocaleUpperCase(
+                "de-DE",
+              );
+          const isShortProperName =
+            /^\p{Lu}\p{Ll}{1,30}$/u.test(
+              identityLabel,
+            );
+          const hasVisibleRole =
+            /\b(?:frau|mann|mädchen|junge|person|sprecher(?:in)?|figur|charakter|protagonist(?:in)?|woman|man|girl|boy|speaker|character)\b/iu.test(
+              normalizedLabel,
+            );
+
+          return (
+            isUppercaseIdentity ||
+            isShortProperName ||
+            hasVisibleRole
+          );
+        },
+      )
+      .map(
+        ({ normalizedLabel }) =>
+          normalizedLabel,
+      );
 
   const attributedSpeakerLabels =
     Array.from(
@@ -140,14 +214,9 @@ export function inferPromptSpeechIntent(
         /(?:^|\n)\s*(?:[-*•]\s*)?([^:\n]{1,64}?)\s+(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|flüstert)(?:\s+(?:wörtlich|wortwörtlich|exakt|genau\s+so|verbatim))?\s*:/giu,
       ),
       (match) =>
-        match[1]
-          .trim()
-          .toLocaleLowerCase(
-            "de-DE",
-          )
-          .replace(/[^a-z0-9äöüß]+/giu, " ")
-          .replace(/\s+/g, " ")
-          .trim(),
+        normalizeDetectedSpeakerLabel(
+          match[1],
+        ),
     )
       .filter(Boolean);
 
@@ -155,6 +224,7 @@ export function inferPromptSpeechIntent(
     new Set(
       [
         ...speakerLabels,
+        ...multilineQuotedSpeakerLabels,
         ...attributedSpeakerLabels,
       ],
     ).size;

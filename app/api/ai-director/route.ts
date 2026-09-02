@@ -15,7 +15,9 @@ import {
 import { getViralCharacters } from "@/lib/viral-characters";
 import { isMusicVideoTrackContext } from "@/lib/music-video";
 import {
+  countExplicitMultilineDialogueBlocks,
   extractProvidedDialogue,
+  shouldBlockAutomaticDialogueReplacement,
 } from "@/lib/provided-dialogue";
 
 import type {
@@ -1127,6 +1129,49 @@ export async function POST(
             finalResult.story.characters,
             singleSpeakerMode,
           );
+
+    const explicitMultilineDialogueBlockCount =
+      messages
+        .filter(
+          (message) =>
+            message.role === "user",
+        )
+        .reduce(
+          (count, message) =>
+            count +
+            countExplicitMultilineDialogueBlocks(
+              message.dialogueContent ??
+                message.content,
+            ),
+          0,
+        );
+
+    if (
+      shouldBlockAutomaticDialogueReplacement(
+        explicitMultilineDialogueBlockCount,
+        providedDialogue.length,
+      )
+    ) {
+      console.warn(
+        "AI Director blockiert automatischen Dialogersatz, weil beschriftete Originaldialoge keiner sichtbaren Figur zugeordnet werden konnten.",
+        {
+          explicitMultilineDialogueBlockCount,
+          characterCount:
+            finalResult.story.characters.length,
+        },
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Deine beschrifteten Originaldialoge konnten den ausgewählten Figuren nicht sicher zugeordnet werden. Verwende bitte die Figurennamen aus der Auswahl; es wird kein automatischer Ersatzdialog erzeugt.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     const finalStory = {
       ...finalResult.story,
