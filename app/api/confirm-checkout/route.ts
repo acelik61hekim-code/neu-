@@ -3,6 +3,8 @@ import {
   NextResponse,
 } from "next/server";
 
+import { track } from "@vercel/analytics/server";
+
 import {
   getRun,
   start,
@@ -757,6 +759,35 @@ export async function POST(
             undefined,
         },
       );
+
+      console.log(JSON.stringify({
+        level: "info",
+        msg: "video_payment_confirmed",
+        route: "/api/confirm-checkout",
+        requestId: request.headers.get("x-vercel-id"),
+        durationSeconds: rawDuration,
+        editingStyle: rawEditingStyle,
+        videoModel: rawVideoModel,
+        amountCents: session.amount_total ?? 0,
+      }));
+
+      try {
+        await track("video_payment_confirmed", {
+          duration_seconds: rawDuration,
+          editing_style: rawEditingStyle,
+          video_model: rawVideoModel,
+          amount_cents: session.amount_total ?? 0,
+        });
+      } catch (analyticsError) {
+        console.warn(JSON.stringify({
+          level: "warning",
+          msg: "video_payment_analytics_failed",
+          route: "/api/confirm-checkout",
+          error: analyticsError instanceof Error
+            ? analyticsError.message
+            : String(analyticsError),
+        }));
+      }
     }
 
     /*

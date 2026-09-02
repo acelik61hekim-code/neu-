@@ -2,9 +2,11 @@
 
 import {
   useEffect,
+  useRef,
   useState,
 } from "react";
 
+import { track } from "@vercel/analytics";
 import {
   upload,
 } from "@vercel/blob/client";
@@ -618,6 +620,9 @@ export default function StudioHome({
     useState(
       "",
     );
+
+  const storyReadyTracked =
+    useRef(false);
 
   /*
    * Standard bleibt 30 Sekunden.
@@ -1696,6 +1701,19 @@ setEditingStyle(
     );
 
     if (
+      !storyReadyTracked.current &&
+      hasCompleteMoviePlan(updatedStory)
+    ) {
+      storyReadyTracked.current = true;
+
+      track("video_story_ready", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        voice_mode: voiceMode,
+      });
+    }
+
+    if (
       error
     ) {
       setError(
@@ -1902,6 +1920,12 @@ setEditingStyle(
     }
 
     try {
+      track("video_preview_started", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        voice_mode: voiceMode,
+      });
+
       setPreviewLoading(
         true,
       );
@@ -1995,9 +2019,21 @@ setEditingStyle(
       setPreviewReferenceMimeType(
         data.mimeType,
       );
+
+      track("video_preview_ready", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        voice_mode: voiceMode,
+      });
     } catch (
       caughtError
     ) {
+      track("video_preview_failed", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        voice_mode: voiceMode,
+      });
+
       const message =
         caughtError instanceof
         Error
@@ -2073,6 +2109,14 @@ setEditingStyle(
     }
 
     try {
+      track("video_checkout_started", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        video_model: videoModel,
+        voice_mode: voiceMode,
+        subscription: videoSubscription.active,
+      });
+
       setLoading(
         true,
       );
@@ -2255,6 +2299,14 @@ setEditingStyle(
         );
       }
 
+      track("video_checkout_ready", {
+        duration_seconds: targetDurationSeconds,
+        editing_style: editingStyle,
+        video_model: videoModel,
+        voice_mode: voiceMode,
+        subscription: videoSubscription.active,
+      });
+
       window.location.href =
         data.url;
     } catch (
@@ -2326,7 +2378,7 @@ setEditingStyle(
       />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-5 pb-16 pt-12 sm:px-8 sm:pt-16">
-        <section className="mx-auto mb-12 max-w-4xl text-center">
+        <section className="mx-auto mb-8 max-w-4xl text-center">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-violet-400/20 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
             <span className="h-1.5 w-1.5 rounded-full bg-violet-300" />
 
@@ -2334,18 +2386,18 @@ setEditingStyle(
           </div>
 
           <h1 className="text-balance text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl lg:text-6xl">
-            Verwandle deine Idee in eine
+            Erstelle jetzt dein
 
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-blue-300 bg-clip-text text-transparent">
               {" "}
-              filmreife Story
+              KI-Video
             </span>
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-pretty text-sm leading-7 text-zinc-400 sm:text-base">
-            Entwickle deine Geschichte gemeinsam mit einem KI-Regisseur,
-            prüfe zuerst eine visuelle Vorschau und erzeuge anschließend
-            dein professionelles Video.
+            Gib zuerst deine Idee oder deinen fertigen Dialog ein. Die
+            Standardwerte passen bereits für ein vertikales Social-Video;
+            technische Einstellungen kannst du bei Bedarf öffnen.
           </p>
 
           <StudioChooser
@@ -2356,22 +2408,23 @@ setEditingStyle(
           />
         </section>
 
-        <section className="mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20 backdrop-blur-xl">
-          <div className="border-b border-white/10 px-5 py-4 sm:px-6">
-            <p className="text-xs font-medium uppercase tracking-wider text-violet-300">
-              Projekt-Einstellungen
-            </p>
-
-            <h2 className="mt-1 text-lg font-semibold text-white">
-              Länge, Format und Filmsprache
-            </h2>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-400">
-              Diese Auswahl bestimmt den Filmplan des AI Directors.
-              Kino ist dabei nicht einfach Social-Video in 16:9:
-              der Schnittstil wird separat geplant.
-            </p>
-          </div>
+        <details id="project-settings" className="group mb-8 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/20 backdrop-blur-xl">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-5 px-5 py-4 marker:hidden sm:px-6">
+            <span>
+              <span className="block text-xs font-medium uppercase tracking-wider text-violet-300">
+                Optionale Projekt-Einstellungen
+              </span>
+              <span className="mt-1 block text-base font-semibold text-white">
+                {videoDurationLabel(targetDurationSeconds)} · {aspectRatio} · {getVideoModel(videoModel).shortName}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-zinc-500">
+                Standardmäßig für ein vertikales Social-Video vorbereitet.
+              </span>
+            </span>
+            <span className="shrink-0 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-xs font-semibold text-zinc-300 transition group-open:border-violet-400/30 group-open:text-violet-200">
+              Einstellungen <span aria-hidden="true" className="inline-block transition group-open:rotate-180">⌄</span>
+            </span>
+          </summary>
 
           <div className="border-b border-white/10 p-5 sm:p-6">
             <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -3147,9 +3200,9 @@ setEditingStyle(
               </div>
             )}
           </div>
-        </section>
+        </details>
 
-        <section className="grid gap-6 lg:grid-cols-2">
+        <section id="ai-director" className="grid scroll-mt-6 gap-6 lg:grid-cols-2">
           <Chat
             key={
               chatSessionKey

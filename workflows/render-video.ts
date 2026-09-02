@@ -4355,6 +4355,37 @@ async function finishRenderJobStep(
         undefined,
     },
   );
+
+  console.log(JSON.stringify({
+    level: "info",
+    msg: "video_render_completed",
+    durationSeconds: job.targetDurationSeconds,
+    editingStyle: job.editingStyle,
+    videoModel: job.videoModel,
+    provider: job.provider,
+    retryCount: job.retryCount ?? 0,
+  }));
+
+  try {
+    const { track } =
+      await import("@vercel/analytics/server");
+
+    await track("video_render_completed", {
+      duration_seconds: job.targetDurationSeconds ?? 0,
+      editing_style: job.editingStyle ?? "unknown",
+      video_model: job.videoModel ?? "unknown",
+      provider: job.provider ?? "unknown",
+      retry_count: job.retryCount ?? 0,
+    });
+  } catch (analyticsError) {
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "video_render_analytics_failed",
+      error: analyticsError instanceof Error
+        ? analyticsError.message
+        : String(analyticsError),
+    }));
+  }
 }
 
 async function failRenderJobStep(
@@ -4394,6 +4425,38 @@ async function failRenderJobStep(
         message,
     },
   );
+
+  console.error(JSON.stringify({
+    level: "error",
+    msg: "video_render_failed",
+    durationSeconds: job.targetDurationSeconds,
+    editingStyle: job.editingStyle,
+    videoModel: job.videoModel,
+    provider: job.provider,
+    retryCount: job.retryCount ?? 0,
+    error: message.slice(0, 500),
+  }));
+
+  try {
+    const { track } =
+      await import("@vercel/analytics/server");
+
+    await track("video_render_failed", {
+      duration_seconds: job.targetDurationSeconds ?? 0,
+      editing_style: job.editingStyle ?? "unknown",
+      video_model: job.videoModel ?? "unknown",
+      provider: job.provider ?? "unknown",
+      retry_count: job.retryCount ?? 0,
+    });
+  } catch (analyticsError) {
+    console.warn(JSON.stringify({
+      level: "warning",
+      msg: "video_render_failure_analytics_failed",
+      error: analyticsError instanceof Error
+        ? analyticsError.message
+        : String(analyticsError),
+    }));
+  }
 }
 
 function assertProviderRenderAllowed(
