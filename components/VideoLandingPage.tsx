@@ -55,14 +55,14 @@ export default function VideoLandingPage() {
       <Header active="video" />
 
       <div className="relative z-10">
-        <section className="mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-14 sm:px-8 sm:pt-20 lg:grid-cols-[1.05fr_0.75fr] lg:items-center lg:gap-16 lg:pb-28">
+        <section className="mx-auto grid max-w-7xl gap-12 px-5 pb-20 pt-14 sm:px-8 lg:grid-cols-[1.05fr_0.75fr] lg:items-center lg:gap-16 lg:pb-28 2xl:pt-20">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-violet-400/25 bg-violet-400/10 px-3 py-1.5 text-xs font-medium text-violet-200">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
               KI-Video mit Story, Stimmen und Schnitt
             </div>
 
-            <h1 className="mt-6 max-w-4xl text-balance text-4xl font-semibold tracking-[-0.045em] sm:text-6xl lg:text-7xl">
+            <h1 className="mt-6 max-w-4xl text-balance text-4xl font-semibold tracking-[-0.045em] sm:text-6xl 2xl:text-7xl">
               Deine Idee wird ein Video –
               <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-blue-300 bg-clip-text text-transparent">
                 {" "}mit Dialog, den du vorher prüfst.
