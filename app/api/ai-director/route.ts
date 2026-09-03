@@ -1204,13 +1204,11 @@ const dialogueSourceText =
         ? enforceGeneralCharacters(brandedResult, viralCharacterIds)
         : enforceViralStory(brandedResult, viralCharacterIds);
 
-    const preliminaryProvidedDialogue =
-      singleSpeakerMode
-        ? extractProvidedDialogue(
-            dialogueMessages,,
-            characterResult.story.characters,
-            true,
-          )
+    extractProvidedDialogue(
+  dialogueMessages,
+  characterResult.story.characters,
+  true,
+)
         : [];
     const providedSpeakerName =
       preliminaryProvidedDialogue[0]
@@ -1244,7 +1242,7 @@ const dialogueSourceText =
       preliminaryProvidedDialogue.length > 0
         ? preliminaryProvidedDialogue
         : extractProvidedDialogue(
-            dialogueMessages,,
+            dialogueMessages,
             finalResult.story.characters,
             singleSpeakerMode,
           );
