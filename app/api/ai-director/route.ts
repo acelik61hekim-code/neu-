@@ -1222,7 +1222,15 @@ const preliminaryProvidedDialogue =
 const providedSpeakerName =
   preliminaryProvidedDialogue[0]
     ?.speaker;
-    
+
+    const providedSpeakerCharacter =
+  providedSpeakerName
+    ? characterResult.story.characters.find(
+        (character) =>
+          character.name ===
+          providedSpeakerName,
+      )
+    : undefined;
 
     const finalResult =
       singleSpeakerMode &&
