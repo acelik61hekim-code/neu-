@@ -1141,7 +1141,6 @@ export async function startVideoExtension(
   prompt: string,
   options: SeedanceExtensionOptions = {},
 ): Promise<string> {
-): Promise<string> {
   const previousVideo =
     previousVideoUri.trim();
 
