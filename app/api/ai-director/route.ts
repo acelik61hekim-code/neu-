@@ -82,6 +82,63 @@ type ApiErrorLike = {
   message?: string;
 };
 
+function normalizeStorySpeakerName(
+  value: string,
+): string {
+  return value
+    .trim()
+    .toLocaleLowerCase("de-DE")
+    .replace(
+      /[^a-z0-9äöüß]+/giu,
+      " ",
+    )
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+function ensureDialogueSpeakersAreCharacters(
+  characters: StoryCharacter[],
+  dialogue: ProvidedDialogueLine[],
+): StoryCharacter[] {
+  const result = [
+    ...characters,
+  ];
+
+  const knownNames =
+    new Set(
+      result.map(
+        (character) =>
+          normalizeStorySpeakerName(
+            character.name,
+          ),
+      ),
+    );
+
+  for (const line of dialogue) {
+    const key =
+      normalizeStorySpeakerName(
+        line.speaker,
+      );
+
+    if (
+      !key ||
+      knownNames.has(key)
+    ) {
+      continue;
+    }
+
+    result.push({
+      name: line.speaker,
+      description:
+        "Sichtbare sprechende Figur aus dem verbindlich vorgegebenen Originaldialog. Aussehen und Rolle werden aus der Nutzereingabe übernommen. Die Figur muss sichtbar sein, während sie spricht.",
+    });
+
+    knownNames.add(key);
+  }
+
+  return result;
+}
+
 const STANDARD_MODELS = [
   "gemini-3.5-flash-lite",
   "gemini-3.6-flash",
@@ -944,6 +1001,24 @@ export async function POST(
     const messages = body.messages
       .filter(isConversationMessage)
       .slice(-20);
+    
+    const latestUserMessage =
+  [...messages]
+    .reverse()
+    .find(
+      (message) =>
+        message.role === "user",
+    );
+
+const dialogueMessages =
+  latestUserMessage
+    ? [latestUserMessage]
+    : [];
+
+const dialogueSourceText =
+  latestUserMessage?.dialogueContent ??
+  latestUserMessage?.content ??
+  "";
 
     if (messages.length === 0) {
       return NextResponse.json(
@@ -980,9 +1055,9 @@ export async function POST(
       .join("\n");
 
     const speechIntent =
-      inferPromptSpeechIntent(
-        userConversation,
-      );
+  inferPromptSpeechIntent(
+    dialogueSourceText,
+  );
 
     const ai = new GoogleGenAI({
       apiKey,
@@ -1002,20 +1077,9 @@ export async function POST(
           : undefined;
 
     const explicitDialogueEventCount =
-      messages
-        .filter(
-          (message) =>
-            message.role === "user",
-        )
-        .reduce(
-          (count, message) =>
-            count +
-            countExplicitDialogueEvents(
-              message.dialogueContent ??
-                message.content,
-            ),
-          0,
-        );
+  countExplicitDialogueEvents(
+    dialogueSourceText,
+  );
 
     const providedDialogueRequested =
       shouldUseProvidedDialogue(
@@ -1143,7 +1207,7 @@ export async function POST(
     const preliminaryProvidedDialogue =
       singleSpeakerMode
         ? extractProvidedDialogue(
-            messages,
+            dialogueMessages,,
             characterResult.story.characters,
             true,
           )
@@ -1180,7 +1244,7 @@ export async function POST(
       preliminaryProvidedDialogue.length > 0
         ? preliminaryProvidedDialogue
         : extractProvidedDialogue(
-            messages,
+            dialogueMessages,,
             finalResult.story.characters,
             singleSpeakerMode,
           );
@@ -1220,6 +1284,13 @@ export async function POST(
 
     const finalStory = {
       ...finalResult.story,
+      characters:
+  providedDialogue.length > 0
+    ? ensureDialogueSpeakersAreCharacters(
+        finalResult.story.characters,
+        providedDialogue,
+      )
+    : finalResult.story.characters,
       singleSpeakerMode:
         singleSpeakerMode ||
         undefined,
