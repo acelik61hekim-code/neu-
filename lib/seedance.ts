@@ -389,9 +389,11 @@ function buildReferenceModerationFallbackPrompt(
   prompt: string,
 ): string {
   return [
-    "PROVIDER-SAFE FALLBACK: No image reference is attached. Ignore any later sentence claiming that reference images are supplied.",
-    "Create only clearly fictional, stylized anthropomorphic fruit characters from the written descriptions. Do not depict, imitate or identify any real person.",
-    "Keep every fruit species, outfit color, role and relationship consistent throughout the clip.",
+    "PROVIDER-SAFE FALLBACK: No image reference is attached.",
+    "Ignore any later sentence claiming that reference images are supplied.",
+    "Create only clearly fictional, stylized characters exactly as described in the written prompt.",
+    "Do not depict, imitate or identify any real person.",
+    "Preserve the written creature type, body proportions, outfit, colors, role, relationship and distinctive non-human features throughout the clip.",
     "",
     prompt,
   ].join("\n");
@@ -870,6 +872,48 @@ export async function startVideoGeneration(
     audioUrls.length > 0
       ? buildNativeDialogueAudioInstruction()
       : "";
+  const submitAudioOnlyDialogueFallback =
+  async (): Promise<string> => {
+    if (
+      getConfiguredSeedanceProvider() !== "byteplus" ||
+      audioUrls.length === 0
+    ) {
+      throw new Error(
+        "Der Audio-Fallback ist für diesen Provider nicht verfügbar.",
+      );
+    }
+
+    return submitSeedance(
+      seedanceModelId(
+        "original",
+        "reference-to-video",
+      ),
+      {
+        ...commonInput,
+
+        prompt: [
+          "PROVIDER-SAFE AUDIO-ONLY DIALOGUE MODE.",
+          "No image reference is attached.",
+          "Create only clearly fictional characters exactly as described in the written prompt.",
+          "Do not depict, imitate or reconstruct any real person.",
+
+          "IMPORTANT AUDIO RULE:",
+          "@Audio1 is the authoritative finished dialogue track.",
+          "Preserve the original human voice timbre, natural prosody, pauses, timing and German pronunciation from @Audio1.",
+          "Do not synthesize, rerecord, replace, reinterpret or robotize the spoken voice.",
+          "Synchronize the visible speakers' mouth movements to the supplied audio.",
+
+          dialogueAudioInstruction,
+          cleanedPrompt,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+
+        audio_urls: audioUrls,
+      },
+      options.webhookUrl,
+    );
+  };
 
   if (
     options.referenceImages &&
@@ -897,7 +941,7 @@ export async function startVideoGeneration(
                 reference.label?.trim() ||
                 `character ${index + 1}`;
 
-              return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact fruit species, head geometry, face, body proportions, outfit, colors, shoes and accessories throughout the shot.`;
+              return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact creature type, head geometry, face, body proportions, outfit, colors, shoes, accessories and distinctive non-human features throughout the shot.`;
             },
           )
           .join("\n");
@@ -960,8 +1004,14 @@ export async function startVideoGeneration(
             1,
           );
         }
-      }
-    }
+      if (
+  audioUrls.length > 0 &&
+  acceptedReferences.length === 0
+) {
+  return submitAudioOnlyDialogueFallback();
+}
+
+    
 
     return submitSeedance(
       seedanceModelId(
@@ -1023,11 +1073,14 @@ export async function startVideoGeneration(
       }
 
       if (audioUrls.length > 0) {
-        throw new Error(
-          "Seedance hat das notwendige Startbild für den lippensynchronen Originaldialog abgelehnt. Der Auftrag wurde gestoppt, bevor eine unsynchronisierte Fassung entstehen konnte.",
-        );
-      }
-
+  return submitAudioOnlyDialogueFallback();
+}
+if (
+  audioUrls.length > 0 &&
+  getConfiguredSeedanceProvider() === "byteplus"
+) {
+  return submitAudioOnlyDialogueFallback();
+}
       return submitSeedance(
         seedanceModelId(
           modelTier,
