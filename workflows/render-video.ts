@@ -1704,10 +1704,14 @@ async function prepareRenderJobStep(
       1;
 
   const standardDialogueSpeakers =
-    singleSpeakerMode
+  providedDialogueSpeakerNames.length > 0
+    ? providedDialogueSpeakerNames.slice(
+        0,
+        3,
+      )
+    : singleSpeakerMode
       ? [
-          providedDialogueSpeakerNames[0] ??
-            storyCharacterNames[0] ??
+          storyCharacterNames[0] ??
             bibleCharacterNames[0],
         ].filter(
           (
