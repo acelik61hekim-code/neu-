@@ -3284,6 +3284,9 @@ setEditingStyle(
             onVoiceoverVoiceNameChange={
               setVoiceoverVoiceName
             }
+            onTargetDurationSecondsChange={
+              setTargetDurationSeconds
+            }
             targetDurationSeconds={
               targetDurationSeconds
             }

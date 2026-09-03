@@ -41,6 +41,9 @@ import {
   buildStudioAdvertisementDirection,
   forbidsStudioDeviceInterface,
 } from "../lib/studio-brand.ts";
+import {
+  inferPromptVideoDurationSeconds,
+} from "../lib/prompt-video-options.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -931,6 +934,22 @@ test("the real studio ad keeps its explicit no-device and no-interface constrain
   assert.doesNotMatch(
     direction,
     /Show the authentic KI Video Studio website interface/,
+  );
+});
+
+test("the real studio ad overrides the hidden 30-second default with its explicit 15 seconds", () => {
+  assert.equal(
+    inferPromptVideoDurationSeconds(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    15,
+  );
+
+  assert.equal(
+    inferPromptVideoDurationSeconds(
+      "Szene 1: 0–3 Sekunden. Danach folgt Szene 2: 3–7 Sekunden.",
+    ),
+    null,
   );
 });
 

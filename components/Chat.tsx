@@ -13,6 +13,9 @@ import {
 import {
   countExplicitDialogueEvents,
 } from "@/lib/provided-dialogue";
+import {
+  inferPromptVideoDurationSeconds,
+} from "@/lib/prompt-video-options";
 
 import {
   requestAiDirector,
@@ -54,6 +57,7 @@ type ChatProps = {
   onVoiceoverTextChange?: (text: string) => void;
   onVoiceModeChange?: (mode: VideoVoiceMode) => void;
   onVoiceoverVoiceNameChange?: (voiceName: VoiceoverVoiceName) => void;
+  onTargetDurationSecondsChange?: (duration: VideoDurationSeconds) => void;
 
   /*
    * Optional, damit app/page.tsx während der Umstellung
@@ -140,6 +144,7 @@ export default function Chat({
   onVoiceoverTextChange,
   onVoiceModeChange,
   onVoiceoverVoiceNameChange,
+  onTargetDurationSecondsChange,
   targetDurationSeconds = 60,
   aspectRatio = "9:16",
   editingStyle = "social",
@@ -446,6 +451,24 @@ export default function Chat({
           speechRequestText,
         );
 
+      const promptDurationSeconds =
+        inferPromptVideoDurationSeconds(
+          speechRequestText,
+        );
+      const effectiveTargetDurationSeconds =
+        promptDurationSeconds ??
+        targetDurationSeconds;
+
+      if (
+        promptDurationSeconds &&
+        promptDurationSeconds !==
+          targetDurationSeconds
+      ) {
+        onTargetDurationSecondsChange?.(
+          promptDurationSeconds,
+        );
+      }
+
       const promptVoiceoverText =
         extractPromptVoiceoverText(
           speechRequestText,
@@ -632,7 +655,7 @@ export default function Chat({
         await requestStoryArchitect(
           directorResult.story,
 
-          targetDurationSeconds,
+          effectiveTargetDurationSeconds,
 
           isViralStory
             ? "9:16"
@@ -693,7 +716,7 @@ export default function Chat({
             await requestAutomaticVoiceover(
               generatedStory,
 
-              targetDurationSeconds,
+              effectiveTargetDurationSeconds,
 
               spokenLanguage,
             );
