@@ -916,149 +916,65 @@ export async function startVideoGeneration(
   };
 
   if (
-    options.referenceImages &&
-    options.referenceImages.length > 0
-  ) {
-    if (
-      options.referenceImages.length > 9
-    ) {
-      throw new Error(
-        "Seedance unterstützt maximal neun Bildreferenzen.",
-      );
-    }
-
-    const acceptedReferences =
-      [...options.referenceImages];
-
-    while (
-      acceptedReferences.length > 0
-    ) {
-      const identityInstructions =
-        acceptedReferences
-          .map(
-            (reference, index) => {
-              const label =
-                reference.label?.trim() ||
-                `character ${index + 1}`;
-
-              return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact creature type, head geometry, face, body proportions, outfit, colors, shoes, accessories and distinctive non-human features throughout the shot.`;
-            },
-          )
-          .join("\n");
-
-      try {
-        return await submitSeedance(
-          seedanceModelId(
-            modelTier,
-            "reference-to-video",
-          ),
-          {
-            ...commonInput,
-
-            prompt: [
-              identityInstructions,
-              dialogueAudioInstruction,
-              "",
-              cleanedPrompt,
-            ].filter(Boolean).join("\n"),
-
-            image_urls:
-              acceptedReferences.map(
-                toDataUri,
-              ),
-
-            ...(audioUrls.length > 0
-              ? { audio_urls: audioUrls }
-              : {}),
-          },
-          options.webhookUrl,
-        );
-      } catch (error) {
-        const rejectedIndex =
-          readRejectedBytePlusReferenceIndex(
-            error,
-          );
-
-        if (rejectedIndex === null) {
-          throw error;
-        }
-
-        if (audioUrls.length > 0) {
-          throw new Error(
-            "Seedance hat die notwendige Bildreferenz für den lippensynchronen Originaldialog abgelehnt. Der Auftrag wurde gestoppt, bevor eine unsynchronisierte Fassung entstehen konnte.",
-          );
-        }
-
-        if (
-          rejectedIndex < 0 ||
-          rejectedIndex >=
-            acceptedReferences.length
-        ) {
-          acceptedReferences.splice(
-            0,
-            acceptedReferences.length,
-          );
-        } else {
-          acceptedReferences.splice(
-            rejectedIndex,
-            1,
-          );
-        }
-      if (
-  audioUrls.length > 0 &&
-  acceptedReferences.length === 0
+  options.referenceImages &&
+  options.referenceImages.length > 0
 ) {
-  return submitAudioOnlyDialogueFallback();
-}
-
-    
-
-    return submitSeedance(
-      seedanceModelId(
-        modelTier,
-        "text-to-video",
-      ),
-      {
-        ...commonInput,
-        prompt:
-          buildReferenceModerationFallbackPrompt(
-            cleanedPrompt,
-          ),
-      },
-      options.webhookUrl,
+  if (
+    options.referenceImages.length > 9
+  ) {
+    throw new Error(
+      "Seedance unterstützt maximal neun Bildreferenzen.",
     );
   }
 
-  if (options.referenceImage) {
+  const acceptedReferences =
+    [...options.referenceImages];
+
+  while (
+    acceptedReferences.length > 0
+  ) {
+    const identityInstructions =
+      acceptedReferences
+        .map(
+          (reference, index) => {
+            const label =
+              reference.label?.trim() ||
+              `character ${index + 1}`;
+
+            return `@Image${index + 1} is the locked identity reference for ${label}. Preserve this character's exact creature type, head geometry, face, body proportions, outfit, colors, shoes, accessories and distinctive non-human features throughout the shot.`;
+          },
+        )
+        .join("\n");
+
     try {
       return await submitSeedance(
         seedanceModelId(
           modelTier,
-          audioUrls.length > 0
-            ? "reference-to-video"
-            : "image-to-video",
+          "reference-to-video",
         ),
         {
           ...commonInput,
+
           prompt: [
+            identityInstructions,
             dialogueAudioInstruction,
+            "",
             cleanedPrompt,
-          ].filter(Boolean).join("\n\n"),
+          ]
+            .filter(Boolean)
+            .join("\n"),
+
+          image_urls:
+            acceptedReferences.map(
+              toDataUri,
+            ),
 
           ...(audioUrls.length > 0
             ? {
-                image_urls: [
-                  toDataUri(
-                    options.referenceImage,
-                  ),
-                ],
-                audio_urls: audioUrls,
+                audio_urls:
+                  audioUrls,
               }
-            : {
-                image_url: toDataUri(
-                  options.referenceImage,
-                ),
-              }),
+            : {}),
         },
         options.webhookUrl,
       );
@@ -1068,34 +984,41 @@ export async function startVideoGeneration(
           error,
         );
 
-      if (rejectedIndex === null) {
+      if (
+        rejectedIndex === null
+      ) {
         throw error;
       }
 
-      if (audioUrls.length > 0) {
-  return submitAudioOnlyDialogueFallback();
-}
-if (
-  audioUrls.length > 0 &&
-  getConfiguredSeedanceProvider() === "byteplus"
-) {
-  return submitAudioOnlyDialogueFallback();
-}
-      return submitSeedance(
-        seedanceModelId(
-          modelTier,
-          "text-to-video",
-        ),
-        {
-          ...commonInput,
-          prompt:
-            buildReferenceModerationFallbackPrompt(
-              cleanedPrompt,
-            ),
-        },
-        options.webhookUrl,
-      );
+      if (
+        rejectedIndex < 0 ||
+        rejectedIndex >=
+          acceptedReferences.length
+      ) {
+        acceptedReferences.splice(
+          0,
+          acceptedReferences.length,
+        );
+      } else {
+        acceptedReferences.splice(
+          rejectedIndex,
+          1,
+        );
+      }
+
+      if (
+        audioUrls.length > 0 &&
+        acceptedReferences.length === 0
+      ) {
+        return submitAudioOnlyDialogueFallback();
+      }
     }
+  }
+
+  if (
+    audioUrls.length > 0
+  ) {
+    return submitAudioOnlyDialogueFallback();
   }
 
   return submitSeedance(
@@ -1105,13 +1028,113 @@ if (
     ),
     {
       ...commonInput,
-      prompt: cleanedPrompt,
+
+      prompt:
+        buildReferenceModerationFallbackPrompt(
+          cleanedPrompt,
+        ),
     },
     options.webhookUrl,
   );
 }
 
-export async function startVideoExtension(
+if (
+  options.referenceImage
+) {
+  try {
+    return await submitSeedance(
+      seedanceModelId(
+        modelTier,
+        audioUrls.length > 0
+          ? "reference-to-video"
+          : "image-to-video",
+      ),
+      {
+        ...commonInput,
+
+        prompt: [
+          dialogueAudioInstruction,
+          cleanedPrompt,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+
+        ...(audioUrls.length > 0
+          ? {
+              image_urls: [
+                toDataUri(
+                  options.referenceImage,
+                ),
+              ],
+              audio_urls:
+                audioUrls,
+            }
+          : {
+              image_url:
+                toDataUri(
+                  options.referenceImage,
+                ),
+            }),
+      },
+      options.webhookUrl,
+    );
+  } catch (error) {
+    const rejectedIndex =
+      readRejectedBytePlusReferenceIndex(
+        error,
+      );
+
+    if (
+      rejectedIndex === null
+    ) {
+      throw error;
+    }
+
+    if (
+      audioUrls.length > 0
+    ) {
+      return submitAudioOnlyDialogueFallback();
+    }
+
+    return submitSeedance(
+      seedanceModelId(
+        modelTier,
+        "text-to-video",
+      ),
+      {
+        ...commonInput,
+
+        prompt:
+          buildReferenceModerationFallbackPrompt(
+            cleanedPrompt,
+          ),
+      },
+      options.webhookUrl,
+    );
+  }
+}
+
+if (
+  audioUrls.length > 0 &&
+  getConfiguredSeedanceProvider() ===
+    "byteplus"
+) {
+  return submitAudioOnlyDialogueFallback();
+}
+
+return submitSeedance(
+  seedanceModelId(
+    modelTier,
+    "text-to-video",
+  ),
+  {
+    ...commonInput,
+    prompt:
+      cleanedPrompt,
+  },
+  options.webhookUrl,
+);
+}
   previousVideoUri: string,
   prompt: string,
   options: SeedanceExtensionOptions = {},
