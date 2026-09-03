@@ -233,7 +233,7 @@ export function extractInlineAttributedDialogue(
           attributionTail
             .replace(/:\s*$/u, ""),
         ) &&
-        !/\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
+        !/\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber|wichtig|stil|look|audio|handlung|beschreibung|regeln|timing|dauer|video|prompt|hinweis|start|ende|intro|outro)\b/iu.test(
           attributionTail,
         );
 
@@ -815,6 +815,58 @@ function collectExplicitDialogueRanges(
     });
   }
 
+    const inlineUnquotedPattern =
+    /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\d{1,2}[.)][^\S\r\n]*)?([^:\r\n]{1,64}?)[^\S\r\n]*:[^\S\r\n]*([^\r\n]{1,2000})/gimu;
+
+  for (const match of source.matchAll(
+    inlineUnquotedPattern,
+  )) {
+    if (
+      !isLikelyMultilineSpeakerLabel(
+        stripOuterMarkdown(
+          match[1],
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const start =
+      match.index ?? 0;
+
+    const end =
+      start + match[0].length;
+
+    if (
+      ranges.some((range) =>
+        rangesOverlap(
+          start,
+          end,
+          range.start,
+          range.end,
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const events =
+      splitProvidedDialogueText(
+        match[2],
+      );
+
+    if (events.length === 0) {
+      continue;
+    }
+
+    ranges.push({
+      start,
+      end,
+      eventCount:
+        events.length,
+    });
+  }
+
   return ranges;
 }
 
@@ -1034,15 +1086,34 @@ export function extractProvidedDialogue(
         )
           ? knownSpeakers[0]
           : undefined;
-      const knownSpeaker =
-        exactSpeaker ??
-        roleAliasSpeaker ??
-        fuzzyRoleAliasSpeaker ??
-        fallbackSpeaker;
+      const explicitSpeakerName =
+  stripOuterMarkdown(
+    speakerLabel,
+  )
+    .split(",")[0]
+    .trim();
 
-      if (!knownSpeaker) {
-        return;
+const explicitSpeaker =
+  explicitSpeakerName &&
+  isLikelyMultilineSpeakerLabel(
+    explicitSpeakerName,
+  )
+    ? {
+        fullName:
+          explicitSpeakerName,
       }
+    : undefined;
+
+const knownSpeaker =
+  exactSpeaker ??
+  roleAliasSpeaker ??
+  fuzzyRoleAliasSpeaker ??
+  fallbackSpeaker ??
+  explicitSpeaker;
+
+if (!knownSpeaker) {
+  return;
+}
 
       const events =
         splitProvidedDialogueText(
