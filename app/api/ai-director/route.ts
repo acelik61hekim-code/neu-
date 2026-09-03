@@ -1200,26 +1200,28 @@ const dialogueSourceText =
       : result;
 
     const characterResult =
-      characterMode === "general"
-        ? enforceGeneralCharacters(brandedResult, viralCharacterIds)
-        : enforceViralStory(brandedResult, viralCharacterIds);
+  characterMode === "general"
+    ? enforceGeneralCharacters(
+        brandedResult,
+        viralCharacterIds,
+      )
+    : enforceViralStory(
+        brandedResult,
+        viralCharacterIds,
+      );
 
-    extractProvidedDialogue(
-  dialogueMessages,
-  characterResult.story.characters,
-  true,
-)
-        : [];
-    const providedSpeakerName =
-      preliminaryProvidedDialogue[0]
-        ?.speaker;
-    const providedSpeakerCharacter =
-      providedSpeakerName
-        ? characterResult.story.characters.find(
-            (character) =>
-              character.name ===
-              providedSpeakerName,
-          )
+const preliminaryProvidedDialogue =
+  singleSpeakerMode
+    ? extractProvidedDialogue(
+        dialogueMessages,
+        characterResult.story.characters,
+        true,
+      )
+    : [];
+
+const providedSpeakerName =
+  preliminaryProvidedDialogue[0]
+    ?.speaker;
         : undefined;
 
     const finalResult =
