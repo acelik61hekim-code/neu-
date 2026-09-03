@@ -1577,14 +1577,10 @@ async function prepareRenderJobStep(
       true;
 
   const nativeDialogueAudioReferencePlanned =
-    nativeCharacterDialogue &&
-    !nativeDialogueAudioRetry &&
-    videoModel !== "google-veo" &&
-    videoModel !== "google-veo-fast" &&
-    (
-      viralStoryMode ||
-      Boolean(job.referenceImageUrl)
-    );
+  nativeCharacterDialogue &&
+  !nativeDialogueAudioRetry &&
+  videoModel !== "google-veo" &&
+  videoModel !== "google-veo-fast";
 
   const trashTvReactionBoost =
     viralStoryMode &&
