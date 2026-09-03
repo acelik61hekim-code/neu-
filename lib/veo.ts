@@ -9,6 +9,7 @@ import type {
 
 import {
   buildStudioAdvertisementDirection,
+  forbidsStudioDeviceInterface,
   isStudioWebsiteAdvertisement,
 } from "@/lib/studio-brand";
 
@@ -1719,6 +1720,15 @@ export function buildMovieContinuationPrompt(
       ].join("\n"),
     );
 
+  const studioAdvertisementUsesProductScreen =
+    studioAdvertisement &&
+    !forbidsStudioDeviceInterface(
+      [
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
   const preserveRequiredVisualInstructions =
     (
       value: string,
@@ -1867,10 +1877,18 @@ export function buildMovieContinuationPrompt(
       "",
     studioAdvertisement
       ? [
-          "BRANDED PRODUCT-SCREEN EXCEPTION (highest priority):",
-          buildStudioAdvertisementDirection(),
-          "Preserve the authentic website already visible in the source video. Do not blur, remove, redesign or replace it during the extension.",
-          "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no watermarks, no invented UI text, no fake websites and no unrelated logos.",
+          studioAdvertisementUsesProductScreen
+            ? "BRANDED PRODUCT-SCREEN EXCEPTION (highest priority):"
+            : "BRANDED RESULT-ONLY ADVERTISEMENT (highest priority):",
+          buildStudioAdvertisementDirection(
+            studioAdvertisementUsesProductScreen,
+          ),
+          studioAdvertisementUsesProductScreen
+            ? "Preserve the authentic website already visible in the source video. Do not blur, remove, redesign or replace it during the extension."
+            : "Preserve the full-frame generated-video montage. Do not introduce a phone, laptop, computer, device screen, website view or software interface.",
+          studioAdvertisementUsesProductScreen
+            ? "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no watermarks, no invented UI text, no fake websites and no unrelated logos."
+            : "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no smartphones, no laptops, no computers, no device displays, no website screens, no software interfaces, no fake websites and no invented UI.",
         ].join("\n")
       : "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no teleportation, no unmotivated camera reset, no lighting reset, no subtitles, no captions, no logos, no watermarks, no readable letters, no words, no numbers, no URLs, no code and no visible interface text. All screens use abstract unlettered light patterns only.",
   ]

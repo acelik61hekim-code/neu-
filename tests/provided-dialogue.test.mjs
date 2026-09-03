@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractPromptVoiceoverSegments,
+  extractPromptVoiceoverText,
   inferPromptSpeechIntent,
+  shouldUseProvidedDialogue,
 } from "../lib/audio-options.ts";
 import {
   countExplicitDialogueBlocks,
@@ -34,6 +37,10 @@ import {
   hasApprovedDialogueReview,
   inspectDialogueQuality,
 } from "../lib/dialogue-quality.ts";
+import {
+  buildStudioAdvertisementDirection,
+  forbidsStudioDeviceInterface,
+} from "../lib/studio-brand.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -205,6 +212,67 @@ Bano atmet tief ein.
 Kurze Stille.
 
 **ERBEERINA:** „Dann sei ehrlich zu mir. Das ist alles, was ich will.“`;
+
+const realFifteenSecondStudioVoiceoverPrompt = `Erstelle ein 15 Sekunden langes, vertikales 9:16 Werbevideo für Instagram Reels und TikTok.
+ZIEL:
+Der Zuschauer muss innerhalb der ersten 1–3 Sekunden neugierig werden und weiterschauen. Erst danach soll klar werden, dass das gezeigte KI-Video selbst auf kivideostudio.de erstellt werden kann. Das Video soll nicht wie klassische Werbung wirken, sondern zunächst wie ein außergewöhnliches virales Reel.
+WICHTIG:
+Kein Dialog zwischen Figuren.
+Keine automatisch erfundenen Gespräche.
+Nur EIN durchgehendes deutsches Voiceover.
+Keine Smartphones, Laptops oder Handybildschirme zeigen.
+Keine komplizierten Benutzeroberflächen zeigen.
+Schnelle Schnitte, hochwertiger cineastischer Look, starke visuelle Überraschung.
+SZENE 1 – 0 BIS 3 SEKUNDEN – EXTREMER HOOK
+Eine völlig normale, realistische deutsche Innenstadt bei Tageslicht.
+Plötzlich läuft mitten zwischen den Menschen ein gigantischer fotorealistischer grüner Drache durch die Straße.
+Menschen drehen sich überrascht um, Autos bleiben stehen, der Drache schaut direkt in die Kamera.
+Sehr realistisch, spektakulär und unerwartet.
+Großer Text im Bild:
+„DAS IST NICHT ECHT.“
+Nach ungefähr einer Sekunde wechselt der Text zu:
+„Aber du kannst sowas selbst erstellen.“
+Die Kamera bewegt sich dynamisch auf den Drachen zu.
+VOICEOVER:
+„Warte kurz … dieses Video existierte vor wenigen Minuten noch nicht.“
+SZENE 2 – 3 BIS 7 SEKUNDEN
+Sehr schneller cineastischer Übergang.
+Zeige nacheinander drei extrem unterschiedliche KI-Videos:
+– eine futuristische Großstadt
+– einen süßen animierten Charakter in Pixar-artiger 3D-Ästhetik
+– eine dramatische Filmszene mit einem riesigen Monster
+Jede Szene nur ungefähr eine Sekunde.
+Text:
+„Deine Idee → dein Video“
+VOICEOVER:
+„Du beschreibst einfach deine Idee – und KI macht daraus dein Video.“
+SZENE 3 – 7 BIS 11 SEKUNDEN
+Der Zuschauer sieht mehrere fertige hochwertige Kurzvideos schnell hintereinander.
+Keine komplizierte Website-Oberfläche.
+Der Fokus liegt ausschließlich auf den Ergebnissen.
+Text groß und klar:
+„Keine Videokenntnisse nötig.“
+Darunter:
+„Einfach registrieren & loslegen.“
+VOICEOVER:
+„Keine Kamera. Kein Schnittprogramm. Du brauchst nur deine Idee.“
+SZENE 4 – 11 BIS 15 SEKUNDEN – CONVERSION
+Eleganter schwarzer Hintergrund.
+Mehrere spektakuläre KI-Videos schweben kurz im Hintergrund.
+In der Mitte erscheint deutlich:
+„Erstelle dein eigenes KI-Video“
+Darunter:
+„kivideostudio.de“
+Dann groß:
+„INSTA10 = 10 % Rabatt“
+und darunter:
+„Nur 24 Stunden“
+Letzter Text:
+„Jetzt kostenlos registrieren →“
+VOICEOVER:
+„Registriere dich jetzt auf kivideostudio.de und spare mit INSTA10 zehn Prozent – nur für 24 Stunden.“
+ENDE.
+Das Video muss bis zur letzten Sekunde schnell, modern und hochwertig wirken. Kein langsames Intro. Kein Logo-Intro am Anfang. Der Markenname darf erst nach dem visuellen Hook erscheinen.`;
 
 test("repeated lines from one named speaker stay in single-speaker mode", () => {
   assert.equal(
@@ -749,6 +817,120 @@ test("a rejected voiceover cannot override explicitly requested character dialog
       true,
     ),
     "dialogue",
+  );
+});
+
+test("the real 15-second studio ad stays one exact voiceover instead of figure dialogue", () => {
+  const expectedSegments = [
+    "Warte kurz … dieses Video existierte vor wenigen Minuten noch nicht.",
+    "Du beschreibst einfach deine Idee – und KI macht daraus dein Video.",
+    "Keine Kamera. Kein Schnittprogramm. Du brauchst nur deine Idee.",
+    "Registriere dich jetzt auf kivideostudio.de und spare mit INSTA10 zehn Prozent – nur für 24 Stunden.",
+  ];
+
+  assert.equal(
+    inferPromptSpeechIntent(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    "voiceover",
+  );
+
+  assert.equal(
+    countExplicitDialogueEvents(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    0,
+  );
+
+  assert.deepEqual(
+    extractPromptVoiceoverSegments(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    expectedSegments,
+  );
+
+  assert.equal(
+    extractPromptVoiceoverText(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    expectedSegments.join("\n"),
+  );
+
+  assert.equal(
+    shouldUseProvidedDialogue(
+      "provided",
+      0,
+      "voiceover",
+    ),
+    false,
+  );
+
+  assert.deepEqual(
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content:
+            realFifteenSecondStudioVoiceoverPrompt,
+        },
+      ],
+      [
+        {
+          name: "Grüner Drache",
+        },
+      ],
+      true,
+    ),
+    [],
+  );
+});
+
+test("voiceover labels with pasted markdown line breaks preserve ordering and duplicates", () => {
+  const prompt =
+    "VOICEOVER:\\\n„Bleib dran.“\nVOICEOVER:\\\n„Bleib dran.“";
+
+  assert.deepEqual(
+    extractPromptVoiceoverSegments(
+      prompt,
+    ),
+    [
+      "Bleib dran.",
+      "Bleib dran.",
+    ],
+  );
+
+  assert.equal(
+    countExplicitDialogueEvents(
+      prompt,
+    ),
+    0,
+  );
+});
+
+test("the real studio ad keeps its explicit no-device and no-interface constraint", () => {
+  assert.equal(
+    forbidsStudioDeviceInterface(
+      realFifteenSecondStudioVoiceoverPrompt,
+    ),
+    true,
+  );
+
+  const direction =
+    buildStudioAdvertisementDirection(
+      false,
+    );
+
+  assert.match(
+    direction,
+    /Do not show smartphones, laptops, computers, device displays, website screens or software interfaces/,
+  );
+  assert.match(
+    direction,
+    /Show the spectacular AI-generated video results full-frame/,
+  );
+  assert.doesNotMatch(
+    direction,
+    /Show the authentic KI Video Studio website interface/,
   );
 });
 

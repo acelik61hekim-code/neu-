@@ -1,4 +1,5 @@
 import type {
+  DialogueSourceMode,
   VideoAudioStyle,
   VideoSpokenLanguage,
   VideoVoiceMode,
@@ -30,6 +31,94 @@ export type PromptSpeechIntent =
   | "single-speaker"
   | "conversation"
   | "voiceover";
+
+const NON_CHARACTER_VOICEOVER_LABEL_PATTERN =
+  /^(?:(?:nur|ein(?:e|en|em|er|es)?|durchgehend(?:e|en|em|er|es)?|deutsch(?:e|en|em|er|es)?|englisch(?:e|en|em|er|es)?)\s+)*(?:voice[\s-]?over|voiceover|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off|erzähler(?:in)?|narrator|narration|sprechertext)$/iu;
+
+function normalizeSpeechLabel(
+  value: string,
+): string {
+  return value
+    .replace(
+      /(?:\*{1,3}|_{1,3}|`)/gu,
+      "",
+    )
+    .replace(
+      /[^\p{L}\p{N}-]+/gu,
+      " ",
+    )
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
+export function isNonCharacterVoiceoverLabel(
+  value: string,
+): boolean {
+  return NON_CHARACTER_VOICEOVER_LABEL_PATTERN.test(
+    normalizeSpeechLabel(
+      value,
+    ),
+  );
+}
+
+export function extractPromptVoiceoverSegments(
+  value: string,
+): string[] {
+  const segments: string[] = [];
+  const labeledVoiceoverPattern =
+    /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\*{1,3}|_{1,3})?((?:(?:nur|ein(?:e|en|em|er|es)?|durchgehend(?:e|en|em|er|es)?|deutsch(?:e|en|em|er|es)?|englisch(?:e|en|em|er|es)?)\s+)*(?:voice[\s-]?over|voiceover|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off|erzähler(?:in)?|narrator|narration|sprechertext))(?:\*{1,3}|_{1,3})?[^\S\r\n]*:[^\S\r\n]*(?:\\[^\S\r\n]*)?(?:\r?\n[\r\n\t ]*)?[„“"]([^\r\n„“”"]{1,4000})[“”"]/gimu;
+
+  for (
+    const match
+    of value.matchAll(
+      labeledVoiceoverPattern,
+    )
+  ) {
+    if (
+      !isNonCharacterVoiceoverLabel(
+        match[1],
+      )
+    ) {
+      continue;
+    }
+
+    const text =
+      match[2]
+        .replace(/\s+/gu, " ")
+        .trim();
+
+    if (text) {
+      segments.push(text);
+    }
+  }
+
+  return segments;
+}
+
+export function extractPromptVoiceoverText(
+  value: string,
+): string {
+  return extractPromptVoiceoverSegments(
+    value,
+  )
+    .join("\n")
+    .slice(0, 4_000)
+    .trim();
+}
+
+export function shouldUseProvidedDialogue(
+  dialogueSourceMode: DialogueSourceMode,
+  explicitDialogueEventCount: number,
+  speechIntent: PromptSpeechIntent | null,
+): boolean {
+  return (
+    speechIntent !== "voiceover" &&
+    (
+      dialogueSourceMode === "provided" ||
+      explicitDialogueEventCount > 0
+    )
+  );
+}
 
 export const SUPPORTED_VOICEOVER_VOICES = [
   "Charon",
@@ -163,6 +252,9 @@ export function inferPromptSpeechIntent(
         }) => {
           if (
             !normalizedLabel ||
+            isNonCharacterVoiceoverLabel(
+              rawLabel,
+            ) ||
             /\b(?:sagt(?:e)?|spricht|antwortet|erwidert|ruft|schreit|flüstert|erklärt|gesteht|verkündet|enthüllt)\b/iu.test(
               normalizedLabel,
             ) ||
@@ -173,23 +265,34 @@ export function inferPromptSpeechIntent(
             return false;
           }
 
-          const identityLabel =
+          const identitySource =
             rawLabel
               .split(",")[0]
+              .replace(
+                /(?:\*{1,3}|_{1,3}|`)/gu,
+                "",
+              )
+              .trim();
+          const identityLabel =
+            identitySource
               .replace(/[^\p{L}\p{N}-]+/gu, "")
               .trim();
           const identityLetters =
             identityLabel
               .replace(/[^\p{L}]+/gu, "");
           const isUppercaseIdentity =
+            identitySource
+              .split(/\s+/gu)
+              .filter(Boolean)
+              .length <= 4 &&
             identityLetters.length >= 2 &&
             identityLetters ===
               identityLetters.toLocaleUpperCase(
                 "de-DE",
               );
           const isShortProperName =
-            /^\p{Lu}\p{Ll}{1,30}$/u.test(
-              identityLabel,
+            /^\p{Lu}\p{Ll}{1,30}(?:\s+\p{Lu}\p{Ll}{1,30}){0,2}$/u.test(
+              identitySource,
             );
           const hasVisibleRole =
             /\b(?:frau|mann|mädchen|junge|person|sprecher(?:in)?|figur|charakter|protagonist(?:in)?|woman|man|girl|boy|speaker|character)\b/iu.test(

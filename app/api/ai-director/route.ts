@@ -5,11 +5,16 @@ import {
 } from "@google/genai";
 import { NextResponse } from "next/server";
 import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
+import {
+  inferPromptSpeechIntent,
+  shouldUseProvidedDialogue,
+} from "@/lib/audio-options";
 import { checkRateLimit } from "@/lib/rate-limit";
 import {
   STUDIO_BRAND_CONTEXT,
   STUDIO_NAME,
   STUDIO_URL,
+  forbidsStudioDeviceInterface,
   isStudioWebsiteAdvertisement,
 } from "@/lib/studio-brand";
 import { getViralCharacters } from "@/lib/viral-characters";
@@ -200,10 +205,15 @@ ZUSÄTZLICHER VERBINDLICHER EIN-PERSONEN-SPRECHMODUS
 
 function enforceStudioAdvertisement(
   result: AiDirectorResult,
+  userRequest: string,
 ): AiDirectorResult {
   const story = result.story;
   const existingSummary = story.summary.trim();
   const existingSetting = story.setting.trim();
+  const withoutDeviceInterface =
+    forbidsStudioDeviceInterface(
+      userRequest,
+    );
 
   return {
     ...result,
@@ -219,7 +229,9 @@ function enforceStudioAdvertisement(
         `${story.mood || "Modern und hochwertig"}; vertrauenswürdig, klar und professionell`,
       setting: [
         existingSetting,
-        `Eine reale Person benutzt die bestehende Webseite ${STUDIO_NAME} unter ${STUDIO_URL} auf ihrem Smartphone oder Computer.`,
+        withoutDeviceInterface
+          ? `Die spektakulären KI-Video-Ergebnisse erscheinen bildfüllend; Smartphones, Computer, Bildschirme und Benutzeroberflächen bleiben vollständig unsichtbar.`
+          : `Eine reale Person benutzt die bestehende Webseite ${STUDIO_NAME} unter ${STUDIO_URL} auf ihrem Smartphone oder Computer.`,
       ].filter(Boolean).join(" "),
       characters:
         story.characters.length > 0
@@ -228,13 +240,17 @@ function enforceStudioAdvertisement(
               {
                 name: "Nutzerin oder Nutzer",
                 description:
-                  `Eine sympathische erwachsene Person, die ${STUDIO_NAME} auf einem echten Smartphone verwendet und natürlich auf das Ergebnis reagiert.`,
+                  withoutDeviceInterface
+                    ? `Eine sympathische erwachsene Person, die natürlich auf die bildfüllenden KI-Video-Ergebnisse reagiert; keine Geräte oder Benutzeroberflächen sind sichtbar.`
+                    : `Eine sympathische erwachsene Person, die ${STUDIO_NAME} auf einem echten Smartphone verwendet und natürlich auf das Ergebnis reagiert.`,
               },
             ],
       summary: [
         `Dies ist ausdrücklich eine Werbung für die bereits bestehende Marke und Webseite ${STUDIO_NAME} (${STUDIO_URL}), nicht für eine erfundene Plattform.`,
         existingSummary,
-        "Die echte Webseite mit den Bereichen Video, Songs und Bilder ist das beworbene Produkt und muss auf dem Gerätedisplay erkennbar sein.",
+        withoutDeviceInterface
+          ? `Die erzeugten Videos sind der alleinige visuelle Produktbeweis. ${STUDIO_NAME} und ${STUDIO_URL} erscheinen erst nach dem visuellen Hook als saubere Marken- beziehungsweise Schluss-Einblendung; keine Geräte und keine Benutzeroberflächen.`
+          : "Die echte Webseite mit den Bereichen Video, Songs und Bilder ist das beworbene Produkt und muss auf dem Gerätedisplay erkennbar sein.",
       ].filter(Boolean).join(" "),
     },
   };
@@ -958,6 +974,16 @@ export async function POST(
       }),
     );
 
+    const userConversation = messages
+      .filter((message) => message.role === "user")
+      .map((message) => message.content)
+      .join("\n");
+
+    const speechIntent =
+      inferPromptSpeechIntent(
+        userConversation,
+      );
+
     const ai = new GoogleGenAI({
       apiKey,
     });
@@ -992,13 +1018,20 @@ export async function POST(
         );
 
     const providedDialogueRequested =
-      body.dialogueSourceMode ===
-        "provided" ||
-      explicitDialogueEventCount > 0;
+      shouldUseProvidedDialogue(
+        body.dialogueSourceMode ===
+          "provided"
+          ? "provided"
+          : "automatic",
+        explicitDialogueEventCount,
+        speechIntent,
+      );
 
     const dialogueMode =
-      body.dialogueMode === true ||
-      providedDialogueRequested;
+      speechIntent === "voiceover"
+        ? false
+        : body.dialogueMode === true ||
+          providedDialogueRequested;
 
     const singleSpeakerMode =
       dialogueMode &&
@@ -1095,13 +1128,11 @@ export async function POST(
       );
     }
 
-    const userConversation = messages
-      .filter((message) => message.role === "user")
-      .map((message) => message.content)
-      .join("\n");
-
     const brandedResult = isStudioWebsiteAdvertisement(userConversation)
-      ? enforceStudioAdvertisement(result)
+      ? enforceStudioAdvertisement(
+          result,
+          userConversation,
+        )
       : result;
 
     const characterResult =

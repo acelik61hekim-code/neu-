@@ -438,6 +438,19 @@ async function generateNarration(
         ? "Use the language of the supplied script."
         : "Sprich natürliches, klares Hochdeutsch. Sprich KI als K-I aus.";
 
+  const pronunciationDirections = [
+    /\bkivideostudio\.de\b/iu.test(
+      text,
+    )
+      ? "Pronounce kivideostudio.de naturally as: K-I Video Studio Punkt D-E."
+      : "",
+    /\bINSTA10\b/iu.test(
+      text,
+    )
+      ? "Pronounce INSTA10 naturally as: Insta zehn."
+      : "",
+  ].filter(Boolean);
+
   const maximumSeconds =
     Math.max(
       1.8,
@@ -483,6 +496,8 @@ async function generateNarration(
             "Synthesize the following exact spoken line as studio-quality speech.",
 
             languageDirection,
+
+            ...pronunciationDirections,
 
             "Read the supplied script exactly once without adding, removing, translating or paraphrasing words.",
 

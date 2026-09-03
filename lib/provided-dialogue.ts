@@ -225,14 +225,23 @@ export function extractInlineAttributedDialogue(
               .aliasEnd,
           )
           .trim();
+      const isDirectSpeakerColon =
+        /:\s*$/u.test(
+          attributionTail,
+        ) &&
+        !/[.!?;\n]/u.test(
+          attributionTail
+            .replace(/:\s*$/u, ""),
+        ) &&
+        !/\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
+          attributionTail,
+        );
 
       if (
         INLINE_SPEECH_VERB_PATTERN.test(
           attributionTail,
         ) ||
-        /:\s*$/u.test(
-          attributionTail,
-        )
+        isDirectSpeakerColon
       ) {
         dialogue.push({
           speaker:
@@ -653,6 +662,9 @@ function isLikelyMultilineSpeakerLabel(
 
   if (
     !normalized ||
+    /^(?:(?:nur|ein(?:e|en|em|er|es)?|durchgehend(?:e|en|em|er|es)?|deutsch(?:e|en|em|er|es)?|englisch(?:e|en|em|er|es)?)\s+)*(?:voice\s*over|voiceover|off\s*(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off|erzähler(?:in)?|narrator|narration|sprechertext)$/iu.test(
+      normalized,
+    ) ||
     /\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
       normalized,
     )
@@ -671,25 +683,38 @@ function isLikelyMultilineSpeakerLabel(
     return true;
   }
 
+  const identitySource =
+    stripOuterMarkdown(
+      value
+        .split(",")[0],
+    )
+      .trim();
   const identityLabel =
-    value
-      .split(",")[0]
+    identitySource
       .replace(/[^\p{L}\p{N}-]+/gu, "")
       .trim();
   const identityLetters =
     identityLabel
       .replace(/[^\p{L}]+/gu, "");
+  const identityWordCount =
+    identitySource
+      .split(/\s+/gu)
+      .filter(Boolean)
+      .length;
+  const isShortProperName =
+    /^\p{Lu}\p{Ll}{1,30}(?:\s+\p{Lu}\p{Ll}{1,30}){0,2}$/u.test(
+      identitySource,
+    );
 
   return (
+    identityWordCount <= 4 &&
     identityLetters.length >= 2 &&
     identityLetters ===
       identityLetters.toLocaleUpperCase(
         "de-DE",
       )
   ) ||
-    /^\p{Lu}\p{Ll}{1,30}$/u.test(
-      identityLabel,
-    );
+    isShortProperName;
 }
 
 export function countExplicitMultilineDialogueBlocks(

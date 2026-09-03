@@ -4,8 +4,10 @@ import { useState } from "react";
 
 import { AI_DIRECTOR_MESSAGE_MAX_CHARACTERS } from "@/lib/ai-director-limits";
 import {
+  extractPromptVoiceoverText,
   inferPromptSpeechIntent,
   inferPromptVoiceoverVoiceName,
+  shouldUseProvidedDialogue,
   type VoiceoverVoiceName,
 } from "@/lib/audio-options";
 import {
@@ -228,6 +230,11 @@ export default function Chat({
     "automatic",
   );
 
+  const detectedPromptVoiceoverText =
+    extractPromptVoiceoverText(
+      input,
+    );
+
   function createStoryNotes(
     conversation: Message[],
   ) {
@@ -439,12 +446,23 @@ export default function Chat({
           speechRequestText,
         );
 
-      const providedDialogueRequested =
-        dialogueSourceMode ===
-          "provided" ||
-        countExplicitDialogueEvents(
+      const promptVoiceoverText =
+        extractPromptVoiceoverText(
           speechRequestText,
-        ) > 0;
+        );
+
+      const explicitlyRequestsVoiceover =
+        speechIntent ===
+          "voiceover";
+
+      const providedDialogueRequested =
+        shouldUseProvidedDialogue(
+          dialogueSourceMode,
+          countExplicitDialogueEvents(
+            speechRequestText,
+          ),
+          speechIntent,
+        );
 
       const inferredVoiceoverMode =
         !isViralStory &&
@@ -465,6 +483,12 @@ export default function Chat({
       if (providedDialogueRequested) {
         setDialogueSourceMode(
           "provided",
+        );
+      } else if (
+        explicitlyRequestsVoiceover
+      ) {
+        setDialogueSourceMode(
+          "automatic",
         );
       }
 
@@ -511,6 +535,16 @@ export default function Chat({
         if (inferredVoiceName) {
           onVoiceoverVoiceNameChange?.(
             inferredVoiceName,
+          );
+        }
+
+        if (
+          promptVoiceoverText &&
+          promptVoiceoverText !==
+            voiceoverText.trim()
+        ) {
+          onVoiceoverTextChange?.(
+            promptVoiceoverText,
           );
         }
       } else if (
@@ -616,7 +650,10 @@ export default function Chat({
 
           spokenLanguage,
 
-          voiceoverText,
+          inferredVoiceoverMode &&
+            promptVoiceoverText
+            ? promptVoiceoverText
+            : voiceoverText,
 
           closingText,
 
@@ -642,7 +679,12 @@ export default function Chat({
         effectiveVoiceMode ===
           "voiceover" &&
 
-        !voiceoverText.trim() &&
+        !(
+          inferredVoiceoverMode &&
+            promptVoiceoverText
+            ? promptVoiceoverText
+            : voiceoverText
+        ).trim() &&
 
         onVoiceoverTextChange
       ) {
@@ -1382,15 +1424,23 @@ export default function Chat({
                       }`}
                     >
                       <span className="block font-semibold">
-                        Dialog automatisch
+                        {detectedPromptVoiceoverText
+                          ? "Voiceover aus Prompt"
+                          : "Dialog automatisch"}
                       </span>
                       <span className="mt-1 block text-[10px] leading-4 opacity-70">
-                        Die KI darf passende Sätze schreiben
+                        {detectedPromptVoiceoverText
+                          ? "Wird als ein Sprechertext wortgetreu übernommen"
+                          : "Die KI darf passende Sätze schreiben"}
                       </span>
                     </button>
                   </div>
 
-                  {dialogueSourceMode ===
+                  {detectedPromptVoiceoverText ? (
+                    <p className="mt-2 px-1 text-[11px] leading-5 text-emerald-300/80">
+                      Voiceover erkannt: Deine markierten Passagen werden in dieser Reihenfolge als eine durchgehende Tonspur übernommen.
+                    </p>
+                  ) : dialogueSourceMode ===
                     "provided" && (
                     <p className="mt-2 px-1 text-[11px] leading-5 text-emerald-300/80">
                       Verbindlich: Deine Zeilen werden vor Vorschau und Zahlung einzeln bestätigt.
@@ -1421,6 +1471,15 @@ export default function Chat({
                     );
 
                     if (
+                      inferPromptSpeechIntent(
+                        nextInput,
+                      ) ===
+                        "voiceover"
+                    ) {
+                      setDialogueSourceMode(
+                        "automatic",
+                      );
+                    } else if (
                       countExplicitDialogueEvents(
                         nextInput,
                       ) > 0

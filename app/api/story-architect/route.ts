@@ -26,6 +26,7 @@ import {
 import {
   STUDIO_BRAND_CONTEXT,
   buildStudioAdvertisementDirection,
+  forbidsStudioDeviceInterface,
   isStudioWebsiteAdvertisement,
 } from "@/lib/studio-brand";
 
@@ -1079,13 +1080,26 @@ function normalizeMoviePlan(
       ].join("\n"),
     );
 
+  const studioAdvertisementUsesProductScreen =
+    studioAdvertisement &&
+    !forbidsStudioDeviceInterface(
+      [
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
   const studioAdvertisementDirection =
     studioAdvertisement
-      ? buildStudioAdvertisementDirection()
+      ? buildStudioAdvertisementDirection(
+          studioAdvertisementUsesProductScreen,
+        )
       : "";
 
   const studioAdvertisementNegativePrompt =
-    "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no subtitles, no captions, no watermarks, no fake websites, no invented interface, no abstract neon replacement screen and no unrelated logos. The authentic KI Video Studio interface from the supplied reference is required and allowed.";
+    studioAdvertisementUsesProductScreen
+      ? "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no subtitles, no captions, no watermarks, no fake websites, no invented interface, no abstract neon replacement screen and no unrelated logos. The authentic KI Video Studio interface from the supplied reference is required and allowed."
+      : "No identity drift, no face changes, no wardrobe changes, no duplicated characters, no malformed hands, no extra fingers, no teleportation, no spatial discontinuity, no lighting jumps, no camera resets, no smartphones, no laptops, no computers, no device displays, no website screens, no software interfaces, no fake websites and no invented UI.";
 
   const durationPlan =
     buildDurationPlan(
@@ -6211,9 +6225,19 @@ function buildStoryPrompt(
       ].join("\n"),
     );
 
+  const studioAdvertisementUsesProductScreen =
+    studioAdvertisement &&
+    !forbidsStudioDeviceInterface(
+      [
+        story.setting,
+        story.summary,
+      ].join("\n"),
+    );
+
   const studioAdvertisementSection =
     studioAdvertisement
-      ? `
+      ? studioAdvertisementUsesProductScreen
+        ? `
 ${STUDIO_BRAND_CONTEXT}
 
 VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
@@ -6226,10 +6250,22 @@ VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG
 - Das KI-Video darf die echte KI-Video-Studio-Oberfläche und das echte Logo aus der Referenz zeigen.
 - Untertitel, Wasserzeichen, zusätzliche erfundene Logos und zusätzliche Fantasieschrift bleiben verboten.
 `
+        : `
+${STUDIO_BRAND_CONTEXT}
+
+VERBINDLICHE REGELN FÜR DIESE MARKENWERBUNG OHNE GERÄTE ODER UI
+
+- Dies ist Werbung für die echte, bereits veröffentlichte Webseite KI Video Studio.
+- Zeige keine Smartphones, Laptops, Computer, Handybildschirme, Gerätedisplays, Webseitenansichten oder Benutzeroberflächen.
+- Die spektakulären erzeugten KI-Videos erscheinen bildfüllend und sind der visuelle Produktbeweis.
+- Der Markenname wird erst nach dem visuellen Hook eingeführt.
+- Markenname, Internetadresse, Rabattcode und Handlungsaufforderung erscheinen nur als die vom Nutzer verlangten sauberen Einblendungen beziehungsweise auf der Schlusskarte.
+- Erfinde keine andere Plattform, App, Webseite, Benutzeroberfläche oder Marke.
+`
       : "";
 
   const visibleInterfaceRestriction =
-    studioAdvertisement
+    studioAdvertisementUsesProductScreen
       ? [
           "- Untertitel",
           "- Wasserzeichen",
