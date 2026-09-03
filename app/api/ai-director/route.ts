@@ -1222,7 +1222,7 @@ const preliminaryProvidedDialogue =
 const providedSpeakerName =
   preliminaryProvidedDialogue[0]
     ?.speaker;
-        : undefined;
+    
 
     const finalResult =
       singleSpeakerMode &&
