@@ -434,17 +434,7 @@ export default function Chat({
         );
 
       const speechRequestText =
-        conversation
-          .filter(
-            (message) =>
-              message.role ===
-              "user",
-          )
-          .map(
-            (message) =>
-              message.content,
-          )
-          .join("\n");
+  cleanedInput;
 
       const speechIntent =
         inferPromptSpeechIntent(
