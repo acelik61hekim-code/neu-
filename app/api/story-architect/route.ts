@@ -7363,22 +7363,22 @@ export async function POST(
         story,
         voiceMode,
       );
-    const expectedDialogueSpeakers =
-      voiceMode ===
-      "dialogue"
-        ? isSingleSpeakerDialogue
-          ? [
-              submittedDialogueSpeakers[0] ??
-                story.characters[0]?.name ??
-                "Visible speaker",
-            ]
-          : story.characters
-              .slice(0, 3)
-              .map(
-                (character) =>
-                  character.name,
-              )
-        : [];
+   const expectedDialogueSpeakers =
+  voiceMode === "dialogue"
+    ? submittedDialogueSpeakers.length > 0
+      ? submittedDialogueSpeakers.slice(0, 3)
+      : isSingleSpeakerDialogue
+        ? [
+            story.characters[0]?.name ??
+              "Visible speaker",
+          ]
+        : story.characters
+            .slice(0, 3)
+            .map(
+              (character) =>
+                character.name,
+            )
+    : [];
 
     const providedDialogue =
       voiceMode === "dialogue"
