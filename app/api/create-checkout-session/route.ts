@@ -656,27 +656,30 @@ function hasValidDialoguePlan(
         true ||
       providedSpeakers.length === 1;
 
-    const expectedSpeakers =
-      singleSpeakerMode
-        ? [
-            providedSpeakers[0] ??
-              storySpeakers[0] ??
-              bibleSpeakers[0],
-          ].filter(
-            (
-              speaker,
-            ): speaker is string =>
-              Boolean(speaker),
-          )
-        : (
-            bibleSpeakers.length >=
-            2
-              ? bibleSpeakers
-              : storySpeakers
-          ).slice(
-            0,
-            3,
-          );
+   const expectedSpeakers =
+  providedSpeakers.length > 0
+    ? providedSpeakers.slice(
+        0,
+        3,
+      )
+    : singleSpeakerMode
+      ? [
+          storySpeakers[0] ??
+            bibleSpeakers[0],
+        ].filter(
+          (
+            speaker,
+          ): speaker is string =>
+            Boolean(speaker),
+        )
+      : (
+          bibleSpeakers.length >= 2
+            ? bibleSpeakers
+            : storySpeakers
+        ).slice(
+          0,
+          3,
+        );
 
     const requiresConversation =
       requireViralStory ||
