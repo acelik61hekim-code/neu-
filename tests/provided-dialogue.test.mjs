@@ -1354,3 +1354,37 @@ test("generic male pronouns and roles map to the only visible man", () => {
     ],
   );
 });
+
+test("named dialogue after scene direction on the same line stays exact", () => {
+  const prompt =
+    "Erstelle ein 15 Sekunden langes vertikales Video. Eine einzige sichtbare Frau namens Ruby steht frontal in ruhiger Nahaufnahme vor der Kamera. Kein Voice-over, keine zweite Figur. RUBY: „Hallo. Das ist mein verbindlicher Originaldialog.“";
+
+  assert.deepEqual(
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content: prompt,
+          dialogueContent: prompt,
+        },
+      ],
+      [
+        {
+          name: "Ruby, die Erdbeere",
+        },
+      ],
+      true,
+    ),
+    [
+      {
+        speaker: "Ruby, die Erdbeere",
+        text: "Hallo.",
+      },
+      {
+        speaker: "Ruby, die Erdbeere",
+        text:
+          "Das ist mein verbindlicher Originaldialog.",
+      },
+    ],
+  );
+});

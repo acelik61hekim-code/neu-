@@ -208,7 +208,34 @@ export function extractInlineAttributedDialogue(
               left.aliasEnd,
         );
 
+    /*
+     * A storyboard line may contain scene direction and a speaker label in
+     * the same sentence, for example:
+     *
+     *   Ruby stands in front of the camera. No voice-over. RUBY: „Hello."
+     *
+     * Prefer the alias that is immediately followed by the label colon.
+     * Keeping this separate from the broader clause heuristic prevents an
+     * earlier mention of the same character from hiding the actual label.
+     */
+    const directLabelSpeaker =
+      speakerCandidates
+        .slice()
+        .sort(
+          (left, right) =>
+            right.aliasEnd -
+            left.aliasEnd,
+        )
+        .find((candidate) =>
+          /^\s*(?:(?:\*{1,3}|_{1,3}|`)+\s*)?:\s*(?:(?:\*{1,3}|_{1,3}|`)+\s*)?$/u.test(
+            attributionContext.slice(
+              candidate.aliasEnd,
+            ),
+          ),
+        );
+
     const selectedSpeaker =
+      directLabelSpeaker ??
       currentClauseSpeakers[0] ??
       speakerCandidates
         .sort(
