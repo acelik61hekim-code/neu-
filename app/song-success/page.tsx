@@ -7,6 +7,19 @@ import Image from "next/image";
 import Header from "@/components/Header";
 import { LoadingIcon, MusicIcon, SparklesIcon, WarningIcon } from "@/components/Icons";
 
+type SongVersion = {
+  number: number;
+  title: string;
+  durationSeconds?: number;
+  audioMimeType?: string;
+  audioExtension?: "m4a" | "mp3";
+  audioFormatLabel?: "M4A" | "MP3";
+  audioUrl: string;
+  downloadUrl: string;
+  imageUrl?: string;
+  studioUrl?: string;
+};
+
 type SongStatus = {
   status?: "pending" | "processing" | "done" | "error";
   paymentStatus?: "unpaid" | "paid" | "failed" | "refunded";
@@ -16,18 +29,12 @@ type SongStatus = {
   length?: "clip" | "full2" | "full3" | "full4";
   lyricsMode?: "instrumental" | "ai" | "custom";
   generatedLyrics?: string;
+  playable?: boolean;
+  finalized?: boolean;
   audioUrl?: string;
   imageUrl?: string;
   studioUrl?: string;
-  versions?: Array<{
-    number: number;
-    title: string;
-    durationSeconds?: number;
-    audioUrl: string;
-    downloadUrl: string;
-    imageUrl?: string;
-    studioUrl?: string;
-  }>;
+  versions?: SongVersion[];
   canRetry?: boolean;
   errorMessage?: string;
 };
@@ -36,7 +43,7 @@ const stageLabels: Record<NonNullable<SongStatus["renderStage"]>, string> = {
   queued: "Dein Songauftrag wird vorbereitet",
   generating: "Komposition, Arrangement und Mix entstehen",
   "quality-check": "Aussprache, Lyrics und Gesangstempo werden geprüft",
-  uploading: "Die fertigen MP3-Dateien werden bereitgestellt",
+  uploading: "Die fertigen Audiodateien werden bereitgestellt",
   completed: "Dein Song ist fertig",
   failed: "Die Songerstellung wurde unterbrochen",
 };
@@ -106,7 +113,7 @@ function SongSuccessContent() {
     };
 
     void refresh();
-    interval = setInterval(() => void refresh(), 4000);
+    interval = setInterval(() => void refresh(), 2000);
     return () => { stopped = true; if (interval) clearInterval(interval); };
   }, [jobId, sessionId, accessToken, refreshKey]);
 
@@ -179,8 +186,10 @@ function Page({ status, connectionError, retrying = false, onRetry }: { status: 
               studioUrl:
                 status.studioUrl,
             },
-          ]
+        ]
         : [];
+  const hasPlayableSong =
+    songVersions.length > 0;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#07070b] text-white">
@@ -197,7 +206,7 @@ function Page({ status, connectionError, retrying = false, onRetry }: { status: 
             {done ? "Dein Song ist " : state === "error" ? "Das hat noch nicht " : "Deine Idee wird jetzt "}
             <span className="bg-gradient-to-r from-violet-300 via-fuchsia-300 to-blue-300 bg-clip-text text-transparent">{done ? "bereit" : state === "error" ? "geklappt" : "zu Musik"}</span>
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-zinc-400">{done ? songVersions.length > 1 ? "Höre dir beide erstellten Song-Versionen an und lade deine Favoriten herunter." : "Höre deinen Song direkt an oder lade die MP3 herunter." : state === "error" ? "Dein Auftrag ist sicher gespeichert. Unten findest du weitere Informationen." : "Du kannst die Seite geöffnet lassen. Der Status aktualisiert sich automatisch."}</p>
+          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-zinc-400">{done ? songVersions.length > 1 ? "Höre dir beide erstellten Song-Versionen an und lade deine Favoriten herunter." : "Höre deinen Song direkt an oder lade die fertige Audiodatei herunter." : state === "error" ? "Dein Auftrag ist sicher gespeichert. Unten findest du weitere Informationen." : hasPlayableSong ? "Die erste geprüfte Version ist schon abspielbar. Die nächste Version und die Abschlussprüfung laufen im Hintergrund weiter." : "Du kannst die Seite geöffnet lassen. Der Status aktualisiert sich automatisch."}</p>
         </section>
 
         <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.035] shadow-2xl shadow-black/30 backdrop-blur-xl">
@@ -212,9 +221,9 @@ function Page({ status, connectionError, retrying = false, onRetry }: { status: 
           </div>
 
           <div className="p-5 sm:p-7">
-            {working && <div><div className="h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 transition-[width] duration-700" style={{ width: `${Math.max(progress, 3)}%` }} /></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><Step complete={status.paymentStatus === "paid"} active={status.paymentStatus !== "paid"} title="Zahlung" text="Sicher bestätigt" /><Step complete={progress >= 85} active={progress < 85} title="Songerstellung" text="Zwei Versionen entstehen" /><Step complete={done} active={progress >= 85} title="MP3-Dateien" text="Downloads vorbereiten" /></div>{connectionError && <p className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/5 px-4 py-3 text-xs text-amber-200/80">{connectionError} Dein Auftrag läuft unabhängig davon weiter.</p>}</div>}
+            {working && <div><div className="h-2 overflow-hidden rounded-full bg-white/5"><div className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-blue-500 transition-[width] duration-700" style={{ width: `${Math.max(progress, 3)}%` }} /></div><div className="mt-6 grid gap-3 sm:grid-cols-3"><Step complete={status.paymentStatus === "paid"} active={status.paymentStatus !== "paid"} title="Zahlung" text="Sicher bestätigt" /><Step complete={hasPlayableSong} active={!hasPlayableSong} title="Erste Version" text={hasPlayableSong ? "Jetzt anhören" : "Wird erstellt"} /><Step complete={done} active={hasPlayableSong} title="Fertigstellung" text={done ? "Downloads bereit" : "Version 2 wird finalisiert"} /></div>{connectionError && <p className="mt-5 rounded-xl border border-amber-400/15 bg-amber-400/5 px-4 py-3 text-xs text-amber-200/80">{connectionError} Dein Auftrag läuft unabhängig davon weiter.</p>}</div>}
 
-            {done && songVersions.length > 0 && <div><div className={`grid gap-5 ${songVersions.length > 1 ? "md:grid-cols-2" : "mx-auto max-w-2xl"}`}>{songVersions.map((version) => <article key={version.number} className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/5 text-left"><div className="relative aspect-square overflow-hidden bg-gradient-to-br from-fuchsia-600/25 via-violet-600/20 to-blue-600/20">{version.imageUrl ? <Image src={version.imageUrl} alt={`Cover von ${version.title}`} fill unoptimized sizes="(min-width: 768px) 420px, 90vw" className="object-cover" /> : <div className="absolute inset-0 flex items-center justify-center"><div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-2xl shadow-fuchsia-950/50"><MusicIcon className="h-8 w-8" /></div></div>}<span className="absolute left-4 top-4 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur">Version {version.number}</span></div><div className="p-5 sm:p-6"><h3 className="truncate text-xl font-semibold">{version.title}</h3><p className="mt-1 text-xs text-zinc-500">{formatSongDuration(version.durationSeconds) || songLengthText(status.length)} · MP3</p><audio className="mt-5 w-full" controls preload="metadata" src={version.audioUrl} /><div className="mt-5 flex flex-wrap gap-2"><a className="inline-flex flex-1 items-center justify-center rounded-xl bg-fuchsia-600 px-4 py-3 text-sm font-semibold transition hover:bg-fuchsia-500" href={version.downloadUrl}>MP3 herunterladen</a>{version.studioUrl && <a className="inline-flex items-center justify-center rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-3 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href={version.studioUrl}>Bearbeiten</a>}</div></div></article>)}</div>{status.generatedLyrics && status.lyricsMode !== "instrumental" && <details className="mx-auto mt-6 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 text-left"><summary className="cursor-pointer text-sm font-medium text-fuchsia-200">Lyrics und Songstruktur anzeigen</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-zinc-400">{status.generatedLyrics}</pre></details>}</div>}
+            {hasPlayableSong ? <div><div className={`grid gap-5 ${songVersions.length > 1 ? "md:grid-cols-2" : "mx-auto max-w-2xl"}`}>{songVersions.map((version) => <SongVersionCard key={version.number} version={version} finalized={done} songLength={status.length} />)}</div>{status.generatedLyrics && status.lyricsMode !== "instrumental" ? <details className="mx-auto mt-6 max-w-2xl rounded-2xl border border-white/10 bg-black/20 p-5 text-left"><summary className="cursor-pointer text-sm font-medium text-fuchsia-200">Lyrics und Songstruktur anzeigen</summary><pre className="mt-4 whitespace-pre-wrap font-sans text-sm leading-7 text-zinc-400">{status.generatedLyrics}</pre></details> : null}</div> : null}
 
             {state === "error" && <div className="rounded-2xl border border-red-400/20 bg-red-400/10 p-5"><div className="flex items-start gap-3"><WarningIcon className="mt-0.5 text-red-300" /><div><p className="font-medium text-red-100">Die Songerstellung konnte nicht abgeschlossen werden.</p><p className="mt-2 text-sm leading-6 text-red-100/70">{status.errorMessage || "Bitte versuche es später erneut oder wende dich an den Support."}</p>{status.canRetry && onRetry && <button type="button" onClick={onRetry} disabled={retrying} className="mt-4 rounded-xl bg-fuchsia-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:cursor-wait disabled:opacity-60">{retrying ? "Wird sicher neu gestartet …" : "Ohne neue Zahlung erneut starten"}</button>}</div></div></div>}
 
@@ -224,6 +233,12 @@ function Page({ status, connectionError, retrying = false, onRetry }: { status: 
       </div>
     </main>
   );
+}
+
+function SongVersionCard({ version, finalized, songLength }: { version: SongVersion; finalized: boolean; songLength: SongStatus["length"] }) {
+  const formatLabel = version.audioFormatLabel ?? (version.audioMimeType?.includes("mp4") ? "M4A" : "MP3");
+
+  return <article className="overflow-hidden rounded-2xl border border-fuchsia-400/15 bg-gradient-to-br from-fuchsia-500/10 to-violet-500/5 text-left"><div className="relative aspect-square overflow-hidden bg-gradient-to-br from-fuchsia-600/25 via-violet-600/20 to-blue-600/20">{version.imageUrl ? <Image src={version.imageUrl} alt={`Cover von ${version.title}`} fill unoptimized sizes="(min-width: 768px) 420px, 90vw" className="object-cover" /> : <div className="absolute inset-0 flex items-center justify-center"><div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-2xl shadow-fuchsia-950/50"><MusicIcon className="h-8 w-8" /></div></div>}<span className="absolute left-4 top-4 rounded-full border border-white/15 bg-black/55 px-3 py-1 text-xs font-semibold text-white backdrop-blur">Version {version.number}</span></div><div className="p-5 sm:p-6"><h3 className="truncate text-xl font-semibold">{version.title}</h3><p className="mt-1 text-xs text-zinc-500">{formatSongDuration(version.durationSeconds) || songLengthText(songLength)} · {formatLabel}</p><audio aria-label={`${version.title} anhören`} className="mt-5 w-full" controls preload="metadata" src={version.audioUrl} />{finalized ? <div className="mt-5 flex flex-wrap gap-2"><a className="inline-flex flex-1 items-center justify-center rounded-xl bg-fuchsia-600 px-4 py-3 text-sm font-semibold transition hover:bg-fuchsia-500" href={version.downloadUrl}>{formatLabel} herunterladen</a>{version.studioUrl ? <a className="inline-flex items-center justify-center rounded-xl border border-fuchsia-400/20 bg-fuchsia-400/[0.07] px-4 py-3 text-sm font-medium text-fuchsia-200 transition hover:bg-fuchsia-400/[0.12]" href={version.studioUrl}>Bearbeiten</a> : null}</div> : <p className="mt-5 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.07] px-4 py-3 text-center text-xs font-medium text-emerald-200">Jetzt anhören · Download nach Abschlussprüfung</p>}</div></article>;
 }
 
 function Step({ active, complete, title, text }: { active: boolean; complete: boolean; title: string; text: string }) {

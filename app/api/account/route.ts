@@ -16,6 +16,7 @@ import {
   isRestartableSongProviderError,
   publicSongFailureMessage,
 } from "@/lib/song-recovery";
+import { songAudioFormatFromMimeType } from "@/lib/song-audio-format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,6 +76,11 @@ async function resolveRecord(userId: string, record: AccountMediaRecord) {
             const number =
               index + 1;
 
+            const format =
+              songAudioFormatFromMimeType(
+                version.audioMimeType,
+              );
+
             const accessQuery =
               `account=1&version=${number}`;
 
@@ -84,6 +90,12 @@ async function resolveRecord(userId: string, record: AccountMediaRecord) {
                 version.title ||
                 job.title ||
                 `Song-Version ${number}`,
+              audioMimeType:
+                format.mimeType,
+              audioExtension:
+                format.extension,
+              audioFormatLabel:
+                format.label,
               audioUrl:
                 `/api/song-download/${encodeURIComponent(record.jobId)}?${accessQuery}`,
               downloadUrl:

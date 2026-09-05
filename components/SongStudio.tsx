@@ -425,7 +425,7 @@ export default function SongStudio({
             <div className="my-6 h-px bg-white/10" />
             <ul className="space-y-3 text-sm text-zinc-300">
               <Benefit>Zwei Song-Versionen mit Cover</Benefit>
-              <Benefit>Hochwertige Stereo-MP3</Benefit>
+              <Benefit>Hochwertige Stereo-M4A</Benefit>
               <Benefit>Nur Musik – kein Video nötig</Benefit>
               <Benefit>Sicherer Download nach Erstellung</Benefit>
               <Benefit>Originalkomposition mit SynthID</Benefit>

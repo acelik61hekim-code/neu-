@@ -343,7 +343,12 @@ export default function SoundStudio() {
         throw new Error("Die aktuelle Studioversion konnte nicht für die KI vorbereitet werden.");
       }
       body = await response.blob();
-      originalName = `${source?.title || "song"}-${currentVersion.label}.mp3`;
+      const sourceExtension =
+        audioExtensionForContentType(
+          body.type,
+          currentVersion.audioUrl,
+        );
+      originalName = `${source?.title || "song"}-${currentVersion.label}.${sourceExtension}`;
     }
 
     if (body.size > 200 * 1024 * 1024) {

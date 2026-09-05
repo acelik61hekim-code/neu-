@@ -114,7 +114,6 @@ export async function GET(
     );
 
   if (
-    job.status !== "done" ||
     !selected?.version.imageUri
   ) {
     return Response.json(

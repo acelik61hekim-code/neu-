@@ -32,8 +32,16 @@ import {
   type SongLyricQuality,
 } from "@/lib/song-quality";
 
-import { songStore } from "@/lib/song-store";
+import {
+  getGeneratedSongVersions,
+  songStore,
+  type GeneratedSongVersion,
+} from "@/lib/song-store";
 import { isRestartableSongProviderError } from "@/lib/song-recovery";
+import {
+  songAudioFormatFromMimeType,
+  type SongAudioExtension,
+} from "@/lib/song-audio-format";
 
 import {
   downloadAceDataAudio,
@@ -61,6 +69,7 @@ type InspectedSongCandidate = {
   audio: Buffer;
 
   generatedAudio: {
+    extension: SongAudioExtension;
     mimeType: string;
   };
 
@@ -109,8 +118,13 @@ export async function storeSongAudio(
       ? `-${versionIndex + 1}`
       : "";
 
+  const extension =
+    songAudioFormatFromMimeType(
+      mimeType,
+    ).extension;
+
   const pathname =
-    `songs/${jobId}${versionSuffix}.mp3`;
+    `songs/${jobId}${versionSuffix}.${extension}`;
 
   const hasBlobCredentials = Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
@@ -235,6 +249,7 @@ export async function storeSongCover(
 
 async function inspectAudio(
   audio: Buffer,
+  extension: SongAudioExtension,
 ): Promise<{
   durationSeconds: number;
   sampleRate: number;
@@ -253,7 +268,7 @@ async function inspectAudio(
   try {
     const filename = join(
       directory,
-      "song.mp3",
+      `song.${extension}`,
     );
 
     await writeFile(filename, audio);
@@ -304,7 +319,7 @@ async function inspectAudio(
       !audioMatch
     ) {
       throw new Error(
-        "Die erzeugte MP3 konnte technisch nicht geprüft werden.",
+        "Die erzeugte Audiodatei konnte technisch nicht geprüft werden.",
       );
     }
 
@@ -1045,10 +1060,13 @@ async function inspectSongCandidate(
     );
   }
 
-  const audio =
+  const downloadedAudio =
     await downloadAceDataAudio(
       song.audio_url,
     );
+
+  const audio =
+    downloadedAudio.data;
 
   if (
     audio.length < 10_000
@@ -1059,7 +1077,10 @@ async function inspectSongCandidate(
   }
 
   const audioQuality =
-    await inspectAudio(audio);
+    await inspectAudio(
+      audio,
+      downloadedAudio.extension,
+    );
 
   const expectedLyrics =
     plannedLyrics ??
@@ -1101,7 +1122,9 @@ async function inspectSongCandidate(
 
     generatedAudio: {
       mimeType:
-        "audio/mpeg",
+        downloadedAudio.mimeType,
+      extension:
+        downloadedAudio.extension,
     },
 
     audio,
@@ -1121,6 +1144,10 @@ async function inspectSongCandidates(
   songs: AceDataSongResult[],
   job: SongJob,
   plannedLyrics?: string,
+  cachedCandidates = new Map<
+    string,
+    InspectedCandidateResult
+  >(),
 ): Promise<InspectedCandidateResult[]> {
   const inspected:
     InspectedCandidateResult[] = [];
@@ -1148,25 +1175,49 @@ async function inspectSongCandidates(
     }
 
     try {
-      const candidate =
-        await inspectSongCandidate(
-          song,
-          job,
-          plannedLyrics,
-        );
+      const cached =
+        candidateKey
+          ? cachedCandidates.get(
+              candidateKey,
+            )
+          : undefined;
 
-      const issues =
-        songCandidateIssues(
+      if (cached) {
+        inspected.push(
+          cached,
+        );
+      } else {
+        const candidate =
+          await inspectSongCandidate(
+            song,
+            job,
+            plannedLyrics,
+          );
+
+        const issues =
+          songCandidateIssues(
+            candidate,
+            job.length,
+            job.lyricsMode ===
+              "instrumental",
+          );
+
+        const result = {
           candidate,
-          job.length,
-          job.lyricsMode ===
-            "instrumental",
-        );
+          issues,
+        };
 
-      inspected.push({
-        candidate,
-        issues,
-      });
+        if (candidateKey) {
+          cachedCandidates.set(
+            candidateKey,
+            result,
+          );
+        }
+
+        inspected.push(
+          result,
+        );
+      }
 
     } catch (error) {
       console.warn(
@@ -1212,6 +1263,97 @@ async function inspectSongCandidates(
   );
 
   return inspected;
+}
+
+async function persistInspectedSongVersion(
+  jobId: string,
+  job: SongJob,
+  candidate: InspectedSongCandidate,
+  plannedLyrics: string | undefined,
+  versionIndex: number,
+): Promise<GeneratedSongVersion> {
+  const audioUri =
+    await storeSongAudio(
+      jobId,
+      candidate.audio,
+      candidate.generatedAudio
+        .mimeType,
+      versionIndex,
+    );
+
+  let imageUri:
+    string | undefined;
+  let imageMimeType:
+    string | undefined;
+
+  const providerImageUrl =
+    candidate.song
+      .image_large_url
+      ?.trim() ||
+    candidate.song
+      .image_url
+      ?.trim();
+
+  if (providerImageUrl) {
+    try {
+      const cover =
+        await downloadAceDataImage(
+          providerImageUrl,
+        );
+
+      imageUri =
+        await storeSongCover(
+          jobId,
+          cover.data,
+          cover.mimeType,
+          versionIndex,
+        );
+
+      imageMimeType =
+        cover.mimeType;
+    } catch (error) {
+      console.warn(
+        "AceData Songcover konnte nicht dauerhaft gespeichert werden:",
+        candidate.song.id,
+        error,
+      );
+    }
+  }
+
+  return {
+    providerSongId:
+      candidate.song.id,
+    title:
+      candidate.song.title
+        ?.trim()
+        .slice(0, 160) ||
+      job.title,
+    audioUri,
+    audioMimeType:
+      candidate.generatedAudio
+        .mimeType,
+    imageUri,
+    imageMimeType,
+    generatedLyrics:
+      candidate.song.lyric
+        ?.slice(0, 30_000) ??
+      plannedLyrics ??
+      (
+        job.lyricsMode ===
+          "custom"
+          ? job.lyrics
+          : undefined
+      ),
+    durationSeconds:
+      typeof candidate.song
+        .duration === "number" &&
+      Number.isFinite(
+        candidate.song.duration,
+      )
+        ? candidate.song.duration
+        : candidate.audioQuality
+            .durationSeconds,
+  };
 }
 
 export async function generateAndStoreSong(
@@ -1537,6 +1679,25 @@ export async function generateAndStoreSong(
    */
   let generatedSongs:
     AceDataSongResult[];
+  const inspectedByCandidate =
+    new Map<
+      string,
+      InspectedCandidateResult
+    >();
+  const publishedCandidateIds =
+    new Set(
+      getGeneratedSongVersions(
+        job,
+      )
+        .map((version) =>
+          version.providerSongId
+            ?.trim(),
+        )
+        .filter(
+          (value): value is string =>
+            Boolean(value),
+        ),
+    );
 
   try {
     generatedSongs =
@@ -1547,7 +1708,171 @@ export async function generateAndStoreSong(
             6 * 60 * 1000,
 
           intervalMs:
-            10_000,
+            3_000,
+
+          onProgress:
+            async (
+              availableSongs,
+            ) => {
+              for (
+                const availableSong
+                of availableSongs
+              ) {
+                const candidateKey =
+                  availableSong.id
+                    ?.trim() ||
+                  availableSong
+                    .audio_url
+                    ?.trim();
+
+                if (
+                  !candidateKey ||
+                  publishedCandidateIds.has(
+                    candidateKey,
+                  ) ||
+                  inspectedByCandidate.get(
+                    candidateKey,
+                  )?.issues.length
+                ) {
+                  continue;
+                }
+
+                const current =
+                  await songStore.get(
+                    jobId,
+                  );
+                const currentVersions =
+                  current
+                    ? getGeneratedSongVersions(
+                        current,
+                      )
+                    : [];
+
+                if (
+                  currentVersions.length >=
+                  2
+                ) {
+                  break;
+                }
+
+                try {
+                  const cachedInspection =
+                    inspectedByCandidate.get(
+                      candidateKey,
+                    );
+                  const inspected =
+                    cachedInspection ??
+                    await (async () => {
+                      const candidate =
+                        await inspectSongCandidate(
+                          availableSong,
+                          job,
+                          plannedLyrics,
+                        );
+                      const issues =
+                        songCandidateIssues(
+                          candidate,
+                          job.length,
+                          job.lyricsMode ===
+                            "instrumental",
+                        );
+                      return {
+                        candidate,
+                        issues,
+                      };
+                    })();
+
+                  inspectedByCandidate.set(
+                    candidateKey,
+                    inspected,
+                  );
+
+                  const {
+                    candidate,
+                    issues,
+                  } = inspected;
+
+                  if (
+                    issues.length > 0
+                  ) {
+                    console.warn(
+                      "Frühe Suno-Version hat die Qualitätsprüfung noch nicht bestanden:",
+                      {
+                        songId:
+                          availableSong.id,
+                        issues,
+                      },
+                    );
+                    continue;
+                  }
+
+                  const earlyVersion =
+                    await persistInspectedSongVersion(
+                      jobId,
+                      job,
+                      candidate,
+                      plannedLyrics,
+                      currentVersions.length,
+                    );
+
+                  await songStore.update(
+                    jobId,
+                    (latest) => {
+                      const latestVersions =
+                        getGeneratedSongVersions(
+                          latest,
+                        );
+
+                      if (
+                        latestVersions.some(
+                          (version) =>
+                            version.providerSongId ===
+                            earlyVersion.providerSongId,
+                        )
+                      ) {
+                        return latest;
+                      }
+
+                      return {
+                        ...latest,
+                        songVersions: [
+                          ...latestVersions,
+                          earlyVersion,
+                        ].slice(0, 2),
+                        progressPercent:
+                          Math.max(
+                            latest.progressPercent,
+                            58,
+                          ),
+                      };
+                    },
+                  );
+
+                  publishedCandidateIds.add(
+                    candidateKey,
+                  );
+
+                  console.log(
+                    "Erste geprüfte Suno-Version ist bereits im Player verfügbar:",
+                    {
+                      jobId,
+                      songId:
+                        availableSong.id,
+                      format:
+                        candidate
+                          .generatedAudio
+                          .extension,
+                    },
+                  );
+                } catch (error) {
+                  console.warn(
+                    "Frühe Suno-Version konnte noch nicht veröffentlicht werden:",
+                    availableSong.id,
+                    error,
+                  );
+                }
+              }
+            },
         },
       );
   } catch (error) {
@@ -1589,6 +1914,15 @@ export async function generateAndStoreSong(
             undefined,
 
           providerSongId:
+            undefined,
+
+          audioUri:
+            undefined,
+
+          audioMimeType:
+            undefined,
+
+          songVersions:
             undefined,
 
           providerRestartAttempts:
@@ -1666,6 +2000,7 @@ export async function generateAndStoreSong(
       generatedSongs,
       job,
       plannedLyrics,
+      inspectedByCandidate,
     );
 
   const primaryResult =
@@ -1682,7 +2017,7 @@ export async function generateAndStoreSong(
     );
   }
 
-  const versionCandidates =
+  const eligibleCandidates =
     inspectedCandidates
       .filter(
         ({ candidate }) =>
@@ -1690,10 +2025,46 @@ export async function generateAndStoreSong(
             .sampleRate >= 44_100 &&
           candidate.audioQuality
             .channels >= 2,
+      );
+  const beforeFinalization =
+    await songStore.get(
+      jobId,
+    );
+  const persistedVersions =
+    beforeFinalization
+      ? getGeneratedSongVersions(
+          beforeFinalization,
+        )
+      : [];
+  const persistedIds =
+    persistedVersions
+      .map((version) =>
+        version.providerSongId,
       )
-      .slice(0, 2);
+      .filter(
+        (value): value is string =>
+          Boolean(value),
+      );
+  const orderedCandidates = [
+    ...persistedIds.flatMap(
+      (providerSongId) =>
+        eligibleCandidates.filter(
+          ({ candidate }) =>
+            candidate.song.id ===
+            providerSongId,
+        ),
+    ),
+    ...eligibleCandidates.filter(
+      ({ candidate }) =>
+        !persistedIds.includes(
+          candidate.song.id,
+        ),
+    ),
+  ].slice(0, 2);
 
   const primaryCandidate =
+    orderedCandidates[0]
+      ?.candidate ??
     primaryResult.candidate;
 
   /*
@@ -1724,99 +2095,28 @@ export async function generateAndStoreSong(
 
   const songVersions =
     await Promise.all(
-      versionCandidates.map(
+      orderedCandidates.map(
         async (
           { candidate },
           versionIndex,
         ) => {
-          const audioUri =
-            await storeSongAudio(
-              jobId,
-              candidate.audio,
-              candidate
-                .generatedAudio
-                .mimeType,
-              versionIndex,
+          const persistedVersion =
+            persistedVersions.find(
+              (version) =>
+                version.providerSongId ===
+                candidate.song.id,
             );
 
-          let imageUri:
-            string | undefined;
-
-          let imageMimeType:
-            string | undefined;
-
-          const providerImageUrl =
-            candidate.song
-              .image_large_url
-              ?.trim() ||
-            candidate.song
-              .image_url
-              ?.trim();
-
-          if (providerImageUrl) {
-            try {
-              const cover =
-                await downloadAceDataImage(
-                  providerImageUrl,
-                );
-
-              imageUri =
-                await storeSongCover(
-                  jobId,
-                  cover.data,
-                  cover.mimeType,
-                  versionIndex,
-                );
-
-              imageMimeType =
-                cover.mimeType;
-            } catch (error) {
-              console.warn(
-                "AceData Songcover konnte nicht dauerhaft gespeichert werden:",
-                candidate.song.id,
-                error,
-              );
-            }
-          }
-
-          return {
-            providerSongId:
-              candidate.song.id,
-            title:
-              candidate.song.title
-                ?.trim()
-                .slice(0, 160) ||
-              job.title,
-            audioUri,
-            audioMimeType:
-              candidate
-                .generatedAudio
-                .mimeType,
-            imageUri,
-            imageMimeType,
-            generatedLyrics:
-              candidate.song.lyric
-                ?.slice(0, 30_000) ??
-              plannedLyrics ??
-              (
-                job.lyricsMode ===
-                  "custom"
-                  ? job.lyrics
-                  : undefined
-              ),
-            durationSeconds:
-              typeof candidate.song
-                .duration === "number" &&
-              Number.isFinite(
-                candidate.song
-                  .duration,
-              )
-                ? candidate.song
-                    .duration
-                : candidate
-                    .audioQuality
-                    .durationSeconds,
-          };
+          return (
+            persistedVersion ??
+            persistInspectedSongVersion(
+              jobId,
+              job,
+              candidate,
+              plannedLyrics,
+              versionIndex,
+            )
+          );
         },
       ),
     );

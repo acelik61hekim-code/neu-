@@ -52,14 +52,14 @@ export default function SongStudioPage() {
         title="Erstelle deinen eigenen vollständigen Song mit KI"
         intro="Lege Thema, Sprache, Stimmung, Musikstil und Gesangsart fest. Du kannst eigene Lyrics verwenden, einen neuen Songtext erstellen lassen, eine Sprachidee aufnehmen oder reine Instrumentalmusik erzeugen."
         benefits={[
-          "Erhalte zwei vollständige Song-Versionen samt Cover und MP3-Download.",
+          "Erhalte zwei vollständige Song-Versionen samt Cover und M4A-Download.",
           "Nutze eigene Lyrics, einen KI-Songtext oder den Instrumentalmodus.",
           "Beschreibe deinen gewünschten Musikstil frei mit eigenen Worten.",
         ]}
         steps={[
           "Beschreibe Thema, Musikstil, Stimmung, Sprache und gewünschte Gesangsart.",
           "Gib eigene Lyrics ein oder lass einen passenden neuen Songtext durch die KI schreiben.",
-          "Bezahle sicher und lade anschließend beide fertigen Versionen als MP3 herunter.",
+          "Bezahle sicher und lade anschließend beide fertigen Versionen als M4A herunter.",
         ]}
         faqs={faqs}
       />

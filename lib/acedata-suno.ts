@@ -1,6 +1,10 @@
 // lib/acedata-suno.ts
 
 import { isRestartableSongProviderError } from "@/lib/song-recovery";
+import {
+  resolveSongAudioFormat,
+  type SongAudioExtension,
+} from "@/lib/song-audio-format";
 
 const ACEDATA_BASE_URL = "https://api.acedata.cloud";
 
@@ -411,13 +415,16 @@ export async function waitForAceDataSong(
   options?: {
     timeoutMs?: number;
     intervalMs?: number;
+    onProgress?: (
+      songs: AceDataSongResult[],
+    ) => Promise<void> | void;
   }
 ): Promise<AceDataSongResult[]> {
   const timeoutMs =
     options?.timeoutMs ?? 6 * 60 * 1000;
 
   const intervalMs =
-    options?.intervalMs ?? 10_000;
+    options?.intervalMs ?? 3_000;
 
   const startedAt = Date.now();
   let transientPollFailures = 0;
@@ -466,16 +473,26 @@ export async function waitForAceDataSong(
       throw error;
     }
 
+    const validSongs =
+      result.songs.filter(
+        (song) =>
+          song.state?.toLowerCase() ===
+            "succeeded" &&
+          typeof song.audio_url ===
+            "string" &&
+          song.audio_url.trim().length > 0
+      );
+
+    if (
+      validSongs.length > 0 &&
+      options?.onProgress
+    ) {
+      await options.onProgress(
+        validSongs,
+      );
+    }
+
     if (result.finished) {
-      const validSongs =
-        result.songs.filter(
-          (song) =>
-            song.state?.toLowerCase() ===
-              "succeeded" &&
-            typeof song.audio_url ===
-              "string" &&
-            song.audio_url.trim().length > 0
-        );
 
       if (!validSongs.length) {
         throw new Error(
@@ -508,7 +525,11 @@ function cleanTaskIdForLog(taskId: string): string {
 
 export async function downloadAceDataAudio(
   audioUrl: string
-): Promise<Buffer> {
+): Promise<{
+  data: Buffer;
+  extension: SongAudioExtension;
+  mimeType: "audio/mp4" | "audio/mpeg";
+}> {
   const url = audioUrl.trim();
 
   if (!url) {
@@ -523,7 +544,7 @@ export async function downloadAceDataAudio(
 
     headers: {
       Accept:
-        "audio/mpeg,audio/*;q=0.9,*/*;q=0.1",
+        "audio/mp4,audio/x-m4a,audio/aac,audio/mpeg,audio/*;q=0.9,*/*;q=0.1",
     },
   });
 
@@ -540,6 +561,7 @@ export async function downloadAceDataAudio(
   if (
     contentType &&
     !contentType.startsWith("audio/") &&
+    !contentType.startsWith("video/mp4") &&
     !contentType.includes(
       "application/octet-stream"
     )
@@ -560,7 +582,27 @@ export async function downloadAceDataAudio(
     );
   }
 
-  return audio;
+  const format =
+    resolveSongAudioFormat({
+      mimeType:
+        contentType,
+      sourceUrl:
+        url,
+      bytes:
+        audio.subarray(
+          0,
+          32,
+        ),
+    });
+
+  return {
+    data:
+      audio,
+    extension:
+      format.extension,
+    mimeType:
+      format.mimeType,
+  };
 }
 
 export async function downloadAceDataImage(

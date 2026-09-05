@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
     const song = task.songs.find((candidate) => candidate.state?.toLowerCase() === "succeeded" && candidate.audio_url);
     if (!song?.audio_url) throw new Error("Der Musikdienst hat keine fertige Audiodatei geliefert.");
     const audio = await downloadAceDataAudio(song.audio_url);
-    const audioUri = await storeSongAudio(`edit-${editId}`, audio, "audio/mpeg");
-    const completed = { ...edit, status: "done" as const, providerSongId: song.id, audioUri, audioMimeType: "audio/mpeg", updatedAt: Date.now() };
+    const audioUri = await storeSongAudio(`edit-${editId}`, audio.data, audio.mimeType);
+    const completed = { ...edit, status: "done" as const, providerSongId: song.id, audioUri, audioMimeType: audio.mimeType, updatedAt: Date.now() };
     await songEditStore.set(editId, completed);
     return doneResponse(editId, editToken, completed);
   } catch (error) {

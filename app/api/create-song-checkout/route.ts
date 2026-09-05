@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
         price_data: {
           currency: "eur",
           product_data: {
-            name: `${revisionMode ? "Song-Neuinterpretation" : "KI-Song"} · ${songLengthLabel(songLength)} · MP3`,
+            name: `${revisionMode ? "Song-Neuinterpretation" : "KI-Song"} · ${songLengthLabel(songLength)} · M4A`,
             description: revisionMode
               ? "Neue Originalversion nach der analysierten Klangidee deines Songs"
               : body.lyricsMode === "instrumental"

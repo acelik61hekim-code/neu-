@@ -36,9 +36,11 @@ export async function GET(request: Request) {
     return Response.json({ error: "Audiodatei nicht gefunden." }, { status: 404 });
   }
 
+  const contentType = result.blob.contentType || "audio/mpeg";
+  const extension = providerAudioExtension(contentType, access.pathname);
   const headers = new Headers({
-    "Content-Type": result.blob.contentType || "audio/mpeg",
-    "Content-Disposition": 'inline; filename="reference.mp3"',
+    "Content-Type": contentType,
+    "Content-Disposition": `inline; filename="reference.${extension}"`,
     "Cache-Control": "private, no-store",
     "Accept-Ranges": result.headers.get("accept-ranges") || "bytes",
   });
@@ -74,4 +76,24 @@ export async function HEAD(request: Request) {
   } catch {
     return new Response(null, { status: 404 });
   }
+}
+
+function providerAudioExtension(
+  contentType: string,
+  pathname: string,
+): string {
+  const normalized = contentType.toLowerCase();
+
+  if (normalized.includes("mp4") || normalized.includes("m4a")) return "m4a";
+  if (normalized.includes("wav")) return "wav";
+  if (normalized.includes("aac")) return "aac";
+  if (normalized.includes("ogg")) return "ogg";
+  if (normalized.includes("flac")) return "flac";
+
+  const pathnameExtension = pathname.split(".").pop()?.toLowerCase();
+  if (pathnameExtension && ["mp3", "wav", "m4a", "aac", "ogg", "flac"].includes(pathnameExtension)) {
+    return pathnameExtension;
+  }
+
+  return "mp3";
 }

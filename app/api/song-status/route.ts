@@ -10,6 +10,7 @@ import {
   publicSongFailureMessage,
 } from "@/lib/song-recovery";
 import { getCurrentUser } from "@/lib/supabase/server";
+import { songAudioFormatFromMimeType } from "@/lib/song-audio-format";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,11 +38,10 @@ export async function GET(request: NextRequest) {
       job,
     );
 
-  const ready =
-    job.status === "done" &&
+  const playable =
     songVersions.length > 0;
 
-  const versions = ready
+  const versions = playable
     ? songVersions.map(
         (version, index) => {
           const versionNumber =
@@ -49,6 +49,11 @@ export async function GET(request: NextRequest) {
 
           const versionQuery =
             `${accessQuery}&version=${versionNumber}`;
+
+          const format =
+            songAudioFormatFromMimeType(
+              version.audioMimeType,
+            );
 
           return {
             number:
@@ -59,6 +64,12 @@ export async function GET(request: NextRequest) {
               `Song-Version ${versionNumber}`,
             durationSeconds:
               version.durationSeconds,
+            audioMimeType:
+              format.mimeType,
+            audioExtension:
+              format.extension,
+            audioFormatLabel:
+              format.label,
             audioUrl:
               `/api/song-download/${encodeURIComponent(jobId)}?${versionQuery}`,
             downloadUrl:
@@ -68,6 +79,7 @@ export async function GET(request: NextRequest) {
                 ? `/api/song-cover/${encodeURIComponent(jobId)}?${versionQuery}`
                 : undefined,
             studioUrl:
+              job.status === "done" &&
               version.providerSongId
                 ? `/sound-studio?jobId=${encodeURIComponent(jobId)}&${versionQuery}`
                 : undefined,
@@ -85,6 +97,9 @@ export async function GET(request: NextRequest) {
     length: job.length,
     lyricsMode: job.lyricsMode,
     generatedLyrics: job.generatedLyrics,
+    playable,
+    finalized:
+      job.status === "done",
     versions,
     audioUrl:
       versions[0]

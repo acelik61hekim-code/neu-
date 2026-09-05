@@ -53,7 +53,7 @@ export function createSignedProviderAudioUrl(
 
   const expires = Math.floor(Date.now() / 1_000) + 2 * 60 * 60;
   const url = new URL(
-    "/api/song-studio/provider-audio/reference.mp3",
+    "/api/song-studio/provider-audio/reference.audio",
     origin,
   );
   url.searchParams.set("source", pathname);
