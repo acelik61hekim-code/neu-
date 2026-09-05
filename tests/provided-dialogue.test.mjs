@@ -539,6 +539,67 @@ test("multiline fruit speaker labels with emotion preserve the submitted dialogu
   );
 });
 
+test("camera directions are never promoted to exact dialogue speakers", () => {
+  const prompt = `1. Die verärgerte Kundin: „Was machst du da?“
+2. Diva-Kakerlake: „Eine Diva wartet nie.“
+3. Professionelle Kameraführung: „Establishing Shot der Warteschlange, dynamischer Dolly-in beim Vordrängeln, Close-up während der arroganten Antwort“
+4. Professionelle Kameraführung: „Antwort, schneller Whip-Pan beim Abschuss und abschließender Deadpan-Close-up der Kassiererin.“
+5. Die Kassiererin: „Bar oder Karte?“`;
+
+  assert.equal(
+    countExplicitDialogueEvents(
+      prompt,
+    ),
+    1,
+  );
+
+  assert.deepEqual(
+    extractProvidedDialogue(
+      [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      [
+        {
+          name:
+            "Die verärgerte Kundin",
+        },
+        {
+          name:
+            "Diva-Kakerlake",
+        },
+        {
+          name:
+            "Die Kassiererin",
+        },
+      ],
+      false,
+    ),
+    [
+      {
+        speaker:
+          "Die verärgerte Kundin",
+        text:
+          "Was machst du da?",
+      },
+      {
+        speaker:
+          "Diva-Kakerlake",
+        text:
+          "Eine Diva wartet nie.",
+      },
+      {
+        speaker:
+          "Die Kassiererin",
+        text:
+          "Bar oder Karte?",
+      },
+    ],
+  );
+});
+
 test("bold markdown dialogue with a one-letter fruit typo stays exact", () => {
   assert.equal(
     countExplicitDialogueBlocks(

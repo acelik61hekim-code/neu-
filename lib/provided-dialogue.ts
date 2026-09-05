@@ -609,6 +609,17 @@ function isGenericVisibleSpeakerLabel(
   );
 }
 
+const PRODUCTION_DIRECTION_LABEL_PATTERN =
+  /\b(?:schrift|text|titel|einblendung|untertitel|logo|darunter|darüber|kamera[\p{L}-]*|camera(?:work|move|movement|plan)?|regie[\p{L}-]*|direct(?:ing|ion|or)|shot(?:s|list)?|framing|dolly|close[ -]?up|establishing|licht[\p{L}-]*|lighting|ton[\p{L}-]*|audio|sound(?:track)?|musik|music|schnitt[\p{L}-]*|edit(?:ing|orial)?|montage|transition|(?:ü|ue)bergang|szene[\p{L}-]*|scene|story[ -]?beat|setting|timing|dauer|duration|sekunden|seconds?|format|aspect|ratio|auflösung|resolution|handlung|action|beschreibung|anweisung|hinweis|wichtig|stil|style|look|prompt|hook|intro|outro|start|ende)\b/iu;
+
+function isProductionDirectionLabel(
+  value: string,
+): boolean {
+  return PRODUCTION_DIRECTION_LABEL_PATTERN.test(
+    normalizeSpeakerKey(value),
+  );
+}
+
 function hasSingleEditDistance(
   first: string,
   second: string,
@@ -692,7 +703,7 @@ function isLikelyMultilineSpeakerLabel(
     /^(?:(?:nur|ein(?:e|en|em|er|es)?|durchgehend(?:e|en|em|er|es)?|deutsch(?:e|en|em|er|es)?|englisch(?:e|en|em|er|es)?)\s+)*(?:voice\s*over|voiceover|off\s*(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off|erzähler(?:in)?|narrator|narration|sprechertext)$/iu.test(
       normalized,
     ) ||
-    /\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber)\b/iu.test(
+    isProductionDirectionLabel(
       normalized,
     )
   ) {
