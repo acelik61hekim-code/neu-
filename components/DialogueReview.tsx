@@ -1,13 +1,6 @@
 "use client";
 
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-
-import {
   approveDialogueReview,
   hasApprovedDialogueReview,
   inspectDialogueQuality,
@@ -15,15 +8,9 @@ import {
 
 import type {
   Story,
-  VideoSpokenLanguage,
   VideoModelId,
   VideoVoiceMode,
 } from "@/types/story";
-
-import {
-  LoadingIcon,
-  WarningIcon,
-} from "./Icons";
 
 type DialogueReviewProps = {
   story: Story;
@@ -31,7 +18,6 @@ type DialogueReviewProps = {
   voiceoverText: string;
   targetDurationSeconds: number;
   videoModel: VideoModelId;
-  spokenLanguage: VideoSpokenLanguage;
   disabled?: boolean;
   onStoryChange: (story: Story) => void;
 };
@@ -42,32 +28,11 @@ export default function DialogueReview({
   voiceoverText,
   targetDurationSeconds,
   videoModel,
-  spokenLanguage,
   disabled = false,
   onStoryChange,
 }: DialogueReviewProps) {
-  const [loadingIndex, setLoadingIndex] =
-    useState<number | null>(null);
-  const [previewUrls, setPreviewUrls] =
-    useState<Record<number, string>>({});
-  const previewUrlsRef = useRef<
-    Record<number, string>
-  >({});
-  const [previewError, setPreviewError] =
-    useState<string | null>(null);
   const dialogue =
     story.providedDialogue ?? [];
-  const orderedSpeakers = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          dialogue.map((line) =>
-            line.speaker.trim(),
-          ),
-        ),
-      ),
-    [dialogue],
-  );
   const report = inspectDialogueQuality(
     story,
     {
@@ -81,15 +46,6 @@ export default function DialogueReview({
   const approved =
     hasApprovedDialogueReview(story);
 
-  useEffect(
-    () => () => {
-      Object.values(previewUrlsRef.current).forEach(
-        (url) => URL.revokeObjectURL(url),
-      );
-    },
-    [],
-  );
-
   if (!report.required) {
     return null;
   }
@@ -98,26 +54,6 @@ export default function DialogueReview({
     index: number,
     value: string,
   ) {
-    setPreviewError(null);
-    setPreviewUrls((current) => {
-      const previous = current[index];
-
-      if (!previous) {
-        return current;
-      }
-
-      URL.revokeObjectURL(previous);
-
-      const next = {
-        ...current,
-      };
-
-      delete next[index];
-      previewUrlsRef.current = next;
-
-      return next;
-    });
-
     const nextDialogue = dialogue.map(
       (line, lineIndex) =>
         lineIndex === index
@@ -142,81 +78,6 @@ export default function DialogueReview({
     });
   }
 
-  async function createSpeechPreview(
-    index: number,
-  ) {
-    const line = dialogue[index];
-
-    if (!line || loadingIndex !== null) {
-      return;
-    }
-
-    setPreviewError(null);
-    setLoadingIndex(index);
-
-    try {
-      const response = await fetch(
-        "/api/dialogue-speech-preview",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type":
-              "application/json",
-          },
-          body: JSON.stringify({
-            speaker: line.speaker,
-            speakers: orderedSpeakers,
-            text:
-              line.pronunciation?.trim() ||
-              line.text,
-            language: spokenLanguage,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const error = await response
-          .json()
-          .catch(() => ({})) as {
-            error?: string;
-          };
-
-        throw new Error(
-          error.error ||
-            "Die Hörprobe konnte nicht erstellt werden.",
-        );
-      }
-
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-
-      setPreviewUrls((current) => {
-        const previous = current[index];
-
-        if (previous) {
-          URL.revokeObjectURL(previous);
-        }
-
-        const next = {
-          ...current,
-          [index]: url,
-        };
-
-        previewUrlsRef.current = next;
-
-        return next;
-      });
-    } catch (error) {
-      setPreviewError(
-        error instanceof Error
-          ? error.message
-          : "Die Hörprobe konnte nicht erstellt werden.",
-      );
-    } finally {
-      setLoadingIndex(null);
-    }
-  }
-
   function approve() {
     if (!report.ready) {
       return;
@@ -234,7 +95,7 @@ export default function DialogueReview({
           Verbindlicher Originaldialog
         </p>
         <h2 className="mt-1 text-lg font-semibold text-white">
-          Sprecher, Wortlaut und Aussprache bestätigen
+          Sprecher, Wortlaut und Aussprache prüfen
         </h2>
         <p className="mt-2 text-sm leading-6 text-zinc-400">
           Der sichtbare Text bleibt unverändert. Im Aussprachefeld kannst du nur festlegen, wie Namen oder Fremdwörter gesprochen werden.
@@ -281,45 +142,8 @@ export default function DialogueReview({
               />
             </label>
 
-            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() =>
-                  void createSpeechPreview(index)
-                }
-                disabled={
-                  disabled ||
-                  loadingIndex !== null
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-white/10 disabled:opacity-50"
-              >
-                {loadingIndex === index ? (
-                  <>
-                    <LoadingIcon className="animate-spin" />
-                    Hörprobe wird erstellt
-                  </>
-                ) : (
-                  "▶ Aussprache anhören"
-                )}
-              </button>
-
-              {previewUrls[index] && (
-                <audio
-                  controls
-                  src={previewUrls[index]}
-                  className="h-9 min-w-0 flex-1"
-                />
-              )}
-            </div>
           </article>
         ))}
-
-        {previewError && (
-          <div className="flex items-start gap-2 rounded-xl border border-red-400/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-100">
-            <WarningIcon className="mt-0.5 shrink-0" />
-            {previewError}
-          </div>
-        )}
 
         <div className={`rounded-2xl border p-4 ${
           report.ready
@@ -335,7 +159,7 @@ export default function DialogueReview({
               <li>✓ {report.dialogueCount} Sprachereignisse vollständig und geordnet</li>
               <li>✓ Alle Sprecher sind sichtbaren Figuren zugeordnet</li>
               <li>✓ Kein Voice-over und kein automatischer Ersatzdialog</li>
-              <li>✓ Bestätigte Aussprache wird als Synchronspur verwendet</li>
+              <li>✓ Die festgelegte Aussprache wird erst für die finale Synchronspur erzeugt</li>
               <li>✓ Sprechmenge passt zur gewählten Videolänge</li>
             </ul>
           ) : (
@@ -359,7 +183,7 @@ export default function DialogueReview({
         >
           {approved
             ? "✓ Originaldialog verbindlich bestätigt"
-            : "Dialog, Sprecher und Aussprache bestätigen"}
+            : "Originaldialog bestätigen"}
         </button>
 
         <p className="text-center text-[11px] leading-5 text-zinc-500">

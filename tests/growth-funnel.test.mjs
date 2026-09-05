@@ -61,6 +61,19 @@ test("the measurable video funnel covers the decisive conversion stages", async 
   assert.ok(completionEvent > disabledStep);
 });
 
+test("exact dialogue keeps its audio-locked sync path during render and recovery", async () => {
+  const workflow = await readSource("../workflows/render-video.ts");
+  const recovery = await readSource("../app/api/recover-video/route.ts");
+  const media = await readSource("../lib/video-backend/media.ts");
+
+  assert.match(workflow, /Prepared audio-locked dialogue timeline/);
+  assert.match(workflow, /buildNativeDialogueTimelineInstruction/);
+  assert.match(workflow, /audio-reference-v2/);
+  assert.match(recovery, /!exactProvidedDialogue/);
+  assert.match(media, /dialogue_reference_finishing_verified/);
+  assert.match(media, /Eine unsynchronisierte Ausgabe wurde verhindert/);
+});
+
 test("real-user performance monitoring is enabled", async () => {
   const layout = await readSource("../app/layout.tsx");
 
@@ -68,15 +81,17 @@ test("real-user performance monitoring is enabled", async () => {
   assert.match(layout, /<SpeedInsights \/>/);
 });
 
-test("exact dialogue is previewed, approved, and server-gated before payment and render", async () => {
+test("exact dialogue is reviewed without pre-generated audio and server-gated before payment and render", async () => {
   const studio = await readSource("../components/StudioHome.tsx");
   const review = await readSource("../components/DialogueReview.tsx");
   const checkout = await readSource("../app/api/create-checkout-session/route.ts");
   const workflow = await readSource("../workflows/render-video.ts");
 
   assert.match(studio, /<DialogueReview/);
-  assert.match(review, /Aussprache anhören/);
-  assert.match(review, /Dialog, Sprecher und Aussprache bestätigen/);
+  assert.doesNotMatch(review, /dialogue-speech-preview/);
+  assert.doesNotMatch(review, /Aussprache anhören/);
+  assert.doesNotMatch(review, /<audio/);
+  assert.match(review, /Originaldialog bestätigen/);
   assert.match(checkout, /inspectDialogueQuality/);
   assert.match(workflow, /Render blocked by exact-dialogue quality gate/);
   assert.match(workflow, /applyProvidedDialoguePronunciations/);

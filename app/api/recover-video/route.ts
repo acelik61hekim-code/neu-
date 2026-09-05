@@ -33,6 +33,10 @@ import {
 } from "@/lib/video-backend/media";
 
 import {
+  promptHasProvidedDialogue,
+} from "@/lib/dialogue-render-mode";
+
+import {
   recoverVideoFinalizationWorkflow,
   renderVideoWorkflow,
 } from "@/workflows/render-video";
@@ -250,6 +254,11 @@ export async function POST(
   const trashTvReactionBoost =
     body.trash_tv_reaction_boost ===
     true;
+
+  const exactProvidedDialogue =
+    promptHasProvidedDialogue(
+      job.prompt,
+    );
 
   /*
    * =======================================================
@@ -650,6 +659,7 @@ export async function POST(
       nativeCharacterDialogue &&
       job.nativeCharacterDialogue ===
         true &&
+      !exactProvidedDialogue &&
       audioFailureCanRetry &&
       !trashTvReactionBoost &&
       Array.isArray(
@@ -723,6 +733,7 @@ export async function POST(
 
         nativeDialogueAudioRetry:
           nativeCharacterDialogue &&
+          !exactProvidedDialogue &&
           (
             audioFailureCanRetry ||
             job.nativeDialogueAudioRetry ===
@@ -732,12 +743,14 @@ export async function POST(
         trashTvReactionBoost,
 
         referenceImageUrl:
-          skipReferenceImage
+          skipReferenceImage &&
+          !exactProvidedDialogue
             ? undefined
             : job.referenceImageUrl,
 
         referenceImageMimeType:
-          skipReferenceImage
+          skipReferenceImage &&
+          !exactProvidedDialogue
             ? undefined
             : job.referenceImageMimeType,
       },

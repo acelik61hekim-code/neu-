@@ -3362,7 +3362,6 @@ setEditingStyle(
                 voiceoverText={voiceoverText}
                 targetDurationSeconds={targetDurationSeconds}
                 videoModel={videoModel}
-                spokenLanguage={spokenLanguage}
                 disabled={
                   loading ||
                   previewLoading

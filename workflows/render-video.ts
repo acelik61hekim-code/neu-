@@ -13,12 +13,15 @@ import {
 } from "@/lib/music-video";
 
 import {
+  promptHasProvidedDialogue,
   shouldUseNativeCharacterDialogue,
   shouldUsePostProducedDialogue,
 } from "@/lib/dialogue-render-mode";
 
 import {
+  buildNativeDialogueTimelineInstruction,
   partitionDialogueCuesForAudioReference,
+  scheduleDialogueCuesWithinWindow,
 } from "@/lib/native-dialogue-audio";
 import {
   inspectDialogueQuality,
@@ -1182,8 +1185,7 @@ async function prepareNativeDialogueAudioReferencesStep(
     !job ||
     job.paymentStatus !== "paid" ||
     job.voiceMode !== "dialogue" ||
-    job.nativeCharacterDialogue !== true ||
-    job.nativeDialogueAudioRetry === true
+    job.nativeCharacterDialogue !== true
   ) {
     return [];
   }
@@ -1197,6 +1199,18 @@ async function prepareNativeDialogueAudioReferencesStep(
         job.prompt,
       ) as Record<string, unknown>;
   } catch {
+    return [];
+  }
+
+  const exactProvidedDialogue =
+    promptHasProvidedDialogue(
+      job.prompt,
+    );
+
+  if (
+    job.nativeDialogueAudioRetry === true &&
+    !exactProvidedDialogue
+  ) {
     return [];
   }
 
@@ -1215,6 +1229,14 @@ async function prepareNativeDialogueAudioReferencesStep(
   if (
     !hasOpeningVisualReference
   ) {
+    if (
+      exactProvidedDialogue
+    ) {
+      throw new Error(
+        "Der Originaldialog benötigt ein freigegebenes Charakter- oder Vorschaubild als visuelle Lip-Sync-Referenz.",
+      );
+    }
+
     return [];
   }
 
@@ -1244,6 +1266,14 @@ async function prepareNativeDialogueAudioReferencesStep(
   if (
     job.currentOperationName
   ) {
+    if (
+      exactProvidedDialogue
+    ) {
+      throw new Error(
+        "Die laufende Provider-Operation wurde ohne die bestätigte Dialog-Referenz begonnen und darf nicht als lippensynchrone Fassung weiterverwendet werden.",
+      );
+    }
+
     return [];
   }
 
@@ -1258,6 +1288,14 @@ async function prepareNativeDialogueAudioReferencesStep(
   if (
     cues.length === 0
   ) {
+    if (
+      exactProvidedDialogue
+    ) {
+      throw new Error(
+        "Der bestätigte Originaldialog enthält keinen ausführbaren Audio-Zeitplan.",
+      );
+    }
+
     return [];
   }
 
@@ -1270,6 +1308,11 @@ async function prepareNativeDialogueAudioReferencesStep(
 
   const references:
     string[] = [];
+
+  const syncClips:
+    NonNullable<
+      typeof job.nativeDialogueSyncPlan
+    >["clips"] = [];
 
   const cueClips =
     partitionDialogueCuesForAudioReference(
@@ -1312,6 +1355,15 @@ async function prepareNativeDialogueAudioReferencesStep(
         ? stored.pathname
         : `blob:${stored.pathname}`,
     );
+
+    syncClips.push({
+      clipIndex:
+        clipIndex + 1,
+      durationSeconds:
+        stored.durationSeconds,
+      cues:
+        stored.cueMetrics,
+    });
   }
 
   const latest =
@@ -1331,6 +1383,15 @@ async function prepareNativeDialogueAudioReferencesStep(
       ...latest,
       nativeDialogueAudioReferenceUris:
         references,
+
+      nativeDialogueSyncPlan: {
+        version:
+          "audio-reference-v2",
+        createdAt:
+          Date.now(),
+        clips:
+          syncClips,
+      },
     },
   );
 
@@ -1342,6 +1403,30 @@ async function prepareNativeDialogueAudioReferencesStep(
         cues.length,
       clipCount:
         references.length,
+      syncVersion:
+        "audio-reference-v2",
+      clips:
+        syncClips.map((clip) => ({
+          clipIndex:
+            clip.clipIndex,
+          durationSeconds:
+            clip.durationSeconds,
+          cues:
+            clip.cues.map((cue) => ({
+              speaker:
+                cue.speaker,
+              startSeconds:
+                cue.startSeconds,
+              maximumDurationSeconds:
+                cue.maximumDurationSeconds,
+              sourceDurationSeconds:
+                cue.sourceDurationSeconds,
+              effectiveDurationSeconds:
+                cue.effectiveDurationSeconds,
+              tempo:
+                cue.tempo,
+            })),
+        })),
     },
   );
 
@@ -1571,8 +1656,14 @@ async function prepareRenderJobStep(
       job.nativeCharacterDialogue,
     );
 
+  const exactProvidedDialogue =
+    promptHasProvidedDialogue(
+      job.prompt,
+    );
+
   const nativeDialogueAudioRetry =
     nativeCharacterDialogue &&
+    !exactProvidedDialogue &&
     job.nativeDialogueAudioRetry ===
       true;
 
@@ -1581,6 +1672,16 @@ async function prepareRenderJobStep(
   !nativeDialogueAudioRetry &&
   videoModel !== "google-veo" &&
   videoModel !== "google-veo-fast";
+
+  if (
+    nativeCharacterDialogue &&
+    exactProvidedDialogue &&
+    !nativeDialogueAudioReferencePlanned
+  ) {
+    throw new Error(
+      "Der bestätigte Originaldialog kann ohne eine vollständige Bild- und Audio-Referenz nicht professionell lippensynchron erzeugt werden. Der Render wurde vor dem Provider-Aufruf gestoppt.",
+    );
+  }
 
   const trashTvReactionBoost =
     viralStoryMode &&
@@ -2568,6 +2669,111 @@ async function prepareRenderJobStep(
 
           continuationPrompts,
         });
+      },
+    );
+  }
+
+  if (
+    nativeDialogueAudioReferencePlanned
+  ) {
+    const synchronizedCues =
+      buildDialogueCuesFromStoredPrompt(
+        job.prompt,
+        job.targetDurationSeconds,
+        videoModel,
+        job.voiceoverVoiceName,
+      );
+
+    if (
+      synchronizedCues.length === 0
+    ) {
+      throw new Error(
+        "Für den bestätigten Originaldialog konnte kein ausführbarer Zeitplan erstellt werden.",
+      );
+    }
+
+    const cueClips =
+      partitionDialogueCuesForAudioReference(
+        synchronizedCues,
+        job.targetDurationSeconds,
+        SEEDANCE_CLIP_DURATION_SECONDS,
+      );
+
+    const promptCount =
+      segments.reduce(
+        (count, segment) =>
+          count +
+          1 +
+          segment.continuationPrompts.length,
+        0,
+      );
+
+    if (
+      promptCount !==
+      cueClips.length
+    ) {
+      throw new Error(
+        "Dialogspur und Videoclips besitzen keinen eindeutigen gemeinsamen Zeitplan.",
+      );
+    }
+
+    let clipIndex = 0;
+
+    segments.forEach((segment) => {
+      const openingCues =
+        cueClips[clipIndex] ?? [];
+
+      segment.openingPrompt = [
+        segment.openingPrompt,
+        buildNativeDialogueTimelineInstruction(
+          openingCues,
+          Math.min(
+            SEEDANCE_CLIP_DURATION_SECONDS,
+            segment.targetSeconds,
+          ),
+        ),
+      ].join("\n\n");
+
+      clipIndex += 1;
+
+      segment.continuationPrompts =
+        segment.continuationPrompts.map(
+          (prompt) => {
+            const clipCues =
+              cueClips[clipIndex] ?? [];
+
+            clipIndex += 1;
+
+            return [
+              prompt,
+              buildNativeDialogueTimelineInstruction(
+                clipCues,
+                SEEDANCE_CLIP_DURATION_SECONDS,
+              ),
+            ].join("\n\n");
+          },
+        );
+    });
+
+    console.info(
+      "Prepared audio-locked dialogue timeline",
+      {
+        jobId,
+        clipCount:
+          cueClips.length,
+        cueCount:
+          synchronizedCues.length,
+        cueWindows:
+          cueClips.map((clip) =>
+            clip.map((cue) => ({
+              startSeconds:
+                cue.startSeconds,
+              maximumDurationSeconds:
+                cue.maximumDurationSeconds,
+              speaker:
+                cue.speaker,
+            })),
+          ),
       },
     );
   }
@@ -5601,52 +5807,36 @@ function buildViralDialogueCues(
           ),
         );
 
-      const turnWindowSeconds =
-        dialogueWindowSeconds /
-        dialogues.length;
-
-      dialogues.forEach(
-        (
-          dialogue,
-          turnIndex,
-        ) => {
-          cues.push({
-            startSeconds:
-              firstCueStartSeconds +
-              turnIndex *
-                turnWindowSeconds,
-
-            maximumDurationSeconds:
-              Math.min(
-                11.5,
-
-                Math.max(
-                  1.2,
-
-                  turnWindowSeconds -
-                    0.15,
-                ),
-              ),
-
+      const shotCues:
+        DialogueCue[] =
+        dialogues.map(
+          (dialogue) => ({
+            startSeconds: 0,
+            maximumDurationSeconds: 1,
             speaker:
               dialogue.speaker,
-
             text:
               dialogue.text,
-
             voiceName:
               getFixedVoiceName(
                 dialogue.speaker,
                 voiceAssignments,
               ),
-
             voiceDirection:
               buildViralStudioVoiceDirection(
                 dialogue.speaker,
                 dialogue.text,
               ),
-          });
-        },
+          }),
+        );
+
+      cues.push(
+        ...scheduleDialogueCuesWithinWindow(
+          shotCues,
+          firstCueStartSeconds,
+          firstCueStartSeconds +
+            dialogueWindowSeconds,
+        ),
       );
     },
   );
@@ -5789,51 +5979,35 @@ function buildExtensionDialogueCues(
             firstCueStartSeconds,
         );
 
-      const turnWindowSeconds =
-        dialogueWindowSeconds /
-        dialogues.length;
-
-      dialogues.forEach(
-        (
-          dialogue,
-          turnIndex,
-        ) => {
-          cues.push({
-            startSeconds:
-              firstCueStartSeconds +
-              turnIndex *
-                turnWindowSeconds,
-
-            maximumDurationSeconds:
-              Math.min(
-                11.5,
-
-                Math.max(
-                  1.1,
-
-                  turnWindowSeconds -
-                    0.12,
-                ),
-              ),
-
+      const shotCues:
+        DialogueCue[] =
+        dialogues.map(
+          (dialogue) => ({
+            startSeconds: 0,
+            maximumDurationSeconds: 1,
             speaker:
               dialogue.speaker,
-
             text:
               dialogue.text,
-
             voiceName:
               fixedSingleSpeakerVoice ??
               getFixedVoiceName(
                 dialogue.speaker,
                 voiceAssignments,
               ),
-
             voiceDirection:
               dialogue
                 .voiceDirection,
-          });
-        },
+          }),
+        );
+
+      cues.push(
+        ...scheduleDialogueCuesWithinWindow(
+          shotCues,
+          firstCueStartSeconds,
+          firstCueStartSeconds +
+            dialogueWindowSeconds,
+        ),
       );
     },
   );

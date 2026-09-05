@@ -27,7 +27,9 @@ import {
 } from "../lib/dialogue-render-mode.ts";
 import {
   buildNativeDialogueAudioInstruction,
+  buildNativeDialogueTimelineInstruction,
   partitionDialogueCuesForAudioReference,
+  scheduleDialogueCuesWithinWindow,
 } from "../lib/native-dialogue-audio.ts";
 import {
   applyProvidedDialoguePronunciations,
@@ -1176,6 +1178,108 @@ test("exact dialogue audio references preserve every ordered speech event", () =
   assert.match(
     instruction,
     /synchronize .* lips precisely/i,
+  );
+  assert.match(
+    instruction,
+    /clip time 00\.000 without offset/i,
+  );
+});
+
+test("dialogue sync windows follow speech length and lock the visible speaker", () => {
+  const scheduled =
+    scheduleDialogueCuesWithinWindow(
+      [
+        {
+          startSeconds: 0,
+          maximumDurationSeconds: 1,
+          speaker: "Ruby",
+          text: "Nein.",
+          voiceName: "Kore",
+          voiceDirection: "ruhig",
+        },
+        {
+          startSeconds: 0,
+          maximumDurationSeconds: 1,
+          speaker: "Bano",
+          text: "Ich wollte dir die ganze Wahrheit schon gestern Abend erklären.",
+          voiceName: "Puck",
+          voiceDirection: "ehrlich",
+        },
+      ],
+      0.45,
+      14.7,
+    );
+
+  assert.equal(scheduled.length, 2);
+  assert.equal(scheduled[0].startSeconds, 0.45);
+  assert.ok(
+    scheduled[1].maximumDurationSeconds >
+      scheduled[0].maximumDurationSeconds,
+  );
+  assert.ok(
+    scheduled[1].startSeconds >=
+      scheduled[0].startSeconds +
+        scheduled[0].maximumDurationSeconds,
+  );
+
+  const timeline =
+    buildNativeDialogueTimelineInstruction(
+      scheduled,
+      15,
+    );
+
+  assert.match(timeline, /0\.45s-/);
+  assert.match(timeline, /only active speaker/i);
+  assert.match(timeline, /Do not cut away/i);
+  assert.match(timeline, /every mouth remains naturally closed/i);
+});
+
+test("the quality gate blocks too many separate lip-sync events for one clip", () => {
+  const dialogue = Array.from(
+    { length: 13 },
+    (_, index) => ({
+      speaker: "Ruby",
+      text: `Wort${index + 1}.`,
+    }),
+  );
+  const story = {
+    characters: [
+      {
+        name: "Ruby",
+      },
+    ],
+    dialogueSourceMode: "provided",
+    providedDialogue: dialogue,
+    moviePlan: {
+      opening: {
+        dialogue: {
+          enabled: true,
+          ...dialogue[0],
+        },
+        dialogueTurns: dialogue.slice(1).map((line) => ({
+          enabled: true,
+          ...line,
+        })),
+      },
+      continuations: [],
+    },
+  };
+
+  const report = inspectDialogueQuality(
+    story,
+    {
+      voiceMode: "dialogue",
+      targetDurationSeconds: 15,
+      videoModel: "seedance-2-fast",
+      requireApproval: false,
+    },
+  );
+
+  assert.equal(report.ready, false);
+  assert.ok(
+    report.issues.some(
+      (issue) => issue.code === "dialogue-too-dense",
+    ),
   );
 });
 

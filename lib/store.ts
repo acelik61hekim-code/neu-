@@ -295,6 +295,23 @@ export type VideoJob = {
   nativeDialogueAudioReferenceUris?:
     string[];
 
+  nativeDialogueSyncPlan?: {
+    version: "audio-reference-v2";
+    createdAt: number;
+    clips: Array<{
+      clipIndex: number;
+      durationSeconds: number;
+      cues: Array<{
+        speaker: string;
+        startSeconds: number;
+        maximumDurationSeconds: number;
+        sourceDurationSeconds: number;
+        effectiveDurationSeconds: number;
+        tempo: number;
+      }>;
+    }>;
+  };
+
   nativeDialogueAudioRetry?:
     boolean;
 

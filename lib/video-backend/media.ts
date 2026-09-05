@@ -32,6 +32,15 @@ export type DialogueCue = {
   voiceDirection: string;
 };
 
+export type DialogueReferenceCueMetric = {
+  speaker: string;
+  startSeconds: number;
+  maximumDurationSeconds: number;
+  sourceDurationSeconds: number;
+  effectiveDurationSeconds: number;
+  tempo: number;
+};
+
 export type VideoStudioEditOptions = {
   startSeconds: number;
   endSeconds: number;
@@ -672,6 +681,8 @@ export async function createAndStoreDialogueReferenceAudio(
 ): Promise<{
   pathname: string;
   url: string;
+  durationSeconds: number;
+  cueMetrics: DialogueReferenceCueMetric[];
 }> {
   const binary =
     ffmpegPath;
@@ -710,6 +721,9 @@ export async function createAndStoreDialogueReferenceAudio(
           dir,
           "dialogue-reference.wav",
         );
+
+      const cueMetrics:
+        DialogueReferenceCueMetric[] = [];
 
       if (safeCues.length === 0) {
         await exec(
@@ -805,6 +819,30 @@ export async function createAndStoreDialogueReferenceAudio(
                 audio.durationSeconds /
                   cue.maximumDurationSeconds,
               );
+
+            if (
+              tempo > 1.25
+            ) {
+              throw new Error(
+                `Die Dialogzeile von ${cue.speaker} benötigt ${audio.durationSeconds.toFixed(2)} Sekunden, hat aber nur ${cue.maximumDurationSeconds.toFixed(2)} Sekunden. Der Render wurde gestoppt, damit die Aussprache nicht unnatürlich beschleunigt und die Lippenbewegung nicht unsynchron wird.`,
+              );
+            }
+
+            cueMetrics.push({
+              speaker:
+                cue.speaker,
+              startSeconds:
+                cue.startSeconds,
+              maximumDurationSeconds:
+                cue.maximumDurationSeconds,
+              sourceDurationSeconds:
+                audio.durationSeconds,
+              effectiveDurationSeconds:
+                audio.durationSeconds /
+                tempo,
+              tempo,
+            });
+
             const label =
               `reference${index}`;
 
@@ -860,11 +898,37 @@ export async function createAndStoreDialogueReferenceAudio(
         );
       }
 
-      return upload(
-        pathname,
-        output,
-        "audio/wav",
-      );
+      const exactDurationSeconds =
+        await inspectContainerDuration(
+          binary,
+          output,
+        );
+
+      if (
+        !exactDurationSeconds ||
+        Math.abs(
+          exactDurationSeconds -
+            durationSeconds,
+        ) > 0.08
+      ) {
+        throw new Error(
+          "Die erzeugte Dialog-Referenzspur besitzt nicht die exakte Videolänge.",
+        );
+      }
+
+      const stored =
+        await upload(
+          pathname,
+          output,
+          "audio/wav",
+        );
+
+      return {
+        ...stored,
+        durationSeconds:
+          exactDurationSeconds,
+        cueMetrics,
+      };
     },
   );
 }
@@ -1071,6 +1135,9 @@ async function finishVideo(
   const dialogueReferenceInputIndices:
     number[] = [];
 
+  const dialogueReferenceDurations:
+    number[] = [];
+
   for (
     let index = 0;
     index < dialogueReferenceAudioUris.length;
@@ -1087,6 +1154,25 @@ async function finishVideo(
       referenceInput,
     );
 
+    const referenceDuration =
+      await inspectContainerDuration(
+        binary,
+        referenceInput,
+      );
+
+    if (
+      !referenceDuration ||
+      !Number.isFinite(referenceDuration)
+    ) {
+      throw new Error(
+        `Die Länge der Dialog-Referenzspur ${index + 1} konnte nicht geprüft werden.`,
+      );
+    }
+
+    dialogueReferenceDurations.push(
+      referenceDuration,
+    );
+
     dialogueReferenceInputIndices.push(
       nextInputIndex,
     );
@@ -1096,6 +1182,41 @@ async function finishVideo(
     args.push(
       "-i",
       referenceInput,
+    );
+  }
+
+  if (
+    dialogueReferenceDurations.length > 0
+  ) {
+    const totalReferenceDuration =
+      dialogueReferenceDurations.reduce(
+        (total, duration) =>
+          total + duration,
+        0,
+      );
+
+    if (
+      Math.abs(
+        totalReferenceDuration -
+          seconds,
+      ) > 0.12
+    ) {
+      throw new Error(
+        `Die vollständige Dialog-Referenzspur ist ${totalReferenceDuration.toFixed(2)} Sekunden lang, das Video aber ${seconds.toFixed(2)} Sekunden. Eine unsynchronisierte Ausgabe wurde verhindert.`,
+      );
+    }
+
+    console.info(
+      JSON.stringify({
+        level: "info",
+        msg: "dialogue_reference_finishing_verified",
+        videoDurationSeconds:
+          seconds,
+        referenceDurationSeconds:
+          totalReferenceDuration,
+        clipDurations:
+          dialogueReferenceDurations,
+      }),
     );
   }
 

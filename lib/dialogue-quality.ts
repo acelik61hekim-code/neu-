@@ -12,6 +12,7 @@ export type DialogueQualityIssueCode =
   | "unknown-speaker"
   | "dialogue-plan-mismatch"
   | "dialogue-too-long"
+  | "dialogue-too-dense"
   | "unsupported-dialogue-sync-model"
   | "review-required";
 
@@ -310,6 +311,27 @@ export function inspectDialogueQuality(
     issues.push({
       code: "dialogue-too-long",
       message: `Der gesprochene Text enthält ${wordCount} Wörter; für ${options.targetDurationSeconds} Sekunden passen ungefähr ${capacity}.`,
+    });
+  }
+
+  const eventCapacity = Math.max(
+    1,
+    Math.floor(
+      (
+        options.targetDurationSeconds -
+        0.9
+      ) /
+        1.15,
+    ),
+  );
+
+  if (
+    dialogue.length >
+    eventCapacity
+  ) {
+    issues.push({
+      code: "dialogue-too-dense",
+      message: `Der Originaldialog enthält ${dialogue.length} einzelne Sprecheinsätze. Für ${options.targetDurationSeconds} Sekunden sind höchstens ${eventCapacity} klar trennbare, lippensynchrone Einsätze möglich.`,
     });
   }
 
