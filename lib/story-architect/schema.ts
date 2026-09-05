@@ -199,6 +199,16 @@ export function parseStoryArchitectRequest(
     );
 
     if (
+      story.speechDisabled !== undefined &&
+      typeof story.speechDisabled !== "boolean"
+    ) {
+      issues.push({
+        path: "story.speechDisabled",
+        message: "Muss ein Wahrheitswert sein.",
+      });
+    }
+
+    if (
       !Array.isArray(story.characters) ||
       story.characters.length === 0 ||
       story.characters.length > 9

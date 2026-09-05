@@ -664,6 +664,8 @@ export type Story = {
 
   singleSpeakerMode?: boolean;
 
+  speechDisabled?: boolean;
+
   productionBible: ProductionBible;
 
   productionMemory?: ProductionMemory;
@@ -701,6 +703,8 @@ export type StoryDraft = {
   dialogueReview?: DialogueReviewConfirmation;
 
   singleSpeakerMode?: boolean;
+
+  speechDisabled?: boolean;
 };
 
 /*

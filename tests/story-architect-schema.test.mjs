@@ -45,6 +45,34 @@ test("accepts a bounded, supported story request", () => {
   );
 });
 
+test("accepts a boolean speechDisabled flag and rejects non-boolean values", () => {
+  const accepted = parseStoryArchitectRequest({
+    ...validRequest,
+    story: {
+      ...validRequest.story,
+      speechDisabled: true,
+    },
+  });
+
+  assert.equal(accepted.success, true);
+
+  const rejected = parseStoryArchitectRequest({
+    ...validRequest,
+    story: {
+      ...validRequest.story,
+      speechDisabled: "true",
+    },
+  });
+
+  assert.equal(rejected.success, false);
+  assert.ok(
+    !rejected.success &&
+      rejected.issues.some(
+        (issue) => issue.path === "story.speechDisabled",
+      ),
+  );
+});
+
 test("rejects unsupported enums and oversized story input with paths", () => {
   const result = parseStoryArchitectRequest({
     ...validRequest,

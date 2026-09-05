@@ -28,6 +28,7 @@ export const SUPPORTED_SPOKEN_LANGUAGES = [
 ] as const satisfies readonly VideoSpokenLanguage[];
 
 export type PromptSpeechIntent =
+  | "none"
   | "single-speaker"
   | "conversation"
   | "voiceover";
@@ -112,12 +113,40 @@ export function shouldUseProvidedDialogue(
   speechIntent: PromptSpeechIntent | null,
 ): boolean {
   return (
+    speechIntent !== "none" &&
     speechIntent !== "voiceover" &&
     (
       dialogueSourceMode === "provided" ||
       explicitDialogueEventCount > 0
     )
   );
+}
+
+export function resolvePromptVoiceMode(
+  configuredVoiceMode: VideoVoiceMode,
+  speechIntent: PromptSpeechIntent | null,
+  forceDialogue = false,
+): VideoVoiceMode {
+  if (speechIntent === "none") {
+    return "no-voice";
+  }
+
+  if (forceDialogue) {
+    return "dialogue";
+  }
+
+  if (speechIntent === "voiceover") {
+    return "voiceover";
+  }
+
+  if (
+    speechIntent === "single-speaker" ||
+    speechIntent === "conversation"
+  ) {
+    return "dialogue";
+  }
+
+  return configuredVoiceMode;
 }
 
 export const SUPPORTED_VOICEOVER_VOICES = [
@@ -183,13 +212,9 @@ export function inferPromptSpeechIntent(
   }
 
   const explicitlySilent =
-    /\b(?:ohne\s+(?:sprache|dialog|stimme)|stumm|lautlos|(?:soll|darf|wird|möchte)\s+(?:die\s+person\s+)?(?:nicht|niemals)\s+(?:sprechen|reden|sagen))\b/i.test(
+    /\b(?:kein(?:e|en|er|es)?\s+(?:dialog(?:e)?|gespräch(?:e)?|sprache|stimme)|ohne\s+(?:dialog(?:e)?|gespräch(?:e)?|sprache|stimme)|niemand\s+(?:soll|darf|wird)?\s*(?:sprechen|reden|etwas\s+sagen)|(?:keine\s+figur|keine\s+person|keiner)\s+(?:soll|darf|wird)?\s*(?:sprechen|reden|etwas\s+sagen)|stumm|lautlos|(?:soll|darf|wird|möchte)\s+(?:die\s+person|die\s+figur|niemand)?\s*(?:nicht|niemals)\s+(?:sprechen|reden|etwas\s+sagen)|no\s+(?:dialogue|dialog|conversation|speech|voice)|without\s+(?:dialogue|dialog|conversation|speech|voice)|no\s+one\s+(?:speaks|talks))\b/i.test(
       text,
     );
-
-  if (explicitlySilent) {
-    return null;
-  }
 
   const explicitlyRejectsVoiceover =
     /\b(?:kein(?:e|en|er|es)?|ohne|niemals|nicht)\b.{0,32}\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme)|sprecher(?:in)?\s+(?:aus\s+dem|im)\s+off)\b|\b(?:voice[\s-]?over|voiceover|erzähler(?:in)?|narrator|narration|off[\s-]?(?:sprecher(?:in)?|stimme))\b.{0,32}\b(?:unerwünscht|verboten|weglassen|entfernen|nicht\s+(?:verwenden|benutzen|erzeugen))\b/i.test(
@@ -410,6 +435,22 @@ export function inferPromptSpeechIntent(
     ) ||
     distinctSpeakerLabelCount >
       0;
+
+  /*
+   * Eine ausdrückliche Stumm-Anweisung ist semantisch etwas anderes als
+   * eine fehlende Angabe. Sie darf deshalb nicht als `null` auf die zuvor
+   * gewählte UI-Einstellung (zum Beispiel "Dialog") zurückfallen.
+   * Explizit beschriftete Sprecherzeilen bleiben die engere, verbindliche
+   * Anweisung und gewinnen gegen allgemeine Formulierungen wie
+   * "keine automatisch erfundenen Dialoge".
+   */
+  if (
+    explicitlySilent &&
+    distinctSpeakerLabelCount === 0 &&
+    attributedSpeakerLabels.length === 0
+  ) {
+    return "none";
+  }
 
   if (!requestsSpeech) {
     return null;

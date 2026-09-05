@@ -7216,7 +7216,9 @@ export async function POST(
     );
 
   const requestedVoiceMode =
-    story.dialogueSourceMode ===
+    story.speechDisabled === true
+      ? "no-voice"
+      : story.dialogueSourceMode ===
       "provided"
       ? "dialogue"
       : creationMode ===

@@ -5,6 +5,7 @@ import {
   extractPromptVoiceoverSegments,
   extractPromptVoiceoverText,
   inferPromptSpeechIntent,
+  resolvePromptVoiceMode,
   shouldUseProvidedDialogue,
 } from "../lib/audio-options.ts";
 import {
@@ -536,6 +537,58 @@ test("multiline fruit speaker labels with emotion preserve the submitted dialogu
       3,
     ),
     false,
+  );
+});
+
+test("explicit no-dialogue instructions disable speech instead of falling back to the selected UI mode", () => {
+  const silentPrompts = [
+    "Eine Frau tanzt im Supermarkt. Kein Dialog.",
+    "Zwei Kakerlaken kaufen ein, ohne Dialoge. Nur Musik und Umgebungsgeräusche.",
+    "Niemand soll sprechen. Erzähle alles nur durch Bilder.",
+    "No dialogue. The characters communicate only through gestures.",
+  ];
+
+  for (const prompt of silentPrompts) {
+    assert.equal(
+      inferPromptSpeechIntent(prompt),
+      "none",
+      prompt,
+    );
+    assert.equal(
+      shouldUseProvidedDialogue(
+        "automatic",
+        0,
+        inferPromptSpeechIntent(prompt),
+      ),
+      false,
+      prompt,
+    );
+  }
+
+  assert.equal(
+    resolvePromptVoiceMode(
+      "dialogue",
+      "none",
+    ),
+    "no-voice",
+  );
+});
+
+test("an explicitly requested voiceover still wins over no character dialogue", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      "Kein Dialog zwischen den Figuren. Nur ein deutsches Voiceover: „Heute beginnt die Reise.“",
+    ),
+    "voiceover",
+  );
+});
+
+test("exact speaker lines win over a ban on invented dialogue", () => {
+  assert.equal(
+    inferPromptSpeechIntent(
+      "Keine automatisch erfundenen Dialoge.\nDIVA: „Eine Diva wartet nie.“",
+    ),
+    "single-speaker",
   );
 });
 

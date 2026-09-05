@@ -7,6 +7,7 @@ import {
   extractPromptVoiceoverText,
   inferPromptSpeechIntent,
   inferPromptVoiceoverVoiceName,
+  resolvePromptVoiceMode,
   shouldUseProvidedDialogue,
   type VoiceoverVoiceName,
 } from "@/lib/audio-options";
@@ -488,10 +489,12 @@ export default function Chat({
         !isViralStory &&
         editingStyle !==
           "music-video" &&
-        speechIntent !==
-          null &&
-        speechIntent !==
-          "voiceover";
+        (
+          speechIntent ===
+            "single-speaker" ||
+          speechIntent ===
+            "conversation"
+        );
 
       if (providedDialogueRequested) {
         setDialogueSourceMode(
@@ -507,15 +510,12 @@ export default function Chat({
 
       const effectiveVoiceMode:
         VideoVoiceMode =
-        providedDialogueRequested
-          ? "dialogue"
-          : isViralStory
-          ? "dialogue"
-          : inferredVoiceoverMode
-            ? "voiceover"
-            : inferredDialogueMode
-              ? "dialogue"
-              : voiceMode;
+        resolvePromptVoiceMode(
+          voiceMode,
+          speechIntent,
+          providedDialogueRequested ||
+            isViralStory,
+        );
 
       const singleSpeakerMode =
         !isViralStory &&
@@ -533,6 +533,21 @@ export default function Chat({
         );
 
       if (
+        speechIntent ===
+          "none"
+      ) {
+        setDialogueSourceMode(
+          "automatic",
+        );
+
+        onVoiceModeChange?.(
+          "no-voice",
+        );
+
+        onVoiceoverTextChange?.(
+          "",
+        );
+      } else if (
         inferredVoiceoverMode &&
         !providedDialogueRequested
       ) {

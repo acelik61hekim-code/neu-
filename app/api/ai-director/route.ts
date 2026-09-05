@@ -1092,7 +1092,8 @@ const dialogueSourceText =
       );
 
     const dialogueMode =
-      speechIntent === "voiceover"
+      speechIntent === "voiceover" ||
+      speechIntent === "none"
         ? false
         : body.dialogueMode === true ||
           providedDialogueRequested;
@@ -1211,6 +1212,7 @@ const dialogueSourceText =
       );
 
 const preliminaryProvidedDialogue =
+  speechIntent !== "none" &&
   singleSpeakerMode
     ? extractProvidedDialogue(
         dialogueMessages,
@@ -1249,7 +1251,9 @@ const providedSpeakerName =
         : characterResult;
 
     const providedDialogue =
-      preliminaryProvidedDialogue.length > 0
+      speechIntent === "none"
+        ? []
+        : preliminaryProvidedDialogue.length > 0
         ? preliminaryProvidedDialogue
         : extractProvidedDialogue(
             dialogueMessages,
@@ -1302,6 +1306,10 @@ const providedSpeakerName =
       singleSpeakerMode:
         singleSpeakerMode ||
         undefined,
+      speechDisabled:
+        speechIntent === "none"
+          ? true
+          : undefined,
       providedDialogue:
         providedDialogue.length > 0
           ? providedDialogue
