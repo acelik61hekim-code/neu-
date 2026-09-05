@@ -1387,4 +1387,18 @@ test("named dialogue after scene direction on the same line stays exact", () => 
       },
     ],
   );
+
+  assert.equal(
+    inferPromptSpeechIntent(
+      prompt,
+    ),
+    "single-speaker",
+  );
+
+  assert.equal(
+    countExplicitDialogueEvents(
+      prompt,
+    ),
+    2,
+  );
 });

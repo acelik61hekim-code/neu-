@@ -842,6 +842,51 @@ function collectExplicitDialogueRanges(
     });
   }
 
+  const sameLineLabeledSpeechPattern =
+    /(?:^|[.!?]\s+)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\*{1,3}|_{1,3})?([^:.!?\r\n]{1,120}?)(?:\*{1,3}|_{1,3})?[^\S\r\n]*:[^\S\r\n]*(?:\*{1,3}|_{1,3})?[^\S\r\n]*[„“"']([^\r\n„“”"']{1,4000})[“”"']/gimu;
+
+  for (const match of source.matchAll(
+    sameLineLabeledSpeechPattern,
+  )) {
+    if (
+      !isLikelyMultilineSpeakerLabel(
+        stripOuterMarkdown(
+          match[1],
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+
+    if (
+      ranges.some((range) =>
+        rangesOverlap(
+          start,
+          end,
+          range.start,
+          range.end,
+        ),
+      )
+    ) {
+      continue;
+    }
+
+    ranges.push({
+      start,
+      end,
+      eventCount:
+        Math.max(
+          1,
+          splitProvidedDialogueText(
+            match[2],
+          ).length,
+        ),
+    });
+  }
+
     const inlineUnquotedPattern =
     /(?:^|\n)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\d{1,2}[.)][^\S\r\n]*)?([^:\r\n]{1,64}?)[^\S\r\n]*:[^\S\r\n]*([^\r\n]{1,2000})/gimu;
 

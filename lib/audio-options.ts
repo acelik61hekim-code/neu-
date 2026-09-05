@@ -311,6 +311,74 @@ export function inferPromptSpeechIntent(
           normalizedLabel,
       );
 
+  const sameLineQuotedSpeakerLabels =
+    Array.from(
+      value.matchAll(
+        /(?:^|[.!?]\s+)[^\S\r\n]*(?:[-*•][^\S\r\n]*)?(?:\*{1,3}|_{1,3})?([^:.!?\r\n]{1,120}?)(?:\*{1,3}|_{1,3})?[^\S\r\n]*:[^\S\r\n]*(?:\*{1,3}|_{1,3})?[^\S\r\n]*[„“"']([^\r\n„“”"']{1,4000})[“”"']/gimu,
+      ),
+      (match) => ({
+        rawLabel:
+          match[1].trim(),
+        normalizedLabel:
+          normalizeDetectedSpeakerLabel(
+            match[1],
+          ),
+      }),
+    )
+      .filter(
+        ({
+          rawLabel,
+          normalizedLabel,
+        }) => {
+          if (
+            !normalizedLabel ||
+            isNonCharacterVoiceoverLabel(
+              rawLabel,
+            ) ||
+            /\b(?:schrift|text|titel|einblendung|untertitel|logo|kamera|szene|setting|format|darunter|darüber|wichtig|ziel)\b/iu.test(
+              normalizedLabel,
+            )
+          ) {
+            return false;
+          }
+
+          const identitySource =
+            rawLabel
+              .split(",")[0]
+              .replace(
+                /(?:\*{1,3}|_{1,3}|`)/gu,
+                "",
+              )
+              .trim();
+          const identityLetters =
+            identitySource
+              .replace(
+                /[^\p{L}]+/gu,
+                "",
+              );
+
+          return (
+            /^\p{Lu}\p{Ll}{1,30}(?:\s+\p{Lu}\p{Ll}{1,30}){0,2}$/u.test(
+              identitySource,
+            ) ||
+            (
+              identityLetters.length >= 2 &&
+              identityLetters ===
+                identityLetters.toLocaleUpperCase(
+                  "de-DE",
+                )
+            ) ||
+            /\b(?:frau|mann|mädchen|junge|person|sprecher(?:in)?|figur|charakter|protagonist(?:in)?|woman|man|girl|boy|speaker|character)\b/iu.test(
+              normalizedLabel,
+            )
+          );
+        },
+      )
+      .map(
+        ({ normalizedLabel }) =>
+          normalizedLabel,
+      );
+
   const attributedSpeakerLabels =
     Array.from(
       value.matchAll(
@@ -328,6 +396,7 @@ export function inferPromptSpeechIntent(
       [
         ...speakerLabels,
         ...multilineQuotedSpeakerLabels,
+        ...sameLineQuotedSpeakerLabels,
         ...attributedSpeakerLabels,
       ],
     ).size;
