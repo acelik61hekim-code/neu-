@@ -19,6 +19,12 @@ import type {
   VideoSpokenLanguage,
   VideoVoiceMode,
 } from "@/types/story";
+import type {
+  ProviderAttemptRecord,
+} from "@/lib/video-providers/contracts";
+import type {
+  ShotQualityGateRecord,
+} from "@/lib/video-providers/quality-gates";
 
 export type VideoFormat =
   | "short"
@@ -147,6 +153,21 @@ export type VideoJob = {
 
   provider?:
     VideoProvider;
+
+  effectiveProvider?:
+    "seedance" | "veo" | "runway";
+
+  effectiveVideoModel?:
+    string;
+
+  providerFallbackReason?:
+    string;
+
+  providerAttempts?:
+    ProviderAttemptRecord[];
+
+  qualityGates?:
+    ShotQualityGateRecord[];
 
   videoModel?:
     VideoModelId;

@@ -37,6 +37,12 @@ import type {
   VideoModelId,
   Story,
 } from "@/types/story";
+import type {
+  ProviderFailureCategory,
+} from "@/lib/video-providers/failures";
+import type {
+  ProviderAttemptRecord,
+} from "@/lib/video-providers/contracts";
 
 type DialogueCue = {
   startSeconds: number;
@@ -103,11 +109,18 @@ type WebhookOperationResult =
       completed: false;
       providerMessage: string;
       restartAllowed: boolean;
+      failureCategory?: ProviderFailureCategory;
     };
 
 type StartedProviderOperation = {
   operationName: string;
   reusedExistingOperation: boolean;
+};
+
+type ProviderFallbackDirective = {
+  fallbackProvider: "veo";
+  providerMessage: string;
+  failureCategory: ProviderFailureCategory;
 };
 
 type ProviderStartResult =
@@ -120,7 +133,19 @@ type ProviderStartResult =
       started: false;
       retryAfterMs: number;
       httpStatus: number;
+      fallbackProvider?: never;
+    }
+  | {
+      started: false;
+      fallbackProvider: "veo";
+      providerMessage: string;
+      failureCategory: ProviderFailureCategory;
     };
+
+type VeoFallbackContext = {
+  fallbackFrom: "seedance";
+  fallbackReason: string;
+};
 
 const SEEDANCE_CLIP_DURATION_SECONDS =
   15;
@@ -308,6 +333,7 @@ export async function renderVideoWorkflow(
           segment.openingPrompt,
           prepared.aspectRatio,
           segment.chapterNumber,
+          segment.targetSeconds,
           completedExtensions,
           prepared.totalExtensions,
           seedanceOpeningClipDurationFor(
@@ -401,6 +427,8 @@ export async function renderVideoWorkflow(
     await finishRenderJobStep(
       jobId,
       output.pathname,
+      output.durationSeconds,
+      prepared.duration,
     );
 
     return {
@@ -454,6 +482,8 @@ export async function recoverVideoFinalizationWorkflow(
     await finishRenderJobStep(
       jobId,
       output.pathname,
+      output.durationSeconds,
+      prepared.duration,
     );
 
     return {
@@ -494,7 +524,10 @@ async function startOpeningWithProviderRetry(
   clipDurationSeconds: number,
   webhookUrl: string,
   audioReferenceUri?: string,
-): Promise<StartedProviderOperation> {
+): Promise<
+  | StartedProviderOperation
+  | ProviderFallbackDirective
+> {
   for (
     let attempt = 0;
     attempt <=
@@ -530,6 +563,23 @@ async function startOpeningWithProviderRetry(
           result
             .reusedExistingOperation,
       };
+    }
+
+    if (result.fallbackProvider) {
+      return {
+        fallbackProvider:
+          result.fallbackProvider,
+        providerMessage:
+          result.providerMessage,
+        failureCategory:
+          result.failureCategory,
+      };
+    }
+
+    if (!("retryAfterMs" in result)) {
+      throw new Error(
+        "Seedance hat keinen gültigen Wiederholungsplan geliefert.",
+      );
     }
 
     await sleep(
@@ -591,6 +641,12 @@ async function startExtensionWithProviderRetry(
           result
             .reusedExistingOperation,
       };
+    }
+
+    if (!("retryAfterMs" in result)) {
+      throw new Error(
+        "Für Seedance-Fortsetzungen ist kein stiller Providerwechsel erlaubt.",
+      );
     }
 
     await sleep(
@@ -698,6 +754,7 @@ async function completeOpeningWithOperationRecovery(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  targetSeconds: number,
   completedExtensions: number,
   totalExtensions: number,
   clipDurationSeconds: number,
@@ -722,6 +779,22 @@ async function completeOpeningWithOperationRecovery(
         webhook.url,
         audioReferenceUri,
       );
+
+    if ("fallbackProvider" in started) {
+      return completeVeoReferenceFallback(
+        jobId,
+        prompt,
+        aspectRatio,
+        chapterNumber,
+        targetSeconds,
+        {
+          fallbackFrom:
+            "seedance",
+          fallbackReason:
+            started.providerMessage,
+        },
+      );
+    }
 
     let result:
       WebhookOperationResult;
@@ -780,6 +853,25 @@ async function completeOpeningWithOperationRecovery(
     if (
       !result.restartAllowed
     ) {
+      if (
+        result.failureCategory ===
+        "reference-rejected"
+      ) {
+        return completeVeoReferenceFallback(
+          jobId,
+          prompt,
+          aspectRatio,
+          chapterNumber,
+          targetSeconds,
+          {
+            fallbackFrom:
+              "seedance",
+            fallbackReason:
+              result.providerMessage,
+          },
+        );
+      }
+
       throw new Error(
         result.providerMessage,
       );
@@ -1444,6 +1536,45 @@ async function providerRenderEnabledStep(
   "use step";
 
   try {
+    const {
+      routeVideoProviders,
+    } =
+      await import(
+        "@/lib/video-providers/model-router"
+      );
+    const routes =
+      routeVideoProviders({
+        requestedModel:
+          videoModel,
+        operation:
+          "opening",
+        referencePolicy:
+          "optional",
+        referenceCount:
+          0,
+        allowFallback:
+          false,
+        availableProviders: {
+          seedance:
+            process.env
+              .SEEDANCE_WORKFLOW_RENDER_ENABLED ===
+              "true" &&
+            Boolean(
+              process.env.FAL_KEY,
+            ),
+          veo: Boolean(
+            process.env.GEMINI_API_KEY,
+          ),
+          runway: false,
+        },
+      });
+
+    if (routes.length === 0) {
+      throw new Error(
+        "Für das ausgewählte Videomodell ist kein konfigurierter Provider verfügbar.",
+      );
+    }
+
     assertProviderRenderAllowed(
       duration,
       musicVideoMode,
@@ -2938,6 +3069,7 @@ async function completeVeoOpening(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  fallback?: VeoFallbackContext,
 ): Promise<string> {
   const operationName =
     await startVeoOpeningStep(
@@ -2945,12 +3077,58 @@ async function completeVeoOpening(
       prompt,
       aspectRatio,
       chapterNumber,
+      fallback,
     );
 
   return await waitForVeoOperation(
     jobId,
     operationName,
   );
+}
+
+async function completeVeoReferenceFallback(
+  jobId: string,
+  prompt: string,
+  aspectRatio: VideoAspectRatio,
+  chapterNumber: number,
+  targetSeconds: number,
+  fallback: VeoFallbackContext,
+): Promise<string> {
+  let currentUri =
+    await completeVeoOpening(
+      jobId,
+      prompt,
+      aspectRatio,
+      chapterNumber,
+      fallback,
+    );
+
+  const extensionCount =
+    veoExtensionCountFor(
+      targetSeconds,
+    );
+
+  for (
+    let extensionNumber = 1;
+    extensionNumber <= extensionCount;
+    extensionNumber += 1
+  ) {
+    currentUri =
+      await completeVeoExtension(
+        jobId,
+        currentUri,
+        [
+          prompt,
+          "Continue the same scene, characters, camera direction and action naturally without restarting it.",
+        ].join("\n\n"),
+        aspectRatio,
+        chapterNumber,
+        extensionNumber,
+        fallback,
+      );
+  }
+
+  return currentUri;
 }
 
 async function completeVeoExtension(
@@ -2960,6 +3138,7 @@ async function completeVeoExtension(
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
   extensionNumber: number,
+  fallback?: VeoFallbackContext,
 ): Promise<string> {
   const operationName =
     await startVeoExtensionStep(
@@ -2969,6 +3148,7 @@ async function completeVeoExtension(
       aspectRatio,
       chapterNumber,
       extensionNumber,
+      fallback,
     );
 
   return await waitForVeoOperation(
@@ -3012,24 +3192,30 @@ async function startVeoOpeningStep(
   prompt: string,
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
+  fallback?: VeoFallbackContext,
 ): Promise<string> {
   "use step";
 
   const { jobStore } =
     await import("@/lib/store");
 
-  const { startVideoGeneration } =
-    await import("@/lib/veo");
-
   const job =
     await jobStore.get(jobId);
 
   if (
     !job ||
-    job.paymentStatus !== "paid" ||
-    job.videoModel !== "google-veo" &&
-    job.videoModel !== "google-veo-fast"
+    job.paymentStatus !== "paid"
   ) {
+    throw new Error(
+      "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
+    );
+  }
+
+  const nativeVeoRequest =
+    job.videoModel === "google-veo" ||
+    job.videoModel === "google-veo-fast";
+
+  if (!nativeVeoRequest && !fallback) {
     throw new Error(
       "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
     );
@@ -3102,25 +3288,203 @@ async function startVeoOpeningStep(
         )
       : undefined;
 
-  const operationName =
-    await startVideoGeneration(
+  const referenceImage =
+    !viralStoryMode &&
+    chapterNumber === 1 &&
+    job.referenceImageUrl
+      ? await (
+          await import(
+            "@/lib/video-backend/images"
+          )
+        ).loadStoredPreview(
+          job.referenceImageUrl,
+          job.referenceImageMimeType,
+        )
+      : undefined;
+
+  const {
+    findProviderFallback,
+  } =
+    await import(
+      "@/lib/video-providers/model-router"
+    );
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const {
+    assertQualityGatePassed,
+    evaluateShotPreflight,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const {
+    classifyProviderFailure,
+  } =
+    await import(
+      "@/lib/video-providers/failures"
+    );
+
+  const fallbackRoute =
+    fallback
+      ? findProviderFallback(
+          {
+            requestedModel:
+              job.videoModel ??
+              "seedance-2-fast",
+            operation: "opening",
+            referencePolicy:
+              "required",
+            referenceCount:
+              referenceImage
+                ? 1
+                : referenceImages?.length ?? 0,
+            allowFallback: true,
+            availableProviders: {
+              seedance: Boolean(
+                process.env.FAL_KEY,
+              ),
+              veo: Boolean(
+                process.env.GEMINI_API_KEY,
+              ),
+              runway: false,
+            },
+          },
+          fallback.fallbackFrom,
+        )
+      : null;
+
+  if (
+    fallback &&
+    fallbackRoute?.provider !== "veo"
+  ) {
+    throw new Error(
+      "Seedance hat die verpflichtende Bildreferenz abgelehnt und kein kompatibler Fallback mit derselben Referenz ist verfügbar.",
+    );
+  }
+
+  const selectedModel =
+    fallbackRoute?.modelId ??
+    job.videoModel ??
+    "google-veo-fast";
+  const adapter =
+    getVideoProviderAdapter("veo");
+  const shotId =
+    `chapter-${chapterNumber}-opening`;
+  const preflight =
+    evaluateShotPreflight({
+      shotId,
+      provider: "veo",
+      operation: "opening",
       prompt,
-      {
-        modelTier:
-          job.videoModel === "google-veo-fast"
-            ? "fast"
-            : "standard",
+      durationSeconds: 8,
+      referencePolicy:
+        job.referenceImageUrl ||
+        (referenceImages?.length ?? 0) > 0
+          ? "required"
+          : "none",
+      referenceCount:
+        referenceImage
+          ? 1
+          : referenceImages?.length ?? 0,
+      maximumReferences:
+        adapter.capabilities
+          .maximumImageReferences,
+    });
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        preflight,
+      ].slice(-100),
+    },
+  );
+
+  assertQualityGatePassed(
+    preflight,
+  );
+
+  let operationName:
+    string;
+
+  try {
+    operationName =
+      await adapter.startOpening({
+        modelId: selectedModel,
+        prompt,
         aspectRatio,
+        durationSeconds: 8,
+        referenceImage,
         referenceImages,
         maxAttempts: 4,
-      },
-    );
+      });
+  } catch (error) {
+    const failure =
+      classifyProviderFailure(
+        "veo",
+        "opening",
+        error,
+      );
+    const latest =
+      await jobStore.get(jobId);
+
+    if (latest) {
+      await jobStore.set(
+        jobId,
+        {
+          ...latest,
+          providerAttempts: [
+            ...(latest.providerAttempts ?? []),
+            {
+              provider: "veo",
+              modelId: selectedModel,
+              operation: "opening",
+              chapterNumber,
+              outcome: "failed",
+              at: Date.now(),
+              reason: failure.message,
+            } satisfies ProviderAttemptRecord,
+          ].slice(-100),
+        },
+      );
+    }
+
+    throw error;
+  }
 
   await jobStore.set(
     jobId,
     {
       ...job,
       provider: "veo",
+      effectiveProvider: "veo",
+      effectiveVideoModel:
+        selectedModel,
+      providerFallbackReason:
+        fallback?.fallbackReason,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        preflight,
+      ].slice(-100),
+      providerAttempts: [
+        ...(job.providerAttempts ?? []),
+        {
+          provider: "veo",
+          modelId: selectedModel,
+          operation: "opening",
+          chapterNumber,
+          outcome: "started",
+          at: Date.now(),
+          reason:
+            fallback?.fallbackReason,
+        } satisfies ProviderAttemptRecord,
+      ].slice(-100),
       status: "processing",
       renderStage:
         chapterNumber > 1
@@ -3144,23 +3508,31 @@ async function startVeoExtensionStep(
   aspectRatio: VideoAspectRatio,
   chapterNumber: number,
   extensionNumber: number,
+  fallback?: VeoFallbackContext,
 ): Promise<string> {
   "use step";
 
   const { jobStore } =
     await import("@/lib/store");
 
-  const { startVideoExtension } =
-    await import("@/lib/veo");
-
   const job =
     await jobStore.get(jobId);
+
+  const nativeVeoRequest =
+    job?.videoModel === "google-veo" ||
+    job?.videoModel === "google-veo-fast";
+  const activeVeoFallback =
+    Boolean(
+      fallback &&
+      job?.effectiveProvider === "veo" &&
+      job?.providerFallbackReason,
+    );
 
   if (
     !job ||
     job.paymentStatus !== "paid" ||
-    job.videoModel !== "google-veo" &&
-    job.videoModel !== "google-veo-fast"
+    !nativeVeoRequest &&
+    !activeVeoFallback
   ) {
     throw new Error(
       "Der Google-Veo-Auftrag ist nicht vollständig freigeschaltet.",
@@ -3176,26 +3548,79 @@ async function startVeoExtensionStep(
     return job.currentOperationName;
   }
 
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const {
+    assertQualityGatePassed,
+    evaluateShotPreflight,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const adapter =
+    getVideoProviderAdapter("veo");
+  const modelId =
+    job.effectiveVideoModel ??
+    job.videoModel ??
+    "google-veo-fast";
+  const preflight =
+    evaluateShotPreflight({
+      shotId:
+        `chapter-${chapterNumber}-extension-${extensionNumber}`,
+      provider: "veo",
+      operation: "extension",
+      prompt,
+      durationSeconds: 7,
+      referencePolicy: "none",
+      referenceCount: 0,
+      maximumReferences:
+        adapter.capabilities
+          .maximumImageReferences,
+    });
+
+  assertQualityGatePassed(
+    preflight,
+  );
+
   const operationName =
-    await startVideoExtension(
+    await adapter.startExtension({
+      modelId,
       previousVideoUri,
       prompt,
-      {
-        modelTier:
-          job.videoModel === "google-veo-fast"
-            ? "fast"
-            : "standard",
-        aspectRatio,
-        extensionNumber,
-        maxAttempts: 4,
-      },
-    );
+      aspectRatio,
+      durationSeconds: 7,
+      extensionNumber,
+      maxAttempts: 4,
+    });
 
   await jobStore.set(
     jobId,
     {
       ...job,
       provider: "veo",
+      effectiveProvider: "veo",
+      effectiveVideoModel:
+        modelId,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        preflight,
+      ].slice(-100),
+      providerAttempts: [
+        ...(job.providerAttempts ?? []),
+        {
+          provider: "veo",
+          modelId,
+          operation: "extension",
+          chapterNumber,
+          extensionNumber,
+          outcome: "started",
+          at: Date.now(),
+        } satisfies ProviderAttemptRecord,
+      ].slice(-100),
       status: "processing",
       renderStage: "extending",
       currentChapter: chapterNumber,
@@ -3222,13 +3647,19 @@ async function checkVeoOperationStep(
   const { jobStore } =
     await import("@/lib/store");
 
-  const { checkVideoStatus } =
-    await import("@/lib/veo");
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const adapter =
+    getVideoProviderAdapter("veo");
 
   const [job, status] =
     await Promise.all([
       jobStore.get(jobId),
-      checkVideoStatus(operationName),
+      adapter.check(operationName),
     ]);
 
   if (!job) {
@@ -3241,11 +3672,62 @@ async function checkVeoOperationStep(
     status.done &&
     status.videoUri
   ) {
+    const {
+      assertQualityGatePassed,
+      evaluateProviderOutput,
+    } =
+      await import(
+        "@/lib/video-providers/quality-gates"
+      );
+    const operation =
+      job.currentOperationType ===
+      "extension"
+        ? "extension"
+        : "opening";
+    const outputGate =
+      evaluateProviderOutput({
+        shotId:
+          operation === "extension"
+            ? `chapter-${job.currentChapter ?? 1}-extension-${job.currentExtension ?? 1}`
+            : `chapter-${job.currentChapter ?? 1}-opening`,
+        provider: "veo",
+        operation,
+        videoUri:
+          status.videoUri,
+      });
+
+    assertQualityGatePassed(
+      outputGate,
+    );
+
     await jobStore.set(
       jobId,
       {
         ...job,
         videoUri: status.videoUri,
+        qualityGates: [
+          ...(job.qualityGates ?? []),
+          outputGate,
+        ].slice(-100),
+        providerAttempts: [
+          ...(job.providerAttempts ?? []),
+          {
+            provider: "veo",
+            modelId:
+              job.effectiveVideoModel ??
+              job.videoModel ??
+              "google-veo-fast",
+            operation,
+            chapterNumber:
+              job.currentChapter ?? 1,
+            extensionNumber:
+              operation === "extension"
+                ? job.currentExtension
+                : undefined,
+            outcome: "completed",
+            at: Date.now(),
+          } satisfies ProviderAttemptRecord,
+        ].slice(-100),
         progressPercent: Math.min(
           88,
           Math.max(
@@ -3312,13 +3794,6 @@ async function startOpeningVideoStep(
   } =
     await import(
       "@/lib/store"
-    );
-
-  const {
-    startVideoGeneration,
-  } =
-    await import(
-      "@/lib/seedance"
     );
 
   const job =
@@ -3438,6 +3913,64 @@ async function startOpeningVideoStep(
         )
       : undefined;
 
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const {
+    assertQualityGatePassed,
+    evaluateShotPreflight,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const adapter =
+    getVideoProviderAdapter("seedance");
+  const modelId =
+    job.videoModel ??
+    "seedance-2-fast";
+  const referenceCount =
+    referenceImage
+      ? 1
+      : referenceImages?.length ?? 0;
+  const preflight =
+    evaluateShotPreflight({
+      shotId:
+        `chapter-${chapterNumber}-opening`,
+      provider: "seedance",
+      operation: "opening",
+      prompt,
+      durationSeconds:
+        job.targetDurationSeconds === 8
+          ? 8
+          : 15,
+      referencePolicy:
+        job.referenceImageUrl
+          ? "required"
+          : "optional",
+      referenceCount,
+      maximumReferences:
+        adapter.capabilities
+          .maximumImageReferences,
+    });
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        preflight,
+      ].slice(-100),
+    },
+  );
+
+  assertQualityGatePassed(
+    preflight,
+  );
+
   let operationName:
     string;
 
@@ -3456,32 +3989,17 @@ async function startOpeningVideoStep(
 
   try {
     operationName =
-      await startVideoGeneration(
+      await adapter.startOpening({
+        modelId,
         prompt,
-        {
-          modelTier:
-            job.videoModel ===
-            "seedance-2-original"
-              ? "original"
-              : "fast",
-
-          aspectRatio,
-
-          referenceImage,
-
-          referenceImages,
-
-          referenceAudios,
-
-          maxAttempts:
-            1,
-
-          webhookUrl,
-
-          durationSeconds:
-            clipDurationSeconds,
-        },
-      );
+        aspectRatio,
+        referenceImage,
+        referenceImages,
+        referenceAudios,
+        maxAttempts: 1,
+        webhookUrl,
+        durationSeconds: clipDurationSeconds,
+      });
   } catch (error) {
     const {
       getRetryableSeedanceStartError,
@@ -3494,6 +4012,93 @@ async function startOpeningVideoStep(
       getRetryableSeedanceStartError(
         error,
       );
+
+    const {
+      classifyProviderFailure,
+    } =
+      await import(
+        "@/lib/video-providers/failures"
+      );
+    const failure =
+      classifyProviderFailure(
+        "seedance",
+        "opening",
+        error,
+      );
+
+    if (
+      failure.category ===
+        "reference-rejected" &&
+      referenceImage &&
+      process.env
+        .VIDEO_PROVIDER_FALLBACK_ENABLED !==
+        "false"
+    ) {
+      const {
+        findProviderFallback,
+      } =
+        await import(
+          "@/lib/video-providers/model-router"
+        );
+      const fallback =
+        findProviderFallback(
+          {
+            requestedModel:
+              job.videoModel ??
+              "seedance-2-fast",
+            operation: "opening",
+            referencePolicy:
+              "required",
+            referenceCount: 1,
+            allowFallback: true,
+            availableProviders: {
+              seedance: true,
+              veo: Boolean(
+                process.env.GEMINI_API_KEY,
+              ),
+              runway: false,
+            },
+          },
+          "seedance",
+        );
+
+      if (fallback?.provider === "veo") {
+        const latest =
+          await jobStore.get(jobId);
+
+        if (latest) {
+          await jobStore.set(
+            jobId,
+            {
+              ...latest,
+              providerAttempts: [
+                ...(latest.providerAttempts ?? []),
+                {
+                  provider: "seedance",
+                  modelId,
+                  operation: "opening",
+                  chapterNumber,
+                  outcome: "rejected",
+                  at: Date.now(),
+                  reason: failure.message,
+                } satisfies ProviderAttemptRecord,
+              ].slice(-100),
+              providerFallbackReason:
+                failure.message,
+            },
+          );
+        }
+
+        return {
+          started: false,
+          fallbackProvider: "veo",
+          providerMessage:
+            failure.message,
+          failureCategory:
+            failure.category,
+        };
+      }
+    }
 
     if (
       !providerError ||
@@ -3616,6 +4221,27 @@ async function startOpeningVideoStep(
     {
       ...latest,
 
+      provider:
+        "seedance",
+
+      effectiveProvider:
+        "seedance",
+
+      effectiveVideoModel:
+        modelId,
+
+      providerAttempts: [
+        ...(latest.providerAttempts ?? []),
+        {
+          provider: "seedance",
+          modelId,
+          operation: "opening",
+          chapterNumber,
+          outcome: "started",
+          at: Date.now(),
+        } satisfies ProviderAttemptRecord,
+      ].slice(-100),
+
       status:
         "processing",
 
@@ -3702,13 +4328,6 @@ async function startExtensionVideoStep(
       "@/lib/store"
     );
 
-  const {
-    startVideoExtension,
-  } =
-    await import(
-      "@/lib/seedance"
-    );
-
   const job =
     await jobStore.get(
       jobId,
@@ -3764,38 +4383,66 @@ async function startExtensionVideoStep(
           ),
         ]
       : undefined;
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const {
+    assertQualityGatePassed,
+    evaluateShotPreflight,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const adapter =
+    getVideoProviderAdapter("seedance");
+  const modelId =
+    job.videoModel ??
+    "seedance-2-fast";
+  const preflight =
+    evaluateShotPreflight({
+      shotId:
+        `chapter-${chapterNumber}-extension-${extensionNumber}`,
+      provider: "seedance",
+      operation: "extension",
+      prompt,
+      durationSeconds: 15,
+      referencePolicy: "none",
+      referenceCount: 0,
+      maximumReferences:
+        adapter.capabilities
+          .maximumImageReferences,
+    });
 
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        preflight,
+      ].slice(-100),
+    },
+  );
+
+  assertQualityGatePassed(
+    preflight,
+  );
   try {
     operationName =
-      await startVideoExtension(
+      await adapter.startExtension({
+        modelId,
         previousVideoUri,
         prompt,
-        {
-          modelTier:
-            job.videoModel ===
-            "seedance-2-original"
-              ? "original"
-              : "fast",
-
-          aspectRatio,
-
-          extensionNumber,
-
-          maxAttempts:
-            1,
-
-          webhookUrl,
-
-          referenceAudios,
-
-          /*
-           * Neue Seedance-Fortsetzungen
-           * sind 15 Sekunden lang.
-           */
-          durationSeconds:
-            15,
-        },
-      );
+        aspectRatio,
+        extensionNumber,
+        maxAttempts: 1,
+        webhookUrl,
+        referenceAudios,
+        durationSeconds: 15,
+      });
   } catch (error) {
     const {
       getRetryableSeedanceStartError,
@@ -3927,6 +4574,28 @@ async function startExtensionVideoStep(
     {
       ...latest,
 
+      provider:
+        "seedance",
+
+      effectiveProvider:
+        "seedance",
+
+      effectiveVideoModel:
+        modelId,
+
+      providerAttempts: [
+        ...(latest.providerAttempts ?? []),
+        {
+          provider: "seedance",
+          modelId,
+          operation: "extension",
+          chapterNumber,
+          extensionNumber,
+          outcome: "started",
+          at: Date.now(),
+        } satisfies ProviderAttemptRecord,
+      ].slice(-100),
+
       status:
         "processing",
 
@@ -3993,7 +4662,6 @@ async function handleSeedanceWebhookStep(
 
   const {
     getRestartableSeedanceOperationError,
-    readSeedanceWebhookResult,
   } =
     await import(
       "@/lib/seedance"
@@ -4017,9 +4685,24 @@ async function handleSeedanceWebhookStep(
     );
   }
 
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const adapter =
+    getVideoProviderAdapter("seedance");
+
+  if (!adapter.readWebhook) {
+    throw new Error(
+      "Der Seedance-Adapter unterstützt keine Webhook-Auswertung.",
+    );
+  }
+
   try {
     const status =
-      readSeedanceWebhookResult(
+      adapter.readWebhook(
         operationName,
         payload,
       );
@@ -4068,6 +4751,34 @@ async function handleSeedanceWebhookStep(
         "Seedance hat den Auftrag abgeschlossen, aber keine Video-URL geliefert.",
       );
     }
+
+    const {
+      assertQualityGatePassed,
+      evaluateProviderOutput,
+    } =
+      await import(
+        "@/lib/video-providers/quality-gates"
+      );
+    const operation =
+      job.currentOperationType ===
+      "extension"
+        ? "extension"
+        : "opening";
+    const outputGate =
+      evaluateProviderOutput({
+        shotId:
+          operation === "extension"
+            ? `chapter-${chapterNumber}-extension-${job.currentExtension ?? 1}`
+            : `chapter-${chapterNumber}-opening`,
+        provider: "seedance",
+        operation,
+        videoUri:
+          status.videoUri,
+      });
+
+    assertQualityGatePassed(
+      outputGate,
+    );
 
     const completedFraction =
       totalExtensions > 0
@@ -4119,6 +4830,30 @@ async function handleSeedanceWebhookStep(
         videoUri:
           status.videoUri,
 
+        qualityGates: [
+          ...(job.qualityGates ?? []),
+          outputGate,
+        ].slice(-100),
+
+        providerAttempts: [
+          ...(job.providerAttempts ?? []),
+          {
+            provider: "seedance",
+            modelId:
+              job.effectiveVideoModel ??
+              job.videoModel ??
+              "seedance-2-fast",
+            operation,
+            chapterNumber,
+            extensionNumber:
+              operation === "extension"
+                ? job.currentExtension
+                : undefined,
+            outcome: "completed",
+            at: Date.now(),
+          } satisfies ProviderAttemptRecord,
+        ].slice(-100),
+
         currentOperationName:
           undefined,
 
@@ -4138,6 +4873,75 @@ async function handleSeedanceWebhookStep(
         status.videoUri,
     };
   } catch (error) {
+    const {
+      classifyProviderFailure,
+    } =
+      await import(
+        "@/lib/video-providers/failures"
+      );
+    const operation =
+      job.currentOperationType ===
+      "extension"
+        ? "extension"
+        : "opening";
+    const failure =
+      classifyProviderFailure(
+        "seedance",
+        operation,
+        error,
+      );
+
+    if (
+      operation === "opening" &&
+      failure.category ===
+        "reference-rejected" &&
+      job.referenceImageUrl &&
+      process.env
+        .VIDEO_PROVIDER_FALLBACK_ENABLED !==
+        "false"
+    ) {
+      await jobStore.set(
+        jobId,
+        {
+          ...job,
+          renderStage:
+            "waiting-provider",
+          currentOperationName:
+            undefined,
+          currentOperationType:
+            undefined,
+          providerFallbackReason:
+            failure.message,
+          providerAttempts: [
+            ...(job.providerAttempts ?? []),
+            {
+              provider: "seedance",
+              modelId:
+                job.effectiveVideoModel ??
+                job.videoModel ??
+                "seedance-2-fast",
+              operation: "opening",
+              chapterNumber,
+              outcome: "rejected",
+              at: Date.now(),
+              reason: failure.message,
+            } satisfies ProviderAttemptRecord,
+          ].slice(-100),
+          errorMessage:
+            "Seedance hat die Bildreferenz abgelehnt. Der Auftrag wechselt sicher zu Google Veo und behält dieselbe Referenz.",
+        },
+      );
+
+      return {
+        completed: false,
+        providerMessage:
+          failure.message,
+        restartAllowed: false,
+        failureCategory:
+          failure.category,
+      };
+    }
+
     const restartableFailure =
       getRestartableSeedanceOperationError(
         error,
@@ -4201,7 +5005,6 @@ async function recoverExistingSeedanceOperationStep(
   "use step";
 
   const {
-    checkVideoStatus,
     getRestartableSeedanceOperationError,
   } =
     await import(
@@ -4226,14 +5029,94 @@ async function recoverExistingSeedanceOperationStep(
     );
   }
 
+  const {
+    getVideoProviderAdapter,
+  } =
+    await import(
+      "@/lib/video-providers/adapters"
+    );
+  const adapter =
+    getVideoProviderAdapter(
+      "seedance",
+    );
+
   let status;
 
   try {
     status =
-      await checkVideoStatus(
+      await adapter.check(
         operationName,
       );
   } catch (error) {
+    const {
+      classifyProviderFailure,
+    } =
+      await import(
+        "@/lib/video-providers/failures"
+      );
+    const operation =
+      job.currentOperationType ===
+      "extension"
+        ? "extension"
+        : "opening";
+    const failure =
+      classifyProviderFailure(
+        "seedance",
+        operation,
+        error,
+      );
+
+    if (
+      operation === "opening" &&
+      failure.category ===
+        "reference-rejected" &&
+      job.referenceImageUrl &&
+      process.env
+        .VIDEO_PROVIDER_FALLBACK_ENABLED !==
+        "false"
+    ) {
+      await jobStore.set(
+        jobId,
+        {
+          ...job,
+          renderStage:
+            "waiting-provider",
+          currentOperationName:
+            undefined,
+          currentOperationType:
+            undefined,
+          providerFallbackReason:
+            failure.message,
+          providerAttempts: [
+            ...(job.providerAttempts ?? []),
+            {
+              provider: "seedance",
+              modelId:
+                job.effectiveVideoModel ??
+                job.videoModel ??
+                "seedance-2-fast",
+              operation: "opening",
+              chapterNumber,
+              outcome: "rejected",
+              at: Date.now(),
+              reason: failure.message,
+            } satisfies ProviderAttemptRecord,
+          ].slice(-100),
+          errorMessage:
+            "Seedance hat die Bildreferenz abgelehnt. Der Auftrag wechselt sicher zu Google Veo und behält dieselbe Referenz.",
+        },
+      );
+
+      return {
+        completed: false,
+        providerMessage:
+          failure.message,
+        restartAllowed: false,
+        failureCategory:
+          failure.category,
+      };
+    }
+
     const restartableFailure =
       getRestartableSeedanceOperationError(
         error,
@@ -4319,6 +5202,34 @@ async function recoverExistingSeedanceOperationStep(
     };
   }
 
+  const {
+    assertQualityGatePassed,
+    evaluateProviderOutput,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const operation =
+    job.currentOperationType ===
+    "extension"
+      ? "extension"
+      : "opening";
+  const outputGate =
+    evaluateProviderOutput({
+      shotId:
+        operation === "extension"
+          ? `chapter-${chapterNumber}-extension-${job.currentExtension ?? 1}`
+          : `chapter-${chapterNumber}-opening`,
+      provider: "seedance",
+      operation,
+      videoUri:
+        status.videoUri,
+    });
+
+  assertQualityGatePassed(
+    outputGate,
+  );
+
   const completedFraction =
     totalExtensions > 0
       ? completedExtensions /
@@ -4368,6 +5279,30 @@ async function recoverExistingSeedanceOperationStep(
 
       videoUri:
         status.videoUri,
+
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        outputGate,
+      ].slice(-100),
+
+      providerAttempts: [
+        ...(job.providerAttempts ?? []),
+        {
+          provider: "seedance",
+          modelId:
+            job.effectiveVideoModel ??
+            job.videoModel ??
+            "seedance-2-fast",
+          operation,
+          chapterNumber,
+          extensionNumber:
+            operation === "extension"
+              ? job.currentExtension
+              : undefined,
+          outcome: "completed",
+          at: Date.now(),
+        } satisfies ProviderAttemptRecord,
+      ].slice(-100),
 
       currentOperationName:
         undefined,
@@ -4569,6 +5504,8 @@ mergeFinalVideoStep.maxRetries =
 async function finishRenderJobStep(
   jobId: string,
   pathname: string,
+  actualDurationSeconds: number,
+  expectedDurationSeconds: number,
 ): Promise<void> {
   "use step";
 
@@ -4590,10 +5527,45 @@ async function finishRenderJobStep(
     );
   }
 
+  const {
+    assertQualityGatePassed,
+    evaluateFinalOutput,
+  } =
+    await import(
+      "@/lib/video-providers/quality-gates"
+    );
+  const finalGate =
+    evaluateFinalOutput({
+      shotId: "final-output",
+      pathname,
+      expectedDurationSeconds,
+      actualDurationSeconds,
+    });
+
   await jobStore.set(
     jobId,
     {
       ...job,
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        finalGate,
+      ].slice(-100),
+    },
+  );
+
+  assertQualityGatePassed(
+    finalGate,
+  );
+
+  await jobStore.set(
+    jobId,
+    {
+      ...job,
+
+      qualityGates: [
+        ...(job.qualityGates ?? []),
+        finalGate,
+      ].slice(-100),
 
       status:
         "done",

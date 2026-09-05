@@ -218,6 +218,23 @@ async function upload(
   filename: string,
   contentType = "video/mp4",
 ) {
+  const durationSeconds =
+    ffmpegPath
+      ? await inspectContainerDuration(
+          ffmpegPath,
+          filename,
+        )
+      : undefined;
+
+  if (
+    !durationSeconds ||
+    !Number.isFinite(durationSeconds)
+  ) {
+    throw new Error(
+      "Die Laufzeit der finalen Videodatei konnte nicht verifiziert werden.",
+    );
+  }
+
   const hasBlobCredentials = Boolean(
     process.env.BLOB_READ_WRITE_TOKEN ||
       (
@@ -251,6 +268,8 @@ async function upload(
 
       url:
         `local:${pathname}`,
+
+      durationSeconds,
     };
   }
 
@@ -274,6 +293,7 @@ async function upload(
   return {
     pathname: blob.pathname,
     url: blob.url,
+    durationSeconds,
   };
 }
 

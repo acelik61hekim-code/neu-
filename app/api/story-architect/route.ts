@@ -22,6 +22,17 @@ import {
   DIALOGUE_WRITER_MODEL,
   generateStructuredDialoguePlan,
 } from "@/lib/openai-dialogue";
+import {
+  parseStoryArchitectJson,
+  parseStoryArchitectRequest,
+  STORY_ARCHITECT_RESPONSE_JSON_SCHEMA,
+  type StoryArchitectRequest,
+} from "@/lib/story-architect/schema";
+import {
+  clampStoryArchitectRetryDelay,
+  getStoryArchitectAttemptTimeout,
+  StoryArchitectDeadlineError,
+} from "@/lib/story-architect/runtime";
 
 import {
   STUDIO_BRAND_CONTEXT,
@@ -80,20 +91,6 @@ const STORY_MODEL_TIMEOUT_MS = 20_000;
 
 const SEEDANCE_CLIP_DURATION_SECONDS = 15;
 
-type StoryArchitectRequest = {
-  story?: StoryDraft;
-  targetDurationSeconds?: unknown;
-  aspectRatio?: unknown;
-  editingStyle?: unknown;
-  audioStyle?: unknown;
-  voiceMode?: unknown;
-  spokenLanguage?: unknown;
-  voiceoverText?: unknown;
-  closingText?: unknown;
-  creationMode?: unknown;
-  musicTrack?: unknown;
-};
-
 const SUPPORTED_VIDEO_DURATIONS = [
   8,
   15,
@@ -128,6 +125,7 @@ type DurationPlan = {
 type GeneratedStory = {
   rawText: string;
   model: string;
+  parsed: unknown;
 };
 
 type ErrorDetails = {
@@ -160,29 +158,6 @@ function isString(
   value: unknown,
 ): value is string {
   return typeof value === "string";
-}
-
-function isStoryDraft(
-  value: unknown,
-): value is StoryDraft {
-  if (
-    typeof value !== "object" ||
-    value === null
-  ) {
-    return false;
-  }
-
-  const draft =
-    value as Partial<StoryDraft>;
-
-  return (
-    typeof draft.title === "string" &&
-    typeof draft.genre === "string" &&
-    typeof draft.mood === "string" &&
-    typeof draft.setting === "string" &&
-    typeof draft.summary === "string" &&
-    Array.isArray(draft.characters)
-  );
 }
 
 function isVideoDurationSeconds(
@@ -269,38 +244,11 @@ function buildDurationPlan(
 function cleanJsonText(
   text: string,
 ): string {
-  let cleaned = text
-    .replace(/^\uFEFF/, "")
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  const firstBrace =
-    cleaned.indexOf("{");
-
-  const lastBrace =
-    cleaned.lastIndexOf("}");
-
-  if (
-    firstBrace >= 0 &&
-    lastBrace > firstBrace
-  ) {
-    cleaned =
-      cleaned.slice(
-        firstBrace,
-        lastBrace + 1,
-      );
-  }
-
-  cleaned =
-    cleaned.replace(
-      /,\s*([}\]])/g,
-      "$1",
-    );
-
-  return cleaned.trim();
+  return (
+    parseStoryArchitectJson(text)
+      ?.cleanedText ??
+    text.trim()
+  );
 }
 
 function tryParseJson(
@@ -309,19 +257,9 @@ function tryParseJson(
   parsed: unknown;
   cleanedText: string;
 } | null {
-  const cleanedText =
-    cleanJsonText(text);
-
-  try {
-    return {
-      parsed:
-        JSON.parse(cleanedText),
-
-      cleanedText,
-    };
-  } catch {
-    return null;
-  }
+  return parseStoryArchitectJson(
+    text,
+  );
 }
 
 function asRecord(
@@ -3698,6 +3636,8 @@ async function generateStoryWithFallback(
 ): Promise<GeneratedStory> {
   let lastError:
     unknown;
+  const startedAt =
+    Date.now();
 
   for (
     const model
@@ -3710,6 +3650,15 @@ async function generateStoryWithFallback(
       attempt += 1
     ) {
       try {
+        const attemptTimeout =
+          getStoryArchitectAttemptTimeout(
+            startedAt,
+          );
+
+        if (attemptTimeout === null) {
+          throw new StoryArchitectDeadlineError();
+        }
+
         console.log(
           `Story Architect: ${model}, Versuch ${attempt}/${RETRIES_PER_MODEL}`,
         );
@@ -3723,13 +3672,16 @@ async function generateStoryWithFallback(
                 prompt,
 
               config: {
-                httpOptions: {
-                  timeout:
-                    STORY_MODEL_TIMEOUT_MS,
-                },
-
                 responseMimeType:
                   "application/json",
+
+                responseJsonSchema:
+                  STORY_ARCHITECT_RESPONSE_JSON_SCHEMA,
+
+                httpOptions: {
+                  timeout:
+                    attemptTimeout,
+                },
 
                 temperature:
                   0.25,
@@ -3814,11 +3766,19 @@ async function generateStoryWithFallback(
             attempt <
             RETRIES_PER_MODEL
           ) {
-            await sleep(
-              createRetryDelay(
-                attempt,
-              ),
-            );
+            const retryDelay =
+              clampStoryArchitectRetryDelay(
+                createRetryDelay(
+                  attempt,
+                ),
+                startedAt,
+              );
+
+            if (retryDelay > 0) {
+              await sleep(
+                retryDelay,
+              );
+            }
 
             continue;
           }
@@ -3845,11 +3805,19 @@ async function generateStoryWithFallback(
             attempt <
             RETRIES_PER_MODEL
           ) {
-            await sleep(
-              createRetryDelay(
-                attempt,
-              ),
-            );
+            const retryDelay =
+              clampStoryArchitectRetryDelay(
+                createRetryDelay(
+                  attempt,
+                ),
+                startedAt,
+              );
+
+            if (retryDelay > 0) {
+              await sleep(
+                retryDelay,
+              );
+            }
 
             continue;
           }
@@ -3863,6 +3831,9 @@ async function generateStoryWithFallback(
               .cleanedText,
 
           model,
+
+          parsed:
+            parsedResult.parsed,
         };
       } catch (
         error:
@@ -3878,6 +3849,13 @@ async function generateStoryWithFallback(
             error,
           ),
         );
+
+        if (
+          error instanceof
+          StoryArchitectDeadlineError
+        ) {
+          throw error;
+        }
 
         if (
           isModelUnavailableError(
@@ -3899,14 +3877,30 @@ async function generateStoryWithFallback(
           attempt <
           RETRIES_PER_MODEL
         ) {
-          await sleep(
-            createRetryDelay(
-              attempt,
-            ),
-          );
+          const retryDelay =
+            clampStoryArchitectRetryDelay(
+              createRetryDelay(
+                attempt,
+              ),
+              startedAt,
+            );
+
+          if (retryDelay > 0) {
+            await sleep(
+              retryDelay,
+            );
+          }
         }
       }
     }
+  }
+
+  if (
+    getStoryArchitectAttemptTimeout(
+      startedAt,
+    ) === null
+  ) {
+    throw new StoryArchitectDeadlineError();
   }
 
   throw (
@@ -7129,13 +7123,13 @@ export async function POST(
     process.env
       .OPENAI_API_KEY;
 
-  let body:
-    StoryArchitectRequest;
+  let rawBody:
+    unknown;
 
   try {
-    body =
+    rawBody =
       await request
-        .json() as StoryArchitectRequest;
+        .json();
   } catch {
     return NextResponse.json(
       {
@@ -7153,11 +7147,12 @@ export async function POST(
     );
   }
 
-  if (
-    !isStoryDraft(
-      body.story,
-    )
-  ) {
+  const requestResult =
+    parseStoryArchitectRequest(
+      rawBody,
+    );
+
+  if (!requestResult.success) {
     return NextResponse.json(
       {
         success:
@@ -7165,6 +7160,12 @@ export async function POST(
 
         error:
           "Die übergebene Geschichte ist unvollständig oder ungültig.",
+
+        issues:
+          requestResult.issues.slice(
+            0,
+            12,
+          ),
       },
 
       {
@@ -7173,6 +7174,10 @@ export async function POST(
       },
     );
   }
+
+  const body:
+    StoryArchitectRequest =
+    requestResult.data;
 
   const story =
     body.story;
@@ -7488,6 +7493,7 @@ export async function POST(
           "{}",
         model:
           "prepared-original-dialogue-plan",
+        parsed: {},
       };
     } else {
       try {
@@ -7530,58 +7536,13 @@ export async function POST(
             "{}",
           model:
             "resilient-standard-film-plan",
+          parsed: {},
         };
       }
     }
 
-    const cleanedText =
-      cleanJsonText(
-        generationResult
-          .rawText,
-      );
-
-    let parsed:
-      unknown;
-
-    try {
-      parsed =
-        JSON.parse(
-          cleanedText,
-        );
-    } catch (
-      parseError
-    ) {
-      console.error(
-        "Ungültige Story-Architect-Antwort:",
-
-        {
-          model:
-            generationResult
-              .model,
-
-          parseError,
-
-          rawText:
-            generationResult
-              .rawText,
-        },
-      );
-
-      return NextResponse.json(
-        {
-          success:
-            false,
-
-          error:
-            "Der Story Architect hat ungültiges JSON erzeugt. Bitte versuche es erneut.",
-        },
-
-        {
-          status:
-            502,
-        },
-      );
-    }
+    const parsed =
+      generationResult.parsed;
 
     let normalized =
       normalizeArchitectResponse(
@@ -7966,6 +7927,27 @@ export async function POST(
     );
 
     if (
+      error instanceof
+      StoryArchitectDeadlineError
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code:
+            "STORY_ARCHITECT_DEADLINE",
+          error:
+            "Der Story Architect hat innerhalb des sicheren Zeitbudgets keine valide Planung geliefert. Bitte versuche es erneut; es wird automatisch wieder mit mehreren Modellen gearbeitet.",
+        },
+        {
+          status: 504,
+          headers: {
+            "Retry-After": "10",
+          },
+        },
+      );
+    }
+
+    if (
       isRetryableGeminiError(
         error,
       )
@@ -7982,6 +7964,10 @@ export async function POST(
         {
           status:
             503,
+
+          headers: {
+            "Retry-After": "10",
+          },
         },
       );
     }

@@ -6,8 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --experimental-strip-types --test tests/provided-dialogue.test.mjs tests/growth-funnel.test.mjs tests/instagram-discount.test.mjs tests/song-delivery.test.mjs",
-    "test:dialogue": "node --experimental-strip-types --test tests/provided-dialogue.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "test:dialogue": "node --experimental-strip-types --test tests/provided-dialogue.test.mjs",
+    "test:speech-content": "node --experimental-strip-types --test tests/speech-content.test.mjs"
   },
   "dependencies": {
     "@fal-ai/client": "^1.10.1",

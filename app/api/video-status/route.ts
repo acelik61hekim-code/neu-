@@ -56,6 +56,18 @@ export async function GET(req: NextRequest) {
     voiceMode: job.voiceMode,
     spokenLanguage: job.spokenLanguage,
     videoModel: job.videoModel ?? "seedance-2-fast",
+    effectiveProvider: job.effectiveProvider,
+    effectiveVideoModel: job.effectiveVideoModel,
+    providerFallbackActive: Boolean(job.providerFallbackReason),
+    providerFallbackReason: job.providerFallbackReason,
+    providerAttemptCount: job.providerAttempts?.length ?? 0,
+    qualityGateStatus:
+      job.qualityGates?.some((gate) => gate.status === "failed")
+        ? "failed"
+        : job.qualityGates?.length
+          ? "passed"
+          : "pending",
+    qualityGateCount: job.qualityGates?.length ?? 0,
     musicVideoAudioName: job.musicVideoAudioName,
     musicVideoAudioDurationSeconds: job.musicVideoAudioDurationSeconds,
     hasOriginalSong: Boolean(job.musicVideoAudioUri),
