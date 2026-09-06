@@ -1954,8 +1954,10 @@ export async function mergeAndStore(
               (inspection) =>
                 inspection.durationSeconds,
             ),
-          transitionSeconds:
-            mergePlan.transitionSeconds,
+          videoTransitionSeconds:
+            mergePlan.videoTransitionSeconds,
+          audioTransitionSeconds:
+            mergePlan.audioTransitionSeconds,
           targetDurationSeconds:
             seconds,
           outputDurationSeconds:
@@ -1967,10 +1969,12 @@ export async function mergeAndStore(
 
       /*
        * Provider erzeugen jeden Abschnitt als eigenständige Datei. Eine
-       * normale Concat-Liste setzt Bild, Kameraausschnitt und Ton hart neu.
-       * Hier werden deshalb zuerst alle Streams technisch vereinheitlicht
-       * und anschließend Bild und Audio kurz überblendet. Die minimale
-       * Zeitanpassung hält die bestellte Gesamtlänge trotzdem exakt ein.
+       * normale Concat-Liste kann Kameraformat und Ton hart neu setzen.
+       * Hier werden deshalb zuerst alle Streams technisch vereinheitlicht.
+       * Bildgleiche Fortsetzungen bleiben ohne geisterhafte Doppelbilder,
+       * während die unabhängig erzeugten Tonspuren länger und
+       * lautheitsstabil überblendet werden. Die getrennte minimale
+       * Zeitanpassung hält die bestellte Gesamtlänge exakt ein.
        */
       const executeMergePlan =
         async (

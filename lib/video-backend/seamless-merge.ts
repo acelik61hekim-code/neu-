@@ -13,14 +13,15 @@ export type SeamlessMergePlan = {
   filters: string[];
   videoOutputLabel: string;
   audioOutputLabel: string;
-  transitionSeconds: number;
+  videoTransitionSeconds: number;
+  audioTransitionSeconds: number;
   outputDurationSeconds: number;
   width: number;
   height: number;
 };
 
-const DEFAULT_TRANSITION_SECONDS =
-  0.24;
+const DEFAULT_AUDIO_TRANSITION_SECONDS =
+  0.8;
 
 function finitePositive(
   value: number,
@@ -192,9 +193,9 @@ export function buildSeamlessMergePlan(
       ),
     );
 
-  const transitionSeconds =
+  const audioTransitionSeconds =
     Math.min(
-      DEFAULT_TRANSITION_SECONDS,
+      DEFAULT_AUDIO_TRANSITION_SECONDS,
       shortestInput / 4,
     );
 
@@ -209,28 +210,41 @@ export function buildSeamlessMergePlan(
       0,
     );
 
-  const totalOverlap =
-    transitionSeconds *
+  const totalAudioOverlap =
+    audioTransitionSeconds *
     (
       inputs.length - 1
     );
 
   /*
-   * Das kurze Crossfade darf die bestellte Videolänge nicht verkürzen.
-   * Deshalb werden alle Segmente zusammen nur minimal zeitlich angepasst.
-   * Bei zwei 15-Sekunden-Clips sind das 0,8 Prozent – visuell und akustisch
-   * unmerklich, der fertige Film bleibt aber exakt 30 Sekunden lang.
+   * Seedance erzeugt den Anschlussclip bereits aus dem vorherigen Video. Seine
+   * erste Aufnahme ist deshalb normalerweise fast identisch zum letzten Bild
+   * des vorherigen Clips. Ein Bild-Crossfade legt zwei leicht versetzte
+   * Personen und Kamerapositionen übereinander und erzeugt genau den sichtbaren
+   * Größen-/Morph-Sprung, den es eigentlich verstecken soll. Die normalisierten
+   * Videostreams werden daher bildgenau aneinandergefügt.
+   *
+   * Die getrennt erzeugten Tonspuren können dagegen mit unterschiedlicher
+   * Musiklautstärke oder einer neuen Phrase beginnen. Sie erhalten einen
+   * längeren Constant-Power-Crossfade. Bild und Ton werden unabhängig minimal
+   * zeitlich angepasst, damit beide weiterhin exakt die bestellte Länge haben.
    */
-  const stretchFactor =
+  const videoStretchFactor =
+    targetDurationSeconds /
+    totalInputDuration;
+
+  const audioStretchFactor =
     (
       targetDurationSeconds +
-      totalOverlap
+      totalAudioOverlap
     ) /
     totalInputDuration;
 
   if (
-    stretchFactor < 0.75 ||
-    stretchFactor > 1.25
+    videoStretchFactor < 0.75 ||
+    videoStretchFactor > 1.25 ||
+    audioStretchFactor < 0.75 ||
+    audioStretchFactor > 1.25
   ) {
     throw new Error(
       "Die gelieferten Segmentlängen weichen zu stark von der bestellten Videolänge ab.",
@@ -249,11 +263,18 @@ export function buildSeamlessMergePlan(
   const filters:
     string[] = [];
 
-  const adjustedDurations =
+  const adjustedVideoDurations =
     inputs.map(
       (input) =>
         input.durationSeconds *
-        stretchFactor,
+        videoStretchFactor,
+    );
+
+  const adjustedAudioDurations =
+    inputs.map(
+      (input) =>
+        input.durationSeconds *
+        audioStretchFactor,
     );
 
   inputs.forEach(
@@ -266,28 +287,31 @@ export function buildSeamlessMergePlan(
           6,
         );
 
-      const adjustedDuration =
-        adjustedDurations[index]
+      const adjustedVideoDuration =
+        adjustedVideoDurations[index]
+          .toFixed(6);
+
+      const adjustedAudioDuration =
+        adjustedAudioDurations[index]
           .toFixed(6);
 
       const videoFilters =
         [
           `trim=duration=${sourceDuration}`,
           "setpts=PTS-STARTPTS",
-          `setpts=${stretchFactor.toFixed(8)}*PTS`,
+          `setpts=${videoStretchFactor.toFixed(8)}*PTS`,
           `scale=${width}:${height}:force_original_aspect_ratio=increase`,
           `crop=${width}:${height}`,
           "setsar=1",
           "format=yuv420p",
           "tpad=stop_mode=clone:stop_duration=0.1",
-          `trim=duration=${adjustedDuration}`,
+          `trim=duration=${adjustedVideoDuration}`,
           "setpts=PTS-STARTPTS",
           /*
-           * Keep fps as the final filter before xfade. FFmpeg 7 can lose the
-           * constant-frame-rate metadata when settb/tpad/trim run after fps,
-           * causing xfade to see the invalid rate 1/0 even for a 24-fps MP4.
-           * A final fps filter gives every xfade input the same 30/1 rate and
-           * the same 1/30 time base.
+           * Keep fps as the final video filter. FFmpeg 7 can lose the
+           * constant-frame-rate metadata when settb/tpad/trim run after fps.
+           * A final fps filter gives every concat input the same 30/1 rate
+           * and the same 1/30 time base.
            */
           "fps=fps=30:round=near",
         ].join(",");
@@ -299,7 +323,7 @@ export function buildSeamlessMergePlan(
       if (input.hasAudio) {
         const tempoFilters =
           buildAtempoChain(
-            1 / stretchFactor,
+            1 / audioStretchFactor,
           );
 
         const audioFilters =
@@ -310,8 +334,8 @@ export function buildSeamlessMergePlan(
             "asettb=1/48000",
             "aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo",
             ...tempoFilters,
-            `apad=pad_dur=${adjustedDuration}`,
-            `atrim=duration=${adjustedDuration}`,
+            `apad=pad_dur=${adjustedAudioDuration}`,
+            `atrim=duration=${adjustedAudioDuration}`,
             "asetpts=PTS-STARTPTS",
           ].join(",");
 
@@ -323,7 +347,7 @@ export function buildSeamlessMergePlan(
           `${[
             "anullsrc=r=48000:cl=stereo",
             "asettb=1/48000",
-            `atrim=duration=${adjustedDuration}`,
+            `atrim=duration=${adjustedAudioDuration}`,
             "asetpts=PTS-STARTPTS",
           ].join(",")}[a${index}]`,
         );
@@ -331,53 +355,57 @@ export function buildSeamlessMergePlan(
     },
   );
 
-  let videoOutputLabel =
-    "v0";
+  const videoConcatInputs =
+    inputs
+      .map(
+        (
+          _input,
+          index,
+        ) =>
+          `[v${index}]`,
+      )
+      .join("");
+
+  filters.push(
+    `${videoConcatInputs}concat=n=${inputs.length}:v=1:a=0[vconcat]`,
+  );
 
   let audioOutputLabel =
     "a0";
 
-  let accumulatedDuration =
-    adjustedDurations[0];
+  let accumulatedAudioDuration =
+    adjustedAudioDurations[0];
 
   for (
     let index = 1;
     index < inputs.length;
     index += 1
   ) {
-    const nextVideoLabel =
-      `vx${index}`;
-
     const nextAudioLabel =
       `ax${index}`;
 
-    const transitionOffset =
-      accumulatedDuration -
-      transitionSeconds;
-
     filters.push(
-      `[${videoOutputLabel}][v${index}]xfade=transition=fade:duration=${transitionSeconds.toFixed(6)}:offset=${transitionOffset.toFixed(6)}[${nextVideoLabel}]`,
-      `[${audioOutputLabel}][a${index}]acrossfade=d=${transitionSeconds.toFixed(6)}:c1=tri:c2=tri[${nextAudioLabel}]`,
+      `[${audioOutputLabel}][a${index}]acrossfade=d=${audioTransitionSeconds.toFixed(6)}:c1=qsin:c2=qsin[${nextAudioLabel}]`,
     );
-
-    videoOutputLabel =
-      nextVideoLabel;
 
     audioOutputLabel =
       nextAudioLabel;
 
-    accumulatedDuration +=
-      adjustedDurations[index] -
-      transitionSeconds;
+    accumulatedAudioDuration +=
+      adjustedAudioDurations[index] -
+      audioTransitionSeconds;
   }
 
   return {
     filters,
-    videoOutputLabel,
+    videoOutputLabel:
+      "vconcat",
     audioOutputLabel,
-    transitionSeconds,
+    videoTransitionSeconds:
+      0,
+    audioTransitionSeconds,
     outputDurationSeconds:
-      accumulatedDuration,
+      accumulatedAudioDuration,
     width,
     height,
   };
@@ -537,7 +565,9 @@ export function buildCompatibleConcatPlan(
       "vconcat",
     audioOutputLabel:
       "aconcat",
-    transitionSeconds:
+    videoTransitionSeconds:
+      0,
+    audioTransitionSeconds:
       0,
     outputDurationSeconds:
       adjustedDurations.reduce(

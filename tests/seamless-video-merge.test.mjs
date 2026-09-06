@@ -17,7 +17,7 @@ import {
   parseFfmpegMediaInspection,
 } from "../lib/video-backend/seamless-merge.ts";
 
-test("two 15-second clips meet seamlessly around second 15 without shortening the film", () => {
+test("matching continuation frames join without a ghosting resize while audio fades smoothly", () => {
   const plan =
     buildSeamlessMergePlan(
       [
@@ -70,11 +70,23 @@ test("two 15-second clips meet seamlessly around second 15 without shortening th
   );
   assert.match(
     filterGraph,
-    /xfade=transition=fade:duration=0\.240000:offset=14\.880000/u,
+    /\[v0\]\[v1\]concat=n=2:v=1:a=0\[vconcat\]/u,
+  );
+  assert.doesNotMatch(
+    filterGraph,
+    /xfade/u,
   );
   assert.match(
     filterGraph,
-    /acrossfade=d=0\.240000/u,
+    /acrossfade=d=0\.800000:c1=qsin:c2=qsin/u,
+  );
+  assert.equal(
+    plan.videoTransitionSeconds,
+    0,
+  );
+  assert.equal(
+    plan.audioTransitionSeconds,
+    0.8,
   );
 });
 
@@ -103,7 +115,11 @@ test("the compatibility fallback normalizes both streams before concat", () => {
     plan.filters.join(";");
 
   assert.equal(
-    plan.transitionSeconds,
+    plan.videoTransitionSeconds,
+    0,
+  );
+  assert.equal(
+    plan.audioTransitionSeconds,
     0,
   );
   assert.ok(
