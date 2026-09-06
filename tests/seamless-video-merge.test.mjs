@@ -12,6 +12,7 @@ import test from "node:test";
 import ffmpegPath from "ffmpeg-static";
 
 import {
+  buildCompatibleConcatPlan,
   buildSeamlessMergePlan,
   parseFfmpegMediaInspection,
 } from "../lib/video-backend/seamless-merge.ts";
@@ -61,11 +62,67 @@ test("two 15-second clips meet seamlessly around second 15 without shortening th
   );
   assert.match(
     filterGraph,
+    /setpts=PTS-STARTPTS,fps=fps=30:round=near\[v0\]/u,
+  );
+  assert.doesNotMatch(
+    filterGraph,
+    /settb=AVTB/u,
+  );
+  assert.match(
+    filterGraph,
     /xfade=transition=fade:duration=0\.240000:offset=14\.880000/u,
   );
   assert.match(
     filterGraph,
     /acrossfade=d=0\.240000/u,
+  );
+});
+
+test("the compatibility fallback normalizes both streams before concat", () => {
+  const plan =
+    buildCompatibleConcatPlan(
+      [
+        {
+          durationSeconds: 15.1,
+          width: 1280,
+          height: 720,
+          hasAudio: true,
+        },
+        {
+          durationSeconds: 15.1,
+          width: 1280,
+          height: 720,
+          hasAudio: true,
+        },
+      ],
+      30,
+      "16:9",
+    );
+
+  const filterGraph =
+    plan.filters.join(";");
+
+  assert.equal(
+    plan.transitionSeconds,
+    0,
+  );
+  assert.ok(
+    Math.abs(
+      plan.outputDurationSeconds -
+        30,
+    ) < 0.001,
+  );
+  assert.match(
+    filterGraph,
+    /fps=fps=30:round=near\[cv0\]/u,
+  );
+  assert.match(
+    filterGraph,
+    /concat=n=2:v=1:a=1\[vconcat\]\[aconcat\]/u,
+  );
+  assert.doesNotMatch(
+    filterGraph,
+    /xfade/u,
   );
 });
 
@@ -183,6 +240,11 @@ test("the production filter graph really renders continuous video and audio", as
     join(directory, "second.mp4");
   const output =
     join(directory, "output.mp4");
+  const fallbackOutput =
+    join(
+      directory,
+      "fallback-output.mp4",
+    );
 
   try {
     await runFfmpeg([
@@ -190,11 +252,11 @@ test("the production filter graph really renders continuous video and audio", as
       "-f",
       "lavfi",
       "-i",
-      "color=c=red:s=180x320:d=1",
+      "color=c=red:s=180x320:r=24:d=1",
       "-f",
       "lavfi",
       "-i",
-      "sine=frequency=440:sample_rate=48000:duration=1",
+      "sine=frequency=440:sample_rate=32000:duration=1",
       "-shortest",
       "-c:v",
       "libx264",
@@ -210,11 +272,11 @@ test("the production filter graph really renders continuous video and audio", as
       "-f",
       "lavfi",
       "-i",
-      "color=c=blue:s=176x320:d=1",
+      "color=c=blue:s=176x320:r=24:d=1",
       "-f",
       "lavfi",
       "-i",
-      "sine=frequency=660:sample_rate=48000:duration=1",
+      "sine=frequency=660:sample_rate=32000:duration=1",
       "-shortest",
       "-c:v",
       "libx264",
@@ -308,6 +370,98 @@ test("the production filter graph really renders continuous video and audio", as
     );
     assert.equal(
       inspection.hasAudio,
+      true,
+    );
+
+    const fallbackPlan =
+      buildCompatibleConcatPlan(
+        [
+          {
+            durationSeconds: 1,
+            width: 180,
+            height: 320,
+            hasAudio: true,
+          },
+          {
+            durationSeconds: 1,
+            width: 176,
+            height: 320,
+            hasAudio: true,
+          },
+        ],
+        2,
+        "9:16",
+      );
+
+    await runFfmpeg([
+      "-y",
+      "-i",
+      first,
+      "-i",
+      second,
+      "-filter_complex",
+      fallbackPlan.filters.join(
+        ";",
+      ),
+      "-map",
+      `[${fallbackPlan.videoOutputLabel}]`,
+      "-map",
+      `[${fallbackPlan.audioOutputLabel}]`,
+      "-t",
+      "2",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      "-pix_fmt",
+      "yuv420p",
+      "-c:a",
+      "aac",
+      "-ar",
+      "48000",
+      "-ac",
+      "2",
+      fallbackOutput,
+    ]);
+
+    let fallbackProbeOutput =
+      "";
+
+    try {
+      await runFfmpeg([
+        "-hide_banner",
+        "-i",
+        fallbackOutput,
+      ]);
+    } catch (error) {
+      fallbackProbeOutput =
+        error.message;
+    }
+
+    const fallbackInspection =
+      parseFfmpegMediaInspection(
+        fallbackProbeOutput,
+      );
+
+    assert.ok(
+      fallbackInspection,
+    );
+    assert.ok(
+      Math.abs(
+        fallbackInspection.durationSeconds -
+          2,
+      ) < 0.1,
+    );
+    assert.equal(
+      fallbackInspection.width,
+      720,
+    );
+    assert.equal(
+      fallbackInspection.height,
+      1280,
+    );
+    assert.equal(
+      fallbackInspection.hasAudio,
       true,
     );
   } finally {

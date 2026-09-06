@@ -5804,6 +5804,14 @@ function readableRenderError(
     return "Seedance hat ein Referenzbild fälschlich als mögliche echte Person eingestuft. Beim erneuten Start wird dieses Bild automatisch entfernt und die Figur ausschließlich aus ihrer schriftlichen Beschreibung erzeugt. Es ist keine neue Zahlung nötig.";
   }
 
+  if (
+    /Command failed:[\s\S]*ffmpeg|Conversion failed|Parsed_xfade|constant frame rate/i.test(
+      rawMessage,
+    )
+  ) {
+    return "Die fertigen Videoteile konnten technisch nicht sauber verbunden werden. Dein Auftrag bleibt gespeichert und kann ohne neue Zahlung erneut erstellt werden.";
+  }
+
   return rawMessage;
 }
 

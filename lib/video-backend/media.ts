@@ -11,9 +11,11 @@ import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 
 import {
+  buildCompatibleConcatPlan,
   buildSeamlessMergePlan,
   parseFfmpegMediaInspection,
   type MediaInspection,
+  type SeamlessMergePlan,
 } from "@/lib/video-backend/seamless-merge";
 
 const exec = promisify(execFile);
@@ -1970,66 +1972,122 @@ export async function mergeAndStore(
        * und anschließend Bild und Audio kurz überblendet. Die minimale
        * Zeitanpassung hält die bestellte Gesamtlänge trotzdem exakt ein.
        */
-      await exec(
-        binary,
-        [
-          "-y",
+      const executeMergePlan =
+        async (
+          plan:
+            SeamlessMergePlan,
+        ) =>
+          exec(
+            binary,
+            [
+              "-y",
 
-          ...files.flatMap(
-            (file) => [
-              "-i",
-              file,
+              ...files.flatMap(
+                (file) => [
+                  "-i",
+                  file,
+                ],
+              ),
+
+              "-filter_complex",
+              plan.filters.join(
+                ";",
+              ),
+
+              "-map",
+              `[${plan.videoOutputLabel}]`,
+
+              "-map",
+              `[${plan.audioOutputLabel}]`,
+
+              "-t",
+              String(seconds),
+
+              "-c:v",
+              "libx264",
+
+              "-preset",
+              "fast",
+
+              "-crf",
+              "18",
+
+              "-pix_fmt",
+              "yuv420p",
+
+              "-c:a",
+              "aac",
+
+              "-b:a",
+              "192k",
+
+              "-ar",
+              "48000",
+
+              "-ac",
+              "2",
+
+              "-movflags",
+              "+faststart",
+
+              merged,
             ],
-          ),
+            {
+              maxBuffer:
+                32 * 1024 * 1024,
+            },
+          );
 
-          "-filter_complex",
-          mergePlan.filters.join(
-            ";",
-          ),
+      try {
+        await executeMergePlan(
+          mergePlan,
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(error);
 
-          "-map",
-          `[${mergePlan.videoOutputLabel}]`,
+        const isTransitionCompatibilityError =
+          /xfade|constant frame rate|Failed to configure output pad/iu.test(
+            message,
+          );
 
-          "-map",
-          `[${mergePlan.audioOutputLabel}]`,
+        if (
+          !isTransitionCompatibilityError
+        ) {
+          throw error;
+        }
 
-          "-t",
-          String(seconds),
+        console.warn(
+          JSON.stringify({
+            level:
+              "warning",
+            msg:
+              "seamless_segment_merge_compatibility_fallback",
+            reason:
+              message.slice(
+                0,
+                500,
+              ),
+            segmentCount:
+              inspections.length,
+            targetDurationSeconds:
+              seconds,
+          }),
+        );
 
-          "-c:v",
-          "libx264",
+        const fallbackPlan =
+          buildCompatibleConcatPlan(
+            inspections,
+            seconds,
+            finishing.aspectRatio,
+          );
 
-          "-preset",
-          "fast",
-
-          "-crf",
-          "18",
-
-          "-pix_fmt",
-          "yuv420p",
-
-          "-c:a",
-          "aac",
-
-          "-b:a",
-          "192k",
-
-          "-ar",
-          "48000",
-
-          "-ac",
-          "2",
-
-          "-movflags",
-          "+faststart",
-
-          merged,
-        ],
-        {
-          maxBuffer:
-            32 * 1024 * 1024,
-        },
-      );
+        await executeMergePlan(
+          fallbackPlan,
+        );
+      }
 
       await finishVideo(
         merged,
