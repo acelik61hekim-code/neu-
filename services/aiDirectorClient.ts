@@ -31,6 +31,7 @@ type ApiStoryDraft = {
   providedDialogue?: unknown;
   singleSpeakerMode?: unknown;
   dialogueSourceMode?: unknown;
+  speechDisabled?: unknown;
 };
 
 type ApiProvidedDialogueLine = {
@@ -46,7 +47,7 @@ type ApiResponse = {
   error?: string;
 };
 
-function createStoryDraft(story: ApiStoryDraft): StoryDraft {
+export function createStoryDraft(story: ApiStoryDraft): StoryDraft {
   const rawCharacters = Array.isArray(story.characters)
     ? (story.characters as ApiStoryCharacter[])
     : [];
@@ -119,6 +120,10 @@ function createStoryDraft(story: ApiStoryDraft): StoryDraft {
         "provided"
         ? "provided"
         : "automatic",
+    speechDisabled:
+      story.speechDisabled === true
+        ? true
+        : undefined,
   };
 }
 
@@ -132,6 +137,7 @@ export async function requestAiDirector(
   dialogueSourceMode:
     DialogueSourceMode =
       "automatic",
+  speechDisabled = false,
 ): Promise<AiDirectorResponse> {
   const response = await fetch("/api/ai-director", {
     method: "POST",
@@ -146,6 +152,7 @@ export async function requestAiDirector(
       characterMode,
       singleSpeakerMode,
       dialogueSourceMode,
+      speechDisabled,
     }),
   });
 

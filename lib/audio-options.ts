@@ -127,6 +127,15 @@ export function resolvePromptVoiceMode(
   speechIntent: PromptSpeechIntent | null,
   forceDialogue = false,
 ): VideoVoiceMode {
+  /*
+   * Die ausdrückliche UI-Auswahl "Ohne Sprache" ist eine harte
+   * Kundenentscheidung. Wörter wie "sagt" in der Story dürfen sie nicht
+   * stillschweigend wieder auf Dialog umstellen.
+   */
+  if (configuredVoiceMode === "no-voice") {
+    return "no-voice";
+  }
+
   if (speechIntent === "none") {
     return "no-voice";
   }

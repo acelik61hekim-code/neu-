@@ -45,6 +45,7 @@ type RequestBody = {
   dialogueMode?: unknown;
   dialogueSourceMode?: unknown;
   singleSpeakerMode?: unknown;
+  speechDisabled?: unknown;
   musicTrack?: unknown;
 };
 
@@ -68,6 +69,7 @@ type StoryDraft = {
   providedDialogue?: ProvidedDialogueLine[];
   dialogueSourceMode?: "automatic" | "provided";
   singleSpeakerMode?: boolean;
+  speechDisabled?: boolean;
 };
 
 type AiDirectorResult = {
@@ -258,6 +260,15 @@ ZUSÄTZLICHER VERBINDLICHER EIN-PERSONEN-SPRECHMODUS
 - Wenn der Nutzer bereits einen oder mehrere Sätze für die Figur vorgibt, bleiben Sprecher und Wortlaut unverändert erhalten.
 - Beschreibe die sichtbare Sprechperformance mit natürlicher Mimik, Mundbewegung, Gestik und Blickkontakt zur Kamera.
 - Wenn die übrigen Angaben ausreichen, darf ready mit genau einer sichtbaren Sprecherfigur true sein.
+`;
+
+const NO_SPEECH_SYSTEM_INSTRUCTION = `
+ZUSÄTZLICHER VERBINDLICHER MODUS OHNE SPRACHE
+
+- Plane keine Dialoge, Monologe, Sprecherstimme, Erzählstimme, Offscreen-Stimme, Gesänge oder sonstigen gesprochenen Wörter.
+- Auch wenn die Nutzeridee beschreibt, dass eine Figur etwas sagt, übersetze diesen Moment in eine sichtbare stumme Handlung, Mimik oder Geste.
+- Verwende keine wörtlichen Zitate und erfinde keine Sprechertexte.
+- Die Geschichte muss vollständig durch Bild, Handlung, Musik, Umgebungsgeräusche und Soundeffekte verständlich sein.
 `;
 
 function enforceStudioAdvertisement(
@@ -805,6 +816,7 @@ async function generateWithRetry(
     }>;
   }>,
   dialogueMode = false,
+  speechDisabled = false,
   singleSpeakerMode = false,
   musicTrack?: MusicVideoTrackContext,
   viralStory = false,
@@ -836,6 +848,9 @@ async function generateWithRetry(
                 ? singleSpeakerMode
                   ? SINGLE_SPEAKER_SYSTEM_INSTRUCTION
                   : DIALOGUE_SYSTEM_INSTRUCTION
+                : "",
+              speechDisabled
+                ? NO_SPEECH_SYSTEM_INSTRUCTION
                 : "",
               generalCharacterInstruction,
               musicTrack
@@ -1059,6 +1074,15 @@ const dialogueSourceText =
     dialogueSourceText,
   );
 
+    const speechDisabled =
+      body.speechDisabled === true ||
+      speechIntent === "none";
+
+    const effectiveSpeechIntent =
+      speechDisabled
+        ? "none"
+        : speechIntent;
+
     const ai = new GoogleGenAI({
       apiKey,
     });
@@ -1088,12 +1112,12 @@ const dialogueSourceText =
           ? "provided"
           : "automatic",
         explicitDialogueEventCount,
-        speechIntent,
+        effectiveSpeechIntent,
       );
 
     const dialogueMode =
-      speechIntent === "voiceover" ||
-      speechIntent === "none"
+      speechDisabled ||
+      effectiveSpeechIntent === "voiceover"
         ? false
         : body.dialogueMode === true ||
           providedDialogueRequested;
@@ -1119,6 +1143,7 @@ const dialogueSourceText =
           ai,
           conversation,
           dialogueMode,
+          speechDisabled,
           singleSpeakerMode,
           musicTrack,
           isViralStory,
@@ -1212,7 +1237,7 @@ const dialogueSourceText =
       );
 
 const preliminaryProvidedDialogue =
-  speechIntent !== "none" &&
+  !speechDisabled &&
   singleSpeakerMode
     ? extractProvidedDialogue(
         dialogueMessages,
@@ -1251,7 +1276,7 @@ const providedSpeakerName =
         : characterResult;
 
     const providedDialogue =
-      speechIntent === "none"
+      speechDisabled
         ? []
         : preliminaryProvidedDialogue.length > 0
         ? preliminaryProvidedDialogue
@@ -1307,7 +1332,7 @@ const providedSpeakerName =
         singleSpeakerMode ||
         undefined,
       speechDisabled:
-        speechIntent === "none"
+        speechDisabled
           ? true
           : undefined,
       providedDialogue:

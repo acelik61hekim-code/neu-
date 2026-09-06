@@ -442,6 +442,11 @@ export default function Chat({
           speechRequestText,
         );
 
+      const effectiveSpeechIntent =
+        voiceMode === "no-voice"
+          ? "none"
+          : speechIntent;
+
       const promptDurationSeconds =
         inferPromptVideoDurationSeconds(
           speechRequestText,
@@ -475,14 +480,14 @@ export default function Chat({
           countExplicitDialogueEvents(
             speechRequestText,
           ),
-          speechIntent,
+          effectiveSpeechIntent,
         );
 
       const inferredVoiceoverMode =
         !isViralStory &&
         editingStyle !==
           "music-video" &&
-        speechIntent ===
+        effectiveSpeechIntent ===
           "voiceover";
 
       const inferredDialogueMode =
@@ -490,9 +495,9 @@ export default function Chat({
         editingStyle !==
           "music-video" &&
         (
-          speechIntent ===
+          effectiveSpeechIntent ===
             "single-speaker" ||
-          speechIntent ===
+          effectiveSpeechIntent ===
             "conversation"
         );
 
@@ -512,7 +517,7 @@ export default function Chat({
         VideoVoiceMode =
         resolvePromptVoiceMode(
           voiceMode,
-          speechIntent,
+          effectiveSpeechIntent,
           providedDialogueRequested ||
             isViralStory,
         );
@@ -522,10 +527,10 @@ export default function Chat({
         effectiveVoiceMode ===
           "dialogue" &&
         (
-          speechIntent ===
+          effectiveSpeechIntent ===
             "single-speaker" ||
           (
-            speechIntent ===
+            effectiveSpeechIntent ===
               null &&
             characterIds.length ===
               1
@@ -533,7 +538,7 @@ export default function Chat({
         );
 
       if (
-        speechIntent ===
+        effectiveSpeechIntent ===
           "none"
       ) {
         setDialogueSourceMode(
@@ -604,6 +609,9 @@ export default function Chat({
           providedDialogueRequested
             ? "provided"
             : "automatic",
+
+          effectiveVoiceMode ===
+            "no-voice",
         );
 
       const assistantMessage:
@@ -672,9 +680,7 @@ export default function Chat({
 
           audioStyle,
 
-          isViralStory
-            ? "dialogue"
-            : effectiveVoiceMode,
+          effectiveVoiceMode,
 
           spokenLanguage,
 
@@ -893,6 +899,35 @@ export default function Chat({
 
       void handleSubmit();
     }
+  }
+
+  function selectDialogueMode(
+    sourceMode: DialogueSourceMode,
+  ) {
+    setDialogueSourceMode(
+      sourceMode,
+    );
+
+    onVoiceModeChange?.(
+      detectedPromptVoiceoverText &&
+        sourceMode === "automatic"
+        ? "voiceover"
+        : "dialogue",
+    );
+  }
+
+  function selectNoDialogue() {
+    setDialogueSourceMode(
+      "automatic",
+    );
+
+    onVoiceModeChange?.(
+      "no-voice",
+    );
+
+    onVoiceoverTextChange?.(
+      "",
+    );
   }
 
   function restartConversation() {
@@ -1398,11 +1433,11 @@ export default function Chat({
                     Gesprochener Text
                   </p>
 
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
                     <button
                       type="button"
                       onClick={() =>
-                        setDialogueSourceMode(
+                        selectDialogueMode(
                           "provided",
                         )
                       }
@@ -1411,12 +1446,12 @@ export default function Chat({
                         loading
                       }
                       aria-pressed={
-                        dialogueSourceMode ===
-                        "provided"
+                        voiceMode !== "no-voice" &&
+                        dialogueSourceMode === "provided"
                       }
                       className={`rounded-xl border px-3 py-2.5 text-left text-xs transition disabled:opacity-50 ${
-                        dialogueSourceMode ===
-                        "provided"
+                        voiceMode !== "no-voice" &&
+                        dialogueSourceMode === "provided"
                           ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-100"
                           : "border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20"
                       }`}
@@ -1432,7 +1467,7 @@ export default function Chat({
                     <button
                       type="button"
                       onClick={() =>
-                        setDialogueSourceMode(
+                        selectDialogueMode(
                           "automatic",
                         )
                       }
@@ -1441,12 +1476,12 @@ export default function Chat({
                         loading
                       }
                       aria-pressed={
-                        dialogueSourceMode ===
-                        "automatic"
+                        voiceMode !== "no-voice" &&
+                        dialogueSourceMode === "automatic"
                       }
                       className={`rounded-xl border px-3 py-2.5 text-left text-xs transition disabled:opacity-50 ${
-                        dialogueSourceMode ===
-                        "automatic"
+                        voiceMode !== "no-voice" &&
+                        dialogueSourceMode === "automatic"
                           ? "border-violet-400/40 bg-violet-400/10 text-violet-100"
                           : "border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20"
                       }`}
@@ -1460,6 +1495,33 @@ export default function Chat({
                         {detectedPromptVoiceoverText
                           ? "Wird als ein Sprechertext wortgetreu übernommen"
                           : "Die KI darf passende Sätze schreiben"}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={
+                        selectNoDialogue
+                      }
+                      disabled={
+                        isProcessing ||
+                        loading
+                      }
+                      aria-pressed={
+                        voiceMode ===
+                        "no-voice"
+                      }
+                      className={`rounded-xl border px-3 py-2.5 text-left text-xs transition disabled:opacity-50 ${
+                        voiceMode === "no-voice"
+                          ? "border-sky-400/40 bg-sky-400/10 text-sky-100"
+                          : "border-white/10 bg-white/[0.03] text-zinc-400 hover:border-white/20"
+                      }`}
+                    >
+                      <span className="block font-semibold">
+                        Kein Dialog
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 opacity-70">
+                        Nur Musik, Umgebung und Geräusche
                       </span>
                     </button>
                   </div>
@@ -1498,23 +1560,25 @@ export default function Chat({
                       nextInput,
                     );
 
-                    if (
-                      inferPromptSpeechIntent(
-                        nextInput,
-                      ) ===
-                        "voiceover"
-                    ) {
-                      setDialogueSourceMode(
-                        "automatic",
-                      );
-                    } else if (
-                      countExplicitDialogueEvents(
-                        nextInput,
-                      ) > 0
-                    ) {
-                      setDialogueSourceMode(
-                        "provided",
-                      );
+                    if (voiceMode !== "no-voice") {
+                      if (
+                        inferPromptSpeechIntent(
+                          nextInput,
+                        ) ===
+                          "voiceover"
+                      ) {
+                        setDialogueSourceMode(
+                          "automatic",
+                        );
+                      } else if (
+                        countExplicitDialogueEvents(
+                          nextInput,
+                        ) > 0
+                      ) {
+                        setDialogueSourceMode(
+                          "provided",
+                        );
+                      }
                     }
 
                     if (

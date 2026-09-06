@@ -54,6 +54,10 @@ export function resolveProvidedDialogueVoiceMode(
   hasProvidedDialogue:
     boolean,
 ): VideoVoiceMode {
+  if (requestedVoiceMode === "no-voice") {
+    return "no-voice";
+  }
+
   return hasProvidedDialogue
     ? "dialogue"
     : requestedVoiceMode;

@@ -1137,6 +1137,19 @@ export async function POST(
     body.voiceMode as
       VideoVoiceMode;
 
+  let submittedStory:
+    Story | null = null;
+
+  try {
+    submittedStory =
+      JSON.parse(prompt) as Story;
+  } catch {
+    submittedStory = null;
+  }
+
+  const promptDisablesSpeech =
+    submittedStory?.speechDisabled === true;
+
   const promptContainsProvidedDialogue =
     promptHasProvidedDialogue(
       prompt,
@@ -1150,10 +1163,12 @@ export async function POST(
    */
   const voiceMode:
     VideoVoiceMode =
-    resolveProvidedDialogueVoiceMode(
-      requestedVoiceMode,
-      promptContainsProvidedDialogue,
-    );
+    promptDisablesSpeech
+      ? "no-voice"
+      : resolveProvidedDialogueVoiceMode(
+          requestedVoiceMode,
+          promptContainsProvidedDialogue,
+        );
 
   const spokenLanguage =
     body.spokenLanguage as
@@ -1323,16 +1338,6 @@ export async function POST(
       ? body.voiceoverText
           .trim()
       : "";
-
-  let submittedStory:
-    Story | null = null;
-
-  try {
-    submittedStory =
-      JSON.parse(prompt) as Story;
-  } catch {
-    submittedStory = null;
-  }
 
   if (submittedStory) {
     const dialogueQuality =

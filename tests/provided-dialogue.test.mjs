@@ -47,6 +47,9 @@ import {
 import {
   inferPromptVideoDurationSeconds,
 } from "../lib/prompt-video-options.ts";
+import {
+  createStoryDraft,
+} from "../services/aiDirectorClient.ts";
 
 const repeatedConsumption =
   Array.from(
@@ -936,6 +939,37 @@ test("a rejected voiceover cannot override explicitly requested character dialog
       true,
     ),
     "dialogue",
+  );
+});
+
+test("an explicit no-speech UI selection cannot be overridden by prompt dialogue", () => {
+  assert.equal(
+    resolvePromptVoiceMode(
+      "no-voice",
+      "conversation",
+      true,
+    ),
+    "no-voice",
+  );
+
+  assert.equal(
+    resolveProvidedDialogueVoiceMode(
+      "no-voice",
+      true,
+    ),
+    "no-voice",
+  );
+});
+
+test("the AI Director client preserves the no-speech decision for Story Architect", () => {
+  const story = createStoryDraft({
+    title: "Stumme Szene",
+    speechDisabled: true,
+  });
+
+  assert.equal(
+    story.speechDisabled,
+    true,
   );
 });
 
