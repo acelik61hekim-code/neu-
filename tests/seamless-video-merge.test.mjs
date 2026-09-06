@@ -16,6 +16,9 @@ import {
   buildSeamlessMergePlan,
   parseFfmpegMediaInspection,
 } from "../lib/video-backend/seamless-merge.ts";
+import {
+  buildFinalVideoDurationFilters,
+} from "../lib/video-backend/final-duration.ts";
 
 test("matching continuation frames join without a ghosting resize while audio fades smoothly", () => {
   const plan =
@@ -479,6 +482,97 @@ test("the production filter graph really renders continuous video and audio", as
     assert.equal(
       fallbackInspection.hasAudio,
       true,
+    );
+  } finally {
+    await rm(
+      directory,
+      {
+        recursive: true,
+        force: true,
+      },
+    );
+  }
+});
+
+test("the final timing filter really pads a short provider video to its exact target", async (context) => {
+  if (
+    !ffmpegPath ||
+    !existsSync(ffmpegPath)
+  ) {
+    context.skip(
+      "ffmpeg-static is unavailable",
+    );
+    return;
+  }
+
+  const directory =
+    await mkdtemp(
+      join(
+        tmpdir(),
+        "final-duration-test-",
+      ),
+    );
+
+  const source =
+    join(directory, "source.mp4");
+  const output =
+    join(directory, "output.mp4");
+
+  try {
+    await runFfmpeg([
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=black:s=180x320:r=30:d=1.4",
+      "-c:v",
+      "libx264",
+      "-pix_fmt",
+      "yuv420p",
+      source,
+    ]);
+
+    await runFfmpeg([
+      "-y",
+      "-i",
+      source,
+      "-vf",
+      buildFinalVideoDurationFilters(
+        1.4,
+        2,
+      ).join(","),
+      "-t",
+      "2",
+      "-c:v",
+      "libx264",
+      "-preset",
+      "ultrafast",
+      output,
+    ]);
+
+    let probeOutput = "";
+
+    try {
+      await runFfmpeg([
+        "-hide_banner",
+        "-i",
+        output,
+      ]);
+    } catch (error) {
+      probeOutput =
+        error.message;
+    }
+
+    const inspection =
+      parseFfmpegMediaInspection(
+        probeOutput,
+      );
+
+    assert.ok(inspection);
+    assert.ok(
+      Math.abs(
+        inspection.durationSeconds - 2,
+      ) < 0.1,
     );
   } finally {
     await rm(

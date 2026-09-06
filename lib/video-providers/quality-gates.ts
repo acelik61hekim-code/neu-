@@ -170,7 +170,7 @@ export function evaluateFinalOutput(
         passed:
           Number.isFinite(input.actualDurationSeconds) &&
           durationDifference <= 0.75,
-        detail: `Soll ${input.expectedDurationSeconds}s, ist ${input.actualDurationSeconds.toFixed(3)}s.`,
+        detail: `Soll ${input.expectedDurationSeconds.toFixed(3)}s, ist ${input.actualDurationSeconds.toFixed(3)}s; Abweichung ${durationDifference.toFixed(3)}s (erlaubt ±0.750s).`,
       },
     ],
   });
@@ -185,7 +185,10 @@ export function assertQualityGatePassed(
 
   const failedChecks = gate.checks
     .filter((check) => !check.passed)
-    .map((check) => check.name)
+    .map(
+      (check) =>
+        `${check.name} (${check.detail})`,
+    )
     .join(", ");
 
   throw new Error(

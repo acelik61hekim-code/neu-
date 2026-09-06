@@ -429,7 +429,8 @@ export async function renderVideoWorkflow(
       jobId,
       output.pathname,
       output.durationSeconds,
-      prepared.duration,
+      output.outputTargetDurationSeconds ??
+        prepared.duration,
     );
 
     return {
@@ -484,7 +485,8 @@ export async function recoverVideoFinalizationWorkflow(
       jobId,
       output.pathname,
       output.durationSeconds,
-      prepared.duration,
+      output.outputTargetDurationSeconds ??
+        prepared.duration,
     );
 
     return {
@@ -5548,6 +5550,22 @@ async function finishRenderJobStep(
       expectedDurationSeconds,
       actualDurationSeconds,
     });
+
+  console.info(
+    JSON.stringify({
+      level: "info",
+      msg: "final_output_quality_gate_evaluated",
+      jobId,
+      expectedDurationSeconds,
+      actualDurationSeconds,
+      durationDifferenceSeconds:
+        Math.abs(
+          expectedDurationSeconds -
+            actualDurationSeconds,
+        ),
+      status: finalGate.status,
+    }),
+  );
 
   await jobStore.set(
     jobId,

@@ -17,6 +17,10 @@ import {
   type MediaInspection,
   type SeamlessMergePlan,
 } from "@/lib/video-backend/seamless-merge";
+import {
+  buildFinalVideoDurationFilters,
+  planFinalOutputDuration,
+} from "@/lib/video-backend/final-duration";
 
 const exec = promisify(execFile);
 
@@ -68,9 +72,9 @@ type GeneratedNarration = {
   durationSeconds: number;
 };
 
-const MAX_FINISHING_GRACE_SECONDS = 2;
 const NARRATION_START_DELAY_SECONDS = 0.65;
 const NARRATION_TAIL_SECONDS = 0.35;
+const FINALIZATION_DURATION_TOLERANCE_SECONDS = 0.25;
 
 // Gemini narration is 24 kHz PCM. Some clips contain a narrow-band whistle at
 // its 12 kHz Nyquist edge, so notch that tone and keep the cutoff safely below it.
@@ -226,6 +230,7 @@ async function upload(
   pathname: string,
   filename: string,
   contentType = "video/mp4",
+  expectedDurationSeconds?: number,
 ) {
   const durationSeconds =
     ffmpegPath
@@ -242,6 +247,39 @@ async function upload(
     throw new Error(
       "Die Laufzeit der finalen Videodatei konnte nicht verifiziert werden.",
     );
+  }
+
+  if (
+    expectedDurationSeconds !==
+    undefined
+  ) {
+    const durationDifferenceSeconds =
+      Math.abs(
+        expectedDurationSeconds -
+          durationSeconds,
+      );
+
+    console.info(
+      JSON.stringify({
+        level: "info",
+        msg: "final_video_duration_verified",
+        expectedDurationSeconds,
+        actualDurationSeconds:
+          durationSeconds,
+        durationDifferenceSeconds,
+        toleranceSeconds:
+          FINALIZATION_DURATION_TOLERANCE_SECONDS,
+      }),
+    );
+
+    if (
+      durationDifferenceSeconds >
+      FINALIZATION_DURATION_TOLERANCE_SECONDS
+    ) {
+      throw new Error(
+        `Finale Videodauer konnte nicht zuverlässig hergestellt werden: Soll ${expectedDurationSeconds.toFixed(3)}s, ist ${durationSeconds.toFixed(3)}s, Abweichung ${durationDifferenceSeconds.toFixed(3)}s.`,
+      );
+    }
   }
 
   const hasBlobCredentials = Boolean(
@@ -1051,7 +1089,7 @@ async function finishVideo(
   seconds: number,
   options:
     VideoFinishingOptions = {},
-): Promise<void> {
+): Promise<number> {
   const binary =
     ffmpegPath;
 
@@ -1188,6 +1226,43 @@ async function finishVideo(
       binary,
       input,
     );
+
+  if (
+    !sourceDuration ||
+    !Number.isFinite(
+      sourceDuration,
+    )
+  ) {
+    throw new Error(
+      "Die Laufzeit des Videos konnte vor der Finalisierung nicht geprüft werden.",
+    );
+  }
+
+  const durationPlan =
+    planFinalOutputDuration(
+      seconds,
+      exactMusicDuration,
+    );
+
+  const outputSeconds =
+    durationPlan
+      .outputTargetDurationSeconds;
+
+  console.info(
+    JSON.stringify({
+      level: "info",
+      msg: "final_video_duration_planned",
+      renderTargetDurationSeconds:
+        durationPlan
+          .renderTargetDurationSeconds,
+      outputTargetDurationSeconds:
+        outputSeconds,
+      durationSource:
+        durationPlan.source,
+      sourceDurationSeconds:
+        sourceDuration,
+    }),
+  );
 
   let narration:
     | GeneratedNarration
@@ -1409,64 +1484,6 @@ async function finishVideo(
     });
   }
 
-  const maximumOutputSeconds =
-    exactMusicDuration ??
-    (
-      seconds +
-      MAX_FINISHING_GRACE_SECONDS
-    );
-
-  const naturalVideoEnd =
-    Math.min(
-      maximumOutputSeconds,
-
-      Math.max(
-        seconds,
-
-        sourceDuration ??
-          seconds,
-      ),
-    );
-
-  const naturalNarrationEnd =
-    narration
-      ? NARRATION_START_DELAY_SECONDS +
-        narration.durationSeconds +
-        NARRATION_TAIL_SECONDS
-      : seconds;
-
-  const naturalDialogueEnd =
-    generatedDialogue.reduce(
-      (
-        latest,
-        item,
-      ) =>
-        Math.max(
-          latest,
-
-          item.cue.startSeconds +
-            Math.min(
-              item.audio.durationSeconds,
-              item.cue.maximumDurationSeconds,
-            ) +
-            NARRATION_TAIL_SECONDS,
-        ),
-
-      seconds,
-    );
-
-  const outputSeconds =
-    exactMusicDuration ??
-    Math.min(
-      maximumOutputSeconds,
-
-      Math.max(
-        naturalVideoEnd,
-        naturalNarrationEnd,
-        naturalDialogueEnd,
-      ),
-    );
-
   const availableNarrationSeconds =
     Math.max(
       1,
@@ -1498,72 +1515,50 @@ async function finishVideo(
       ? "0:a:0?"
       : `${musicInputIndex}:a:0`;
 
-  const needsVideoPadding =
-    outputSeconds >
-    (
-      sourceDuration ??
-      seconds
-    ) +
-      0.02;
+  const beforeTrimVideoFilters:
+    string[] = [];
 
-  if (
-    closingText ||
-    needsVideoPadding ||
-    outputSeconds >
-      seconds + 0.02
-  ) {
-    const videoFilters:
-      string[] = [];
-
-    if (
-      needsVideoPadding
-    ) {
-      videoFilters.push(
-        `tpad=stop_mode=clone:stop_duration=${MAX_FINISHING_GRACE_SECONDS}`,
-      );
-    }
-
-    const textFile =
-      join(
-        dir,
-        "closing-text.txt",
-      );
-
-    if (closingText) {
-      await writeFile(
-        textFile,
-        wrapOverlayText(
-          closingText,
-        ),
-        "utf8",
-      );
-
-      const startSecond =
-        Math.max(
-          0,
-          outputSeconds - 6,
-        );
-
-      videoFilters.push(
-        `drawbox=x=w*0.04:y=h*0.64:w=w*0.92:h=h*0.30:color=black@0.84:t=fill:enable='between(t,${startSecond},${outputSeconds})'`,
-
-        `drawtext=font='Sans':textfile='${escapeFilterPath(textFile)}':fontcolor=white:fontsize=h/24:line_spacing=18:x=(w-text_w)/2:y=h*0.72:enable='between(t,${startSecond},${outputSeconds})'`,
-      );
-    }
-
-    videoFilters.push(
-      `trim=duration=${outputSeconds}`,
-      "setpts=PTS-STARTPTS",
-      "format=yuv420p",
+  const textFile =
+    join(
+      dir,
+      "closing-text.txt",
     );
 
-    filters.push(
-      `[0:v]${videoFilters.join(",")}[v]`,
+  if (closingText) {
+    await writeFile(
+      textFile,
+      wrapOverlayText(
+        closingText,
+      ),
+      "utf8",
     );
 
-    videoMap =
-      "[v]";
+    const startSecond =
+      Math.max(
+        0,
+        outputSeconds - 6,
+      );
+
+    beforeTrimVideoFilters.push(
+      `drawbox=x=w*0.04:y=h*0.64:w=w*0.92:h=h*0.30:color=black@0.84:t=fill:enable='between(t,${startSecond},${outputSeconds})'`,
+
+      `drawtext=font='Sans':textfile='${escapeFilterPath(textFile)}':fontcolor=white:fontsize=h/24:line_spacing=18:x=(w-text_w)/2:y=h*0.72:enable='between(t,${startSecond},${outputSeconds})'`,
+    );
   }
+
+  const videoFilters =
+    buildFinalVideoDurationFilters(
+      sourceDuration,
+      outputSeconds,
+      beforeTrimVideoFilters,
+    );
+
+  filters.push(
+    `[0:v]${videoFilters.join(",")}[v]`,
+  );
+
+  videoMap =
+    "[v]";
 
   if (
     dialogueReferenceInputIndices.length > 0
@@ -1753,6 +1748,8 @@ async function finishVideo(
         32 * 1024 * 1024,
     },
   );
+
+  return outputSeconds;
 }
 
 async function copyAndStore(
@@ -1812,10 +1809,17 @@ export async function trimAndStore(
   if (
     canStoreProviderVideoDirectly
   ) {
-    return copyAndStore(
-      source,
-      pathname,
-    );
+    const stored =
+      await copyAndStore(
+        source,
+        pathname,
+      );
+
+    return {
+      ...stored,
+      outputTargetDurationSeconds:
+        seconds,
+    };
   }
 
   const binary =
@@ -1846,18 +1850,27 @@ export async function trimAndStore(
         input,
       );
 
-      await finishVideo(
-        input,
-        output,
-        dir,
-        seconds,
-        finishing,
-      );
+      const outputTargetDurationSeconds =
+        await finishVideo(
+          input,
+          output,
+          dir,
+          seconds,
+          finishing,
+        );
 
-      return upload(
-        pathname,
-        output,
-      );
+      const stored =
+        await upload(
+          pathname,
+          output,
+          "video/mp4",
+          outputTargetDurationSeconds,
+        );
+
+      return {
+        ...stored,
+        outputTargetDurationSeconds,
+      };
     },
   );
 }
@@ -2093,18 +2106,27 @@ export async function mergeAndStore(
         );
       }
 
-      await finishVideo(
-        merged,
-        output,
-        dir,
-        seconds,
-        finishing,
-      );
+      const outputTargetDurationSeconds =
+        await finishVideo(
+          merged,
+          output,
+          dir,
+          seconds,
+          finishing,
+        );
 
-      return upload(
-        pathname,
-        output,
-      );
+      const stored =
+        await upload(
+          pathname,
+          output,
+          "video/mp4",
+          outputTargetDurationSeconds,
+        );
+
+      return {
+        ...stored,
+        outputTargetDurationSeconds,
+      };
     },
   );
 }
