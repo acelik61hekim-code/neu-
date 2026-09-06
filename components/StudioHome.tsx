@@ -8,7 +8,7 @@ import {
 
 import { track } from "@vercel/analytics";
 import {
-  upload,
+  uploadPresigned,
 } from "@vercel/blob/client";
 
 import type {
@@ -2191,7 +2191,7 @@ setEditingStyle(
         );
 
         const blob =
-          await upload(
+          await uploadPresigned(
             `music-video-audio/${Date.now()}-${safeUploadFilename(
               musicVideoAudio.name,
             )}`,

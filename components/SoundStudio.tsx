@@ -1,6 +1,6 @@
 "use client";
 
-import { upload } from "@vercel/blob/client";
+import { uploadPresigned } from "@vercel/blob/client";
 
 import {
   type ChangeEvent,
@@ -359,7 +359,7 @@ export default function SoundStudio() {
     const extension = audioExtensionForContentType(contentType, originalName);
     setUploadProgress(1);
 
-    const blob = await upload(
+    const blob = await uploadPresigned(
       `song-studio-uploads/${Date.now()}-${safeFilename(source?.title || "song")}.${extension}`,
       body,
       {

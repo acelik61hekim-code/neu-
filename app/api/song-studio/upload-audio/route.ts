@@ -1,6 +1,7 @@
+import { issueSignedToken } from "@vercel/blob";
 import {
-  handleUpload,
-  type HandleUploadBody,
+  handleUploadPresigned,
+  type HandleUploadPresignedBody,
 } from "@vercel/blob/client";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -17,12 +18,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as HandleUploadBody;
+    const body = await request.json() as HandleUploadPresignedBody;
 
-    const result = await handleUpload({
+    const result = await handleUploadPresigned({
       request,
       body,
-      onBeforeGenerateToken: async (pathname) => {
+      getSignedToken: async (pathname) => {
         const [subscription, rateLimit] = await Promise.all([
           getActiveSongSubscription(request).catch(() => null),
           checkRateLimit(request, "song-studio-audio-upload", 16, 60 * 60),
@@ -40,18 +41,27 @@ export async function POST(request: NextRequest) {
           throw new Error("Der Speicherpfad der Audiodatei ist ungültig.");
         }
 
-        return {
+        const validUntil = Date.now() + 15 * 60 * 1_000;
+        const token = await issueSignedToken({
+          pathname,
+          operations: ["put"],
           allowedContentTypes: [...SONG_STUDIO_AUDIO_TYPES],
           maximumSizeInBytes: SONG_STUDIO_MAX_AUDIO_BYTES,
-          validUntil: Date.now() + 15 * 60 * 1_000,
-          addRandomSuffix: true,
-          tokenPayload: JSON.stringify({
-            subscriptionId: subscription.subscriptionId,
-          }),
+          validUntil,
+        });
+
+        return {
+          token,
+          urlOptions: {
+            allowedContentTypes: [...SONG_STUDIO_AUDIO_TYPES],
+            maximumSizeInBytes: SONG_STUDIO_MAX_AUDIO_BYTES,
+            validUntil,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({
+              subscriptionId: subscription.subscriptionId,
+            }),
+          },
         };
-      },
-      onUploadCompleted: async () => {
-        /* Die private Datei wird erst bei einer KI-Aktion verarbeitet. */
       },
     });
 

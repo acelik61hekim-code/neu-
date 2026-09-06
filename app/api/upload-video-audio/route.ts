@@ -1,6 +1,7 @@
+import { issueSignedToken } from "@vercel/blob";
 import {
-  handleUpload,
-  type HandleUploadBody,
+  handleUploadPresigned,
+  type HandleUploadPresignedBody,
 } from "@vercel/blob/client";
 
 import { NextResponse } from "next/server";
@@ -25,11 +26,11 @@ export async function POST(
 ) {
   try {
     const body =
-      await request.json() as HandleUploadBody;
+      await request.json() as HandleUploadPresignedBody;
 
     if (
       body.type ===
-      "blob.generate-client-token"
+      "blob.generate-presigned-url"
     ) {
       const rateLimit =
         await checkRateLimit(
@@ -57,10 +58,10 @@ export async function POST(
     }
 
     const result =
-      await handleUpload({
+      await handleUploadPresigned({
         request,
         body,
-        onBeforeGenerateToken:
+        getSignedToken:
           async (
             pathname,
             clientPayload,
@@ -103,24 +104,36 @@ export async function POST(
               );
             }
 
+            const validUntil =
+              Date.now() + 15 * 60 * 1_000;
+
+            const token =
+              await issueSignedToken({
+                pathname,
+                operations: ["put"],
+                allowedContentTypes:
+                  [...MUSIC_VIDEO_AUDIO_TYPES],
+                maximumSizeInBytes:
+                  MUSIC_VIDEO_MAX_AUDIO_BYTES,
+                validUntil,
+              });
+
             return {
-              allowedContentTypes:
-                [...MUSIC_VIDEO_AUDIO_TYPES],
-              maximumSizeInBytes:
-                MUSIC_VIDEO_MAX_AUDIO_BYTES,
-              validUntil:
-                Date.now() + 15 * 60 * 1_000,
-              addRandomSuffix:
-                true,
-              tokenPayload:
-                JSON.stringify({
-                  durationSeconds,
-                }),
+              token,
+              urlOptions: {
+                allowedContentTypes:
+                  [...MUSIC_VIDEO_AUDIO_TYPES],
+                maximumSizeInBytes:
+                  MUSIC_VIDEO_MAX_AUDIO_BYTES,
+                validUntil,
+                addRandomSuffix:
+                  true,
+                tokenPayload:
+                  JSON.stringify({
+                    durationSeconds,
+                  }),
+              },
             };
-          },
-        onUploadCompleted:
-          async () => {
-            /* Der Job wird erst nach erfolgreicher Stripe-Zahlung angelegt. */
           },
       });
 
