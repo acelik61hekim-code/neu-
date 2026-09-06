@@ -10,9 +10,16 @@ import { pipeline } from "node:stream/promises";
 import { promisify } from "node:util";
 import ffmpegPath from "ffmpeg-static";
 
+import {
+  buildSeamlessMergePlan,
+  parseFfmpegMediaInspection,
+  type MediaInspection,
+} from "@/lib/video-backend/seamless-merge";
+
 const exec = promisify(execFile);
 
 export type VideoFinishingOptions = {
+  aspectRatio?: "9:16" | "16:9";
   voiceoverText?: string;
   voiceoverVoiceName?: "Charon" | "Kore";
   dialogueCues?: DialogueCue[];
@@ -409,6 +416,55 @@ async function inspectContainerDuration(
       `${details.stdout ?? ""}\n${details.stderr ?? ""}`,
     );
   }
+}
+
+async function inspectMediaFile(
+  binary: string,
+  pathname: string,
+): Promise<MediaInspection> {
+  let output =
+    "";
+
+  try {
+    const result =
+      await exec(
+        binary,
+        [
+          "-hide_banner",
+          "-i",
+          pathname,
+        ],
+        {
+          maxBuffer:
+            4 * 1024 * 1024,
+        },
+      );
+
+    output =
+      `${result.stdout}\n${result.stderr}`;
+  } catch (error) {
+    const details =
+      error as {
+        stdout?: string;
+        stderr?: string;
+      };
+
+    output =
+      `${details.stdout ?? ""}\n${details.stderr ?? ""}`;
+  }
+
+  const inspection =
+    parseFfmpegMediaInspection(
+      output,
+    );
+
+  if (!inspection) {
+    throw new Error(
+      "Ein Videosegment konnte vor dem Zusammenfügen nicht technisch geprüft werden.",
+    );
+  }
+
+  return inspection;
 }
 
 function buildAtempoFilters(
@@ -1855,25 +1911,6 @@ export async function mergeAndStore(
         );
       }
 
-      const list =
-        join(
-          dir,
-          "concat.txt",
-        );
-
-      await writeFile(
-        list,
-
-        files
-          .map(
-            (file) =>
-              `file '${file.replace(/'/g, "'\\''")}'`,
-          )
-          .join("\n"),
-
-        "utf8",
-      );
-
       const output =
         join(
           dir,
@@ -1886,26 +1923,78 @@ export async function mergeAndStore(
           "merged.mp4",
         );
 
+      const inspections =
+        await Promise.all(
+          files.map(
+            (file) =>
+              inspectMediaFile(
+                binary,
+                file,
+              ),
+          ),
+        );
+
+      const mergePlan =
+        buildSeamlessMergePlan(
+          inspections,
+          seconds,
+          finishing.aspectRatio,
+        );
+
+      console.info(
+        JSON.stringify({
+          level: "info",
+          msg: "seamless_segment_merge_planned",
+          segmentCount:
+            inspections.length,
+          sourceDurationsSeconds:
+            inspections.map(
+              (inspection) =>
+                inspection.durationSeconds,
+            ),
+          transitionSeconds:
+            mergePlan.transitionSeconds,
+          targetDurationSeconds:
+            seconds,
+          outputDurationSeconds:
+            mergePlan.outputDurationSeconds,
+          outputSize:
+            `${mergePlan.width}x${mergePlan.height}`,
+        }),
+      );
+
       /*
-       * Seedance erstellt jeden Abschnitt als eigenständige Videodatei.
-       *
-       * Deshalb kodieren wir das zusammengefügte Material bewusst auf
-       * ein einheitliches H.264/AAC-Format neu, statt die Streams mit
-       * "-c copy" unverändert aneinanderzuhängen.
+       * Provider erzeugen jeden Abschnitt als eigenständige Datei. Eine
+       * normale Concat-Liste setzt Bild, Kameraausschnitt und Ton hart neu.
+       * Hier werden deshalb zuerst alle Streams technisch vereinheitlicht
+       * und anschließend Bild und Audio kurz überblendet. Die minimale
+       * Zeitanpassung hält die bestellte Gesamtlänge trotzdem exakt ein.
        */
       await exec(
         binary,
         [
           "-y",
 
-          "-f",
-          "concat",
+          ...files.flatMap(
+            (file) => [
+              "-i",
+              file,
+            ],
+          ),
 
-          "-safe",
-          "0",
+          "-filter_complex",
+          mergePlan.filters.join(
+            ";",
+          ),
 
-          "-i",
-          list,
+          "-map",
+          `[${mergePlan.videoOutputLabel}]`,
+
+          "-map",
+          `[${mergePlan.audioOutputLabel}]`,
+
+          "-t",
+          String(seconds),
 
           "-c:v",
           "libx264",
@@ -1916,6 +2005,9 @@ export async function mergeAndStore(
           "-crf",
           "18",
 
+          "-pix_fmt",
+          "yuv420p",
+
           "-c:a",
           "aac",
 
@@ -1924,6 +2016,9 @@ export async function mergeAndStore(
 
           "-ar",
           "48000",
+
+          "-ac",
+          "2",
 
           "-movflags",
           "+faststart",

@@ -81,6 +81,7 @@ type PreparedRender = {
   totalExtensions: number;
 
   finishing: {
+    aspectRatio?: VideoAspectRatio;
     voiceoverText?: string;
     voiceoverVoiceName?: "Charon" | "Kore";
     dialogueCues?: DialogueCue[];
@@ -1214,6 +1215,9 @@ async function prepareRecoveryFinalizationStep(
       job.targetDurationSeconds,
 
     finishing: {
+      aspectRatio:
+        job.aspectRatio,
+
       voiceoverText:
         recoveryDialogueCues.length >
         0
@@ -2990,6 +2994,9 @@ async function prepareRenderJobStep(
     totalExtensions,
 
     finishing: {
+      aspectRatio:
+        job.aspectRatio,
+
       voiceoverText:
         viralStoryMode ||
         nativeCharacterDialogue
