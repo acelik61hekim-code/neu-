@@ -26,9 +26,9 @@ export const VIDEO_SUBSCRIPTION_COOKIE = "kvs_video_studio";
  * Wenn du dein Kontingent später erneut
  * zurücksetzen möchtest, muss nur dieser
  * Wert geändert werden, z. B. auf:
- * "2026-08-27-renew-2"
+ * "2026-09-07-renew-3"
  */
-const INTERNAL_VIDEO_TEST_CYCLE = "2026-08-27-renew-1";
+const INTERNAL_VIDEO_TEST_CYCLE = "2026-09-07-renew-2";
 
 type SubscriptionCookie = {
   subscriptionId: string;
